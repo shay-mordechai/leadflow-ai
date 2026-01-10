@@ -1,0 +1,20 @@
+# .gitignore
+
+# Python & Environment
+venv/
+__pycache__/
+*.pyc
+.env
+
+# Database & Docker Volumes
+postgres_data/
+*.db
+*.sqlite3
+
+# IDE & System
+.idea/
+.vscode/
+.DS_Store
+
+# Logs
+*.log

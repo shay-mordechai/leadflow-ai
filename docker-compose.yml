@@ -1,0 +1,32 @@
+version: '3.8'
+
+services:
+  db:
+    image: postgres:15
+    container_name: coaching_db_container
+    restart: always
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: password
+      POSTGRES_DB: coaching_db
+    ports:
+      - "5432:5432"
+    volumes:
+      # This mapping ensures your data persists even if the container stops
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  redis:
+    image: redis:7
+    container_name: coaching_redis_container
+    restart: always
+    ports:
+      - "6379:6379"
+
+# Define the storage volume for the database
+volumes:
+  postgres_data:
