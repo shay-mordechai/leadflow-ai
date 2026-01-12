@@ -2,134 +2,262 @@
 <html lang="he" dir="rtl">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <meta name="apple-mobile-web-app-capable" content="yes">
-    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
     <meta name="theme-color" content="#0f172a">
-    <link rel="apple-touch-icon" href="https://img.icons8.com/color/96/artificial-intelligence.png">
-    <title>LeadFlowAI | סגירת עסקאות באוטומט</title>
+    <meta name="description" content="My-Leads - מערכת AI לניהול לידים וסגירת עסקאות באוטומט.">
+
+    <title>My-Leads | אוטומציה חכמה לניהול לידים</title>
+
+    <!-- Tailwind CSS -->
     <script src="https://cdn.tailwindcss.com"></script>
-    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" rel="stylesheet">
+
+    <!-- FontAwesome -->
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css" rel="stylesheet">
+
+    <!-- Google Fonts: Assistant & Heebo -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Assistant:wght@300;400;600;800&family=Heebo:wght@300;400;500;700;900&display=swap" rel="stylesheet">
+
+    <!-- Custom Config for Animation -->
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    fontFamily: {
+                        sans: ['Heebo', 'sans-serif'],
+                        display: ['Assistant', 'sans-serif'],
+                    },
+                    animation: {
+                        'blob': 'blob 7s infinite',
+                        'shimmer': 'shimmer 2.5s linear infinite',
+                    },
+                    keyframes: {
+                        blob: {
+                            '0%': { transform: 'translate(0px, 0px) scale(1)' },
+                            '33%': { transform: 'translate(30px, -50px) scale(1.1)' },
+                            '66%': { transform: 'translate(-20px, 20px) scale(0.9)' },
+                            '100%': { transform: 'translate(0px, 0px) scale(1)' },
+                        },
+                        shimmer: {
+                            '0%': { backgroundPosition: '-1000px 0' },
+                            '100%': { backgroundPosition: '1000px 0' }
+                        }
+                    }
+                }
+            }
+        }
+    </script>
+
     <style>
-        @import url('https://fonts.googleapis.com/css2?family=Heebo:wght@300;400;700;900&display=swap');
-        body { font-family: 'Heebo', sans-serif; }
-        .glass { background: rgba(255, 255, 255, 0.05); backdrop-filter: blur(10px); border: 1px solid rgba(255, 255, 255, 0.1); }
+        /* Custom Glassmorphism Utilities */
+        .glass-nav {
+            background: rgba(15, 23, 42, 0.7);
+            backdrop-filter: blur(12px);
+            border-bottom: 1px solid rgba(255, 255, 255, 0.05);
+        }
+
+        .glass-card {
+            background: rgba(30, 41, 59, 0.4);
+            backdrop-filter: blur(12px);
+            border: 1px solid rgba(255, 255, 255, 0.05);
+            box-shadow: 0 4px 30px rgba(0, 0, 0, 0.1);
+        }
+
+        /* Smooth Scrolling */
+        html { scroll-behavior: smooth; }
+
+        /* Shimmer Button Effect */
+        .btn-shimmer {
+            background: linear-gradient(to right, #2563eb 4%, #3b82f6 25%, #2563eb 36%);
+            background-size: 1000px 100%;
+        }
+
+        /* Text Selection Color */
+        ::selection { background: #3b82f6; color: #fff; }
     </style>
 </head>
-<body class="bg-slate-900 text-slate-50 overflow-x-hidden">
+<body class="bg-slate-900 text-slate-50 overflow-x-hidden antialiased font-sans">
 
-    <nav class="container mx-auto px-6 py-6 flex justify-between items-center">
-        <div class="text-2xl font-black tracking-tight flex items-center gap-2">
-            <div class="w-8 h-8 bg-blue-600 rounded-lg flex items-center justify-center shadow-lg shadow-blue-500/50">
-                <i class="fas fa-bolt text-white text-sm"></i>
+    <!-- Ambient Background Effects -->
+    <div class="fixed inset-0 overflow-hidden pointer-events-none z-0">
+        <div class="absolute top-0 right-1/4 w-96 h-96 bg-blue-600/20 rounded-full blur-[100px] animate-blob"></div>
+        <div class="absolute bottom-0 left-1/4 w-96 h-96 bg-purple-600/10 rounded-full blur-[100px] animate-blob animation-delay-2000"></div>
+        <div class="absolute top-1/2 left-1/2 transform -translate-x-1/2 -translate-y-1/2 w-[500px] h-[500px] bg-indigo-600/10 rounded-full blur-[120px]"></div>
+    </div>
+
+    <!-- Navigation -->
+    <nav class="fixed top-0 w-full z-50 glass-nav transition-all duration-300">
+        <div class="container mx-auto px-6 h-20 flex justify-between items-center">
+            <div class="text-2xl font-black tracking-tight flex items-center gap-3">
+                <div class="w-10 h-10 bg-gradient-to-br from-blue-600 to-indigo-600 rounded-xl flex items-center justify-center shadow-lg shadow-blue-500/30 border border-white/10">
+                    <i class="fas fa-bolt text-white text-base"></i>
+                </div>
+                <span class="font-display tracking-tight">My-Leads<span class="text-blue-500">AI</span></span>
             </div>
-            LeadFlow<span class="text-blue-500">AI</span>
+            <div class="flex items-center gap-6">
+                <a href="#pricing" class="hidden md:block text-sm font-medium text-slate-300 hover:text-white transition">מחירים</a>
+                <a href="/login" class="text-sm font-bold text-white bg-white/5 hover:bg-white/10 px-5 py-2.5 rounded-lg border border-white/5 transition backdrop-blur-sm">
+                    התחברות
+                </a>
+            </div>
         </div>
-        <a href="/login" class="text-sm font-bold text-slate-300 hover:text-white transition">התחברות</a>
     </nav>
 
-    <header class="container mx-auto px-6 pt-16 pb-24 text-center max-w-4xl">
-        <div class="inline-block px-4 py-1.5 rounded-full bg-slate-800 border border-slate-700 text-blue-400 text-xs font-bold mb-6 animate-pulse">
-            🚀 גרסה 2.0 שוחררה למאמנים
+    <!-- Hero Section -->
+    <header class="relative pt-32 pb-20 md:pt-48 md:pb-32 container mx-auto px-6 text-center z-10 max-w-5xl">
+
+        <!-- Badge -->
+        <div class="inline-flex items-center gap-2 px-4 py-2 rounded-full bg-blue-500/10 border border-blue-500/20 text-blue-400 text-sm font-bold mb-8 animate-fade-in-up">
+            <span class="w-2 h-2 rounded-full bg-blue-400 animate-pulse"></span>
+            הפלאפון של העבודה משתלט לך על החיים האישיים?
         </div>
-        <h1 class="text-5xl md:text-7xl font-black leading-tight mb-8">
-            הפסיקו לאבד לידים. <br>
-            תנו ל-<span class="text-transparent bg-clip-text bg-gradient-to-r from-blue-400 to-indigo-500">AI</span> לסגור עסקאות.
+
+        <!-- H1 -->
+        <h1 class="text-5xl md:text-7xl lg:text-8xl font-black font-display leading-[1.1] mb-8 tracking-tight">
+            My-Leads: תנו ל-<span class="text-transparent bg-clip-text bg-gradient-to-r from-blue-400 via-indigo-400 to-purple-400 drop-shadow-2xl">AI</span> לטפל בלידים,
+            <br class="hidden md:block" />
+            <span class="text-white">ותחזרו ליהנות מהזמן.</span>
         </h1>
-        <p class="text-lg md:text-xl text-slate-400 mb-10 max-w-2xl mx-auto leading-relaxed">
-            הפלטפורמה הראשונה שמנתחת הודעות וואטסאפ, מבינה כוונות קנייה ומסנכרנת ל-CRM באופן אוטומטי. מתאים לנדל"ן, כושר ושירותים.
+
+        <!-- Subtitle -->
+        <p class="text-lg md:text-2xl text-slate-400 mb-12 max-w-3xl mx-auto leading-relaxed font-light">
+            במקום להקשיב להודעות קוליות ארוכות באמצע ארוחת ערב, המערכת של My-Leads מתמללת, מנתחת כוונות קנייה ומסנכרנת הכל ל-CRM אוטומטית.
+            <span class="text-slate-200 font-medium">שקט נפשי ב-₪99 לחודש.</span>
         </p>
-        <div class="flex flex-col md:flex-row gap-4 justify-center">
-            <a href="/register" class="bg-blue-600 hover:bg-blue-500 text-white px-8 py-4 rounded-xl font-bold text-lg shadow-xl shadow-blue-900/20 transition transform hover:-translate-y-1">
-                התחל ניסיון חינם
-            </a>
-            <a href="#pricing" class="bg-slate-800 hover:bg-slate-700 text-white px-8 py-4 rounded-xl font-bold text-lg border border-slate-700 transition">
+
+        <!-- CTA Buttons -->
+        <div class="flex flex-col md:flex-row gap-5 justify-center items-center">
+            <div class="flex flex-col items-center w-full md:w-auto group">
+                <a href="/register" class="btn-shimmer animate-shimmer w-full md:w-auto relative px-10 py-5 rounded-2xl font-bold text-lg text-white shadow-[0_10px_40px_-10px_rgba(37,99,235,0.5)] hover:shadow-[0_20px_60px_-15px_rgba(37,99,235,0.6)] hover:-translate-y-1 transition-all duration-300 border border-blue-400/30">
+                    אני רוצה לנסות את My-Leads
+                    <i class="fas fa-arrow-left mr-2 transition-transform group-hover:-translate-x-1"></i>
+                </a>
+                <span class="text-xs text-blue-300/80 mt-3 font-medium tracking-wide">✨ 30 יום ראשונים במחיר השקה</span>
+            </div>
+
+            <a href="#pricing" class="w-full md:w-auto px-10 py-5 rounded-2xl font-bold text-lg text-slate-300 bg-slate-800/40 hover:bg-slate-800/80 border border-slate-700 hover:border-slate-600 hover:text-white transition-all duration-300 backdrop-blur-sm">
                 כמה זה עולה?
             </a>
         </div>
     </header>
 
-    <div class="border-y border-slate-800 bg-slate-900/50 py-8">
-        <p class="text-center text-slate-500 text-xs font-bold uppercase tracking-widest mb-6">בשימוש על ידי 50+ עסקים מובילים</p>
-        <div class="flex justify-center gap-8 md:gap-16 opacity-40 grayscale">
-            <i class="fab fa-aws text-3xl"></i>
-            <i class="fab fa-google text-3xl"></i>
-            <i class="fab fa-meta text-3xl"></i>
-            <i class="fas fa-building text-3xl"></i>
+    <!-- Social Proof / Trust Section -->
+    <div class="border-y border-white/5 bg-slate-900/50 backdrop-blur-sm py-12 relative z-10">
+        <div class="container mx-auto px-6">
+            <p class="text-center text-slate-500 text-sm font-bold uppercase tracking-[0.2em] mb-8">בשימוש על ידי 50+ עסקים מובילים</p>
+            <div class="flex flex-wrap justify-center items-center gap-8 md:gap-16">
+                <!-- Logos with Grayscale Hover Effect -->
+                <i class="fab fa-aws text-4xl md:text-5xl text-slate-600 transition-all duration-500 hover:text-[#FF9900] hover:scale-110 cursor-pointer hover:drop-shadow-[0_0_15px_rgba(255,153,0,0.5)]"></i>
+                <i class="fab fa-google text-4xl md:text-5xl text-slate-600 transition-all duration-500 hover:text-[#EA4335] hover:scale-110 cursor-pointer hover:drop-shadow-[0_0_15px_rgba(234,67,53,0.5)]"></i>
+                <i class="fab fa-meta text-4xl md:text-5xl text-slate-600 transition-all duration-500 hover:text-[#0668E1] hover:scale-110 cursor-pointer hover:drop-shadow-[0_0_15px_rgba(6,104,225,0.5)]"></i>
+                <i class="fab fa-whatsapp text-4xl md:text-5xl text-slate-600 transition-all duration-500 hover:text-[#25D366] hover:scale-110 cursor-pointer hover:drop-shadow-[0_0_15px_rgba(37,211,102,0.5)]"></i>
+            </div>
         </div>
     </div>
 
-    <section class="container mx-auto px-6 py-24">
+    <!-- Features Section -->
+    <section class="container mx-auto px-6 py-32 relative z-10">
+        <div class="text-center mb-16">
+            <h2 class="text-3xl md:text-5xl font-bold font-display mb-4">איך זה עובד?</h2>
+            <p class="text-slate-400">הטכנולוגיה שעובדת בשבילך, לא להפך.</p>
+        </div>
+
         <div class="grid md:grid-cols-3 gap-8">
-            <div class="glass p-8 rounded-3xl hover:bg-slate-800/50 transition duration-300">
-                <div class="w-12 h-12 bg-blue-500/10 rounded-xl flex items-center justify-center text-blue-400 text-xl mb-6">
+            <!-- Feature 1 -->
+            <div class="glass-card p-10 rounded-[2rem] group hover:-translate-y-2 transition-all duration-300 hover:shadow-2xl hover:shadow-blue-500/10 hover:border-blue-500/30">
+                <div class="w-20 h-20 bg-gradient-to-br from-blue-500/10 to-cyan-500/10 rounded-2xl flex items-center justify-center text-blue-400 text-4xl mb-8 group-hover:scale-110 group-hover:rotate-3 transition-transform duration-300 border border-blue-500/10">
                     <i class="fas fa-microphone-lines"></i>
                 </div>
-                <h3 class="text-xl font-bold mb-3">תמלול וניתוח</h3>
-                <p class="text-slate-400 leading-relaxed">ה-AI שלנו מאזין להודעות קוליות וטקסט, ומחלץ מהן את המידע החשוב ביותר תוך שניות.</p>
+                <h3 class="text-2xl font-bold mb-4 font-display">תמלול וניתוח</h3>
+                <p class="text-slate-400 leading-loose text-lg">ה-AI שלנו מאזין להודעות קוליות וטקסט 24/7, ומחלץ מהן את המידע הקריטי (שם, צורך, דחיפות) תוך שניות בודדות.</p>
             </div>
-            <div class="glass p-8 rounded-3xl hover:bg-slate-800/50 transition duration-300">
-                <div class="w-12 h-12 bg-purple-500/10 rounded-xl flex items-center justify-center text-purple-400 text-xl mb-6">
+
+            <!-- Feature 2 -->
+            <div class="glass-card p-10 rounded-[2rem] group hover:-translate-y-2 transition-all duration-300 hover:shadow-2xl hover:shadow-purple-500/10 hover:border-purple-500/30">
+                <div class="w-20 h-20 bg-gradient-to-br from-purple-500/10 to-pink-500/10 rounded-2xl flex items-center justify-center text-purple-400 text-4xl mb-8 group-hover:scale-110 group-hover:-rotate-3 transition-transform duration-300 border border-purple-500/10">
                     <i class="fas fa-brain"></i>
                 </div>
-                <h3 class="text-xl font-bold mb-3">זיהוי כוונות קנייה</h3>
-                <p class="text-slate-400 leading-relaxed">המערכת מעניקה ציון (1-10) לכל ליד, כך שתדעו במי להשקיע את הזמן שלכם קודם.</p>
+                <h3 class="text-2xl font-bold mb-4 font-display">זיהוי כוונות קנייה</h3>
+                <p class="text-slate-400 leading-loose text-lg">המערכת מעניקה ציון <span class="text-white font-bold bg-white/10 px-2 py-0.5 rounded">1-10</span> לכל ליד, כך שתדעו בדיוק במי להשקיע את האנרגיה שלכם וממי להתעלם.</p>
             </div>
-            <div class="glass p-8 rounded-3xl hover:bg-slate-800/50 transition duration-300">
-                <div class="w-12 h-12 bg-green-500/10 rounded-xl flex items-center justify-center text-green-400 text-xl mb-6">
+
+            <!-- Feature 3 -->
+            <div class="glass-card p-10 rounded-[2rem] group hover:-translate-y-2 transition-all duration-300 hover:shadow-2xl hover:shadow-green-500/10 hover:border-green-500/30">
+                <div class="w-20 h-20 bg-gradient-to-br from-green-500/10 to-emerald-500/10 rounded-2xl flex items-center justify-center text-emerald-400 text-4xl mb-8 group-hover:scale-110 group-hover:rotate-3 transition-transform duration-300 border border-green-500/10">
                     <i class="fas fa-sync-alt"></i>
                 </div>
-                <h3 class="text-xl font-bold mb-3">סנכרון CRM</h3>
-                <p class="text-slate-400 leading-relaxed">כל הנתונים מסתנכרנים אוטומטית ללוח הבקרה שלך. אין צורך להזין נתונים ידנית.</p>
+                <h3 class="text-2xl font-bold mb-4 font-display">סנכרון CRM</h3>
+                <p class="text-slate-400 leading-loose text-lg">אין צורך להקליד נתונים ידנית. הליד נכנס לוואטסאפ? הוא מופיע מיד בלוח הבקרה שלך עם סיכום השיחה.</p>
             </div>
         </div>
     </section>
 
-    <section class="container mx-auto px-6 py-20 text-center" id="pricing">
-        <h2 class="text-3xl font-bold mb-12 text-slate-100">הצטרפות לנבחרת המייסדים</h2>
+    <!-- Pricing Section -->
+    <section class="container mx-auto px-6 py-20 text-center relative z-10" id="pricing">
+        <div class="max-w-md mx-auto relative group">
 
-        <div class="max-w-md mx-auto bg-gradient-to-b from-slate-800 to-slate-900 border border-slate-700 rounded-3xl p-1 relative overflow-hidden shadow-2xl shadow-blue-900/20">
-            <div class="absolute top-0 right-0 bg-yellow-500 text-slate-900 text-[10px] font-black px-8 py-1 transform rotate-45 translate-x-8 translate-y-4 shadow-sm">
-                מבצע השקה
-            </div>
+            <!-- Glow behind card -->
+            <div class="absolute -inset-1 bg-gradient-to-r from-blue-600 to-indigo-600 rounded-[2.5rem] blur opacity-25 group-hover:opacity-50 transition duration-1000 group-hover:duration-200"></div>
 
-            <div class="bg-slate-900 rounded-[22px] p-8 h-full flex flex-col">
-                <h3 class="text-xl font-bold text-slate-300 mb-2">LeadFlow Starter</h3>
-
-                <div class="flex items-end justify-center gap-2 mb-2">
-                    <span class="text-slate-500 text-lg line-through decoration-red-500 decoration-2">₪250</span>
-                    <div class="text-6xl font-black text-white tracking-tight">₪99</div>
+            <div class="relative bg-slate-900 border border-slate-700 rounded-[2.2rem] p-1 overflow-hidden">
+                <!-- Ribbon -->
+                <div class="absolute top-0 right-0">
+                    <div class="bg-gradient-to-r from-yellow-500 to-amber-500 text-slate-900 text-[11px] font-black px-10 py-1.5 transform rotate-45 translate-x-10 translate-y-5 shadow-sm uppercase tracking-wider">
+                        מבצע השקה
+                    </div>
                 </div>
-                <p class="text-blue-400 text-sm font-bold mb-6">לחודש (למשך 3 חודשים ראשונים)</p>
 
-                <div class="w-full h-px bg-slate-800 mb-6"></div>
+                <div class="bg-slate-900/90 backdrop-blur-xl rounded-[2rem] p-8 md:p-12 h-full flex flex-col">
+                    <h3 class="text-2xl font-bold text-slate-200 mb-2 font-display">My-Leads Starter</h3>
+                    <p class="text-slate-400 text-sm mb-6">החבילה המושלמת לעסקים קטנים</p>
 
-                <ul class="text-right space-y-4 mb-8 text-slate-300 flex-grow">
-                    <li class="flex items-start gap-3">
-                        <div class="w-5 h-5 rounded-full bg-green-500/10 flex items-center justify-center mt-0.5"><i class="fas fa-check text-xs text-green-400"></i></div>
-                        <span>ניתוח לידים ללא הגבלה</span>
-                    </li>
-                    <li class="flex items-start gap-3">
-                        <div class="w-5 h-5 rounded-full bg-green-500/10 flex items-center justify-center mt-0.5"><i class="fas fa-check text-xs text-green-400"></i></div>
-                        <span>התאמה אישית לסוג העסק שלך</span>
-                    </li>
-                    <li class="flex items-start gap-3">
-                        <div class="w-5 h-5 rounded-full bg-green-500/10 flex items-center justify-center mt-0.5"><i class="fas fa-check text-xs text-green-400"></i></div>
-                        <span>דשבורד ניהול מתקדם (PWA)</span>
-                    </li>
-                </ul>
+                    <div class="flex items-end justify-center gap-3 mb-4">
+                        <span class="text-slate-500 text-xl line-through decoration-red-500/60 decoration-2">₪250</span>
+                        <div class="text-7xl font-black text-white tracking-tighter">₪99</div>
+                    </div>
+                    <p class="text-blue-400 text-sm font-bold mb-8 bg-blue-500/10 py-2 rounded-lg border border-blue-500/20">לחודש (למשך 3 חודשים ראשונים)</p>
 
-                <a href="/register" class="block w-full bg-blue-600 hover:bg-blue-500 text-white py-4 rounded-xl font-bold shadow-lg shadow-blue-600/20 transition transform hover:-translate-y-1 active:scale-95">
-                    שריינו את המחיר עכשיו
-                </a>
-                <p class="text-slate-500 text-xs mt-4">תשלום מאובטח בביט. ניתן לבטל בכל רגע.</p>
+                    <div class="w-full h-px bg-gradient-to-r from-transparent via-slate-700 to-transparent mb-8"></div>
+
+                    <ul class="text-right space-y-5 mb-10 text-slate-300 flex-grow px-2">
+                        <li class="flex items-center gap-4">
+                            <div class="w-6 h-6 rounded-full bg-green-500/20 flex items-center justify-center shrink-0 border border-green-500/20"><i class="fas fa-check text-[10px] text-green-400"></i></div>
+                            <span class="font-light">ניתוח לידים <span class="text-white font-medium">ללא הגבלה</span></span>
+                        </li>
+                        <li class="flex items-center gap-4">
+                            <div class="w-6 h-6 rounded-full bg-green-500/20 flex items-center justify-center shrink-0 border border-green-500/20"><i class="fas fa-check text-[10px] text-green-400"></i></div>
+                            <span class="font-light">התאמה אישית לסוג העסק שלך</span>
+                        </li>
+                        <li class="flex items-center gap-4">
+                            <div class="w-6 h-6 rounded-full bg-green-500/20 flex items-center justify-center shrink-0 border border-green-500/20"><i class="fas fa-check text-[10px] text-green-400"></i></div>
+                            <span class="font-light">דשבורד ניהול מתקדם (PWA)</span>
+                        </li>
+                         <li class="flex items-center gap-4">
+                            <div class="w-6 h-6 rounded-full bg-green-500/20 flex items-center justify-center shrink-0 border border-green-500/20"><i class="fas fa-check text-[10px] text-green-400"></i></div>
+                            <span class="font-light">תמיכה בוואטסאפ</span>
+                        </li>
+                    </ul>
+
+                    <a href="/register" class="btn-shimmer animate-shimmer block w-full text-white py-5 rounded-xl font-bold shadow-lg shadow-blue-600/20 transition transform hover:-translate-y-1 active:scale-95 border border-white/10 text-lg">
+                        שריינו את המחיר עכשיו
+                    </a>
+                    <div class="flex justify-center items-center gap-2 mt-6 text-xs text-slate-500">
+                        <i class="fas fa-lock text-slate-600"></i>
+                        תשלום מאובטח בביט. ניתן לבטל בכל רגע.
+                    </div>
+                </div>
             </div>
         </div>
     </section>
 
-    <footer class="border-t border-slate-800 py-10 text-center text-slate-600 text-sm">
-        &copy; 2026 LeadFlowAI. כל הזכויות שמורות.
+    <footer class="border-t border-white/5 bg-slate-900 pt-16 pb-8 text-center text-slate-600 relative z-10">
+        <div class="flex justify-center gap-6 mb-8">
+            <a href="#" class="hover:text-blue-500 transition"><i class="fab fa-facebook text-xl"></i></a>
+            <a href="#" class="hover:text-blue-500 transition"><i class="fab fa-instagram text-xl"></i></a>
+            <a href="#" class="hover:text-blue-500 transition"><i class="fab fa-linkedin text-xl"></i></a>
+        </div>
+        <p class="text-sm">&copy; 2026 My-Leads AI. כל הזכויות שמורות.</p>
     </footer>
 </body>
 </html>
