@@ -3,7 +3,6 @@
 from fastapi import FastAPI, Request, HTTPException, Depends, status, BackgroundTasks
 from fastapi.responses import JSONResponse, RedirectResponse, StreamingResponse
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.middleware.trustedhost import TrustedHostMiddleware
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 from sqlalchemy.orm import Session
@@ -20,6 +19,15 @@ from slowapi.errors import RateLimitExceeded
 
 # Database & Config
 from src.config import settings
+app = FastAPI()
+
+# Security middleware to prevent Host Header Injection
+# from fastapi.middleware.trustedhost import TrustedHostMiddleware
+
+# app.add_middleware(
+#     TrustedHostMiddleware, 
+#     allowed_hosts=settings.ALLOWED_HOSTS
+# )
 from src.routers import leads, sessions
 from src.database.session import engine, get_db
 from src.database.models import Base, Tenant, Lead, TimeSlot
@@ -35,8 +43,8 @@ app.state.limiter = limiter
 app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
 
 # --- Middlewares ---
-app.add_middleware(TrustedHostMiddleware, allowed_hosts=settings.ALLOWED_HOSTS)
-app.add_middleware(CORSMiddleware, allow_origins=settings.ALLOWED_HOSTS, allow_credentials=True, allow_methods=["*"], allow_headers=["*"])
+# app.add_middleware(TrustedHostMiddleware, allowed_hosts=settings.ALLOWED_HOSTS)
+# app.add_middleware(CORSMiddleware, allow_origins=settings.ALLOWED_HOSTS, allow_credentials=True, allow_methods=["*"], allow_headers=["*"])
 
 @app.middleware("http")
 async def add_security_headers(request: Request, call_next):
