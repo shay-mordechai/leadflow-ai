@@ -1,4 +1,4 @@
-name: Deploy to EC2
+name: Deploy to EC2 (Podman)
 
 on:
   push:
@@ -20,18 +20,23 @@ jobs:
           username: ${{ secrets.EC2_USERNAME }}
           key: ${{ secrets.EC2_SSH_KEY }}
           script: |
-            # Professional Comment: Deploy script with Force Sync strategy
+            # Professional Comment: Deploy using Podman
             cd ~/myleads
             
-            # 1. Force sync with GitHub (Discards local manual changes/conflicts)
+            # 1. Force sync with GitHub
             git fetch --all
             git reset --hard origin/main
             
-            # 2. Rebuild containers with new architecture
-            # --remove-orphans: Cleans up old Redis/Celery containers if they exist
-            docker-compose up -d --build --remove-orphans
+            # 2. Ensure podman-compose is installed
+            if ! command -v podman-compose &> /dev/null; then
+                pip3 install podman-compose
+            fi
             
-            # 3. Cleanup to save disk space on EC2
-            docker image prune -f
+            # 3. Build and Run using Podman
+            # Note: Podman handles orphans differently, so standard up --build is usually enough
+            podman-compose up -d --build
             
-            echo "Deployment successful! System is live."
+            # 4. Cleanup
+            podman image prune -f
+            
+            echo "Deployment successful with Podman!"
