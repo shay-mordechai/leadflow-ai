@@ -1,0 +1,28 @@
+# Professional comment: GitHub Action to automate deployment to EC2
+name: Deploy to EC2
+
+on:
+  push:
+    branches:
+      - main  # Runs every time you push to the main branch
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v3
+
+      - name: Deploy to Server via SSH
+        uses: appleboy/ssh-action@v1.0.3
+        with:
+          host: ${{ secrets.EC2_HOST }}
+          username: ${{ secrets.EC2_USERNAME }}
+          key: ${{ secrets.EC2_SSH_KEY }}
+          script: |
+            # Professional comment: Commands to run on the EC2 server
+            cd ~/myleads
+            git pull origin main
+            docker-compose up -d --build
+            echo "Deployment successful!"
