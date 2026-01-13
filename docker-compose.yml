@@ -1,50 +1,31 @@
 version: '3.8'
 
 services:
-  db:
-    image: docker.io/library/postgres:15
-    container_name: myleads_db_container
-    restart: always
-    environment:
-      POSTGRES_USER: postgres
-      POSTGRES_PASSWORD: password
-      POSTGRES_DB: myleads_db
-    ports:
-      - "5432:5432"
-    volumes:
-      - postgres_data:/var/lib/postgresql/data
-    healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U postgres"]
-      interval: 5s
-      timeout: 5s
-      retries: 5
-
-  redis:
-    image: docker.io/library/redis:7
-    container_name: myleads_redis_container
-    restart: always
-    ports:
-      - "6379:6379"
-
-  app:
+  web:
     build: .
-    container_name: myleads_app
+    container_name: leadflow_app
     restart: always
-    # Professional comment: Bind port 443 on host to 8000 in container
     ports:
-      - "443:8000"
-    volumes:
-      - ./certs:/app/certs:Z
-    # Professional comment: Inject environment variables from .env file
+      - "8000:8000"
     env_file:
       - .env
-    # Professional comment: Uvicorn setup for Cloudflare SSL and Proxy
-    command: uvicorn src.main:app --host 0.0.0.0 --port 8000 --ssl-keyfile /app/certs/key.pem --ssl-certfile /app/certs/cert.pem --proxy-headers --forwarded-allow-ips='*'
     depends_on:
-      db:
-        condition: service_healthy
-      redis:
-        condition: service_started
+      - db
+    volumes:
+      - ./storage:/app/storage
+
+  db:
+    image: postgres:15
+    container_name: leadflow_db
+    restart: always
+    environment:
+      POSTGRES_USER: ${DB_USER}
+      POSTGRES_PASSWORD: ${DB_PASSWORD}
+      POSTGRES_DB: ${DB_NAME}
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    ports:
+      - "5432:5432"
 
 volumes:
   postgres_data:
