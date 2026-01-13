@@ -4,40 +4,28 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
     <meta name="theme-color" content="#0f172a">
-    <meta name="description" content="My-Leads - מערכת AI לניהול לידים וסגירת עסקאות באוטומט.">
+    <meta name="description" content="My-Leads - מערכת AI לניהול לידים ותמלול פגישות מאובטח באוטומט.">
 
-    <title>My-Leads | אוטומציה חכמה לניהול לידים</title>
+    <meta name="mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+    <meta name="apple-mobile-web-app-title" content="My-Leads">
 
-    <!-- Tailwind CSS -->
+    <title>My-Leads | אוטומציה חכמה ופרטית לניהול לידים</title>
+
+    <link rel="manifest" href="/static/manifest.json">
+    <link rel="apple-touch-icon" href="https://img.icons8.com/color/192/artificial-intelligence.png">
+    <link rel="icon" type="image/png" href="https://img.icons8.com/color/32/artificial-intelligence.png">
+
     <script src="https://cdn.tailwindcss.com"></script>
 
-    <!-- FontAwesome -->
     <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css" rel="stylesheet">
 
-    <!-- Google Fonts: Assistant & Heebo -->
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Assistant:wght@300;400;600;800&family=Heebo:wght@300;400;500;700;900&display=swap" rel="stylesheet">
 
-    <!-- Custom Config for Animation -->
     <script>
-        <meta charset="UTF-8">
-        <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-
-        <meta name="theme-color" content="#0f172a">
-
-        <meta name="mobile-web-app-capable" content="yes">
-        <meta name="apple-mobile-web-app-capable" content="yes">
-        <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
-        <meta name="apple-mobile-web-app-title" content="My-Leads">
-
-        <link rel="manifest" href="/static/manifest.json">
-
-        <link rel="apple-touch-icon" href="https://img.icons8.com/color/192/artificial-intelligence.png">
-
-        <link rel="icon" type="image/png" href="https://img.icons8.com/color/32/artificial-intelligence.png">
-
-        <title>My-Leads | AI Lead Automation</title>
         tailwind.config = {
             theme: {
                 extend: {
@@ -48,6 +36,7 @@
                     animation: {
                         'blob': 'blob 7s infinite',
                         'shimmer': 'shimmer 2.5s linear infinite',
+                        'fade-in-up': 'fadeInUp 0.8s ease-out',
                     },
                     keyframes: {
                         blob: {
@@ -59,6 +48,10 @@
                         shimmer: {
                             '0%': { backgroundPosition: '-1000px 0' },
                             '100%': { backgroundPosition: '1000px 0' }
+                        },
+                        fadeInUp: {
+                            '0%': { opacity: '0', transform: 'translateY(20px)' },
+                            '100%': { opacity: '1', transform: 'translateY(0)' }
                         }
                     }
                 }
@@ -67,43 +60,21 @@
     </script>
 
     <style>
-        /* Custom Glassmorphism Utilities */
-        .glass-nav {
-            background: rgba(15, 23, 42, 0.7);
-            backdrop-filter: blur(12px);
-            border-bottom: 1px solid rgba(255, 255, 255, 0.05);
-        }
-
-        .glass-card {
-            background: rgba(30, 41, 59, 0.4);
-            backdrop-filter: blur(12px);
-            border: 1px solid rgba(255, 255, 255, 0.05);
-            box-shadow: 0 4px 30px rgba(0, 0, 0, 0.1);
-        }
-
-        /* Smooth Scrolling */
+        .glass-nav { background: rgba(15, 23, 42, 0.7); backdrop-filter: blur(12px); border-bottom: 1px solid rgba(255, 255, 255, 0.05); }
+        .glass-card { background: rgba(30, 41, 59, 0.4); backdrop-filter: blur(12px); border: 1px solid rgba(255, 255, 255, 0.05); }
         html { scroll-behavior: smooth; }
-
-        /* Shimmer Button Effect */
-        .btn-shimmer {
-            background: linear-gradient(to right, #2563eb 4%, #3b82f6 25%, #2563eb 36%);
-            background-size: 1000px 100%;
-        }
-
-        /* Text Selection Color */
+        .btn-shimmer { background: linear-gradient(to right, #2563eb 4%, #3b82f6 25%, #2563eb 36%); background-size: 1000px 100%; }
         ::selection { background: #3b82f6; color: #fff; }
     </style>
 </head>
 <body class="bg-slate-900 text-slate-50 overflow-x-hidden antialiased font-sans">
 
-    <!-- Ambient Background Effects -->
     <div class="fixed inset-0 overflow-hidden pointer-events-none z-0">
         <div class="absolute top-0 right-1/4 w-96 h-96 bg-blue-600/20 rounded-full blur-[100px] animate-blob"></div>
         <div class="absolute bottom-0 left-1/4 w-96 h-96 bg-purple-600/10 rounded-full blur-[100px] animate-blob animation-delay-2000"></div>
         <div class="absolute top-1/2 left-1/2 transform -translate-x-1/2 -translate-y-1/2 w-[500px] h-[500px] bg-indigo-600/10 rounded-full blur-[120px]"></div>
     </div>
 
-    <!-- Navigation -->
     <nav class="fixed top-0 w-full z-50 glass-nav transition-all duration-300">
         <div class="container mx-auto px-6 h-20 flex justify-between items-center">
             <div class="text-2xl font-black tracking-tight flex items-center gap-3">
@@ -113,156 +84,130 @@
                 <span class="font-display tracking-tight">My-Leads<span class="text-blue-500">AI</span></span>
             </div>
             <div class="flex items-center gap-6">
+                <a href="#privacy" class="hidden md:block text-sm font-medium text-slate-300 hover:text-white transition">פרטיות</a>
                 <a href="#pricing" class="hidden md:block text-sm font-medium text-slate-300 hover:text-white transition">מחירים</a>
-                <a href="/login" class="text-sm font-bold text-white bg-white/5 hover:bg-white/10 px-5 py-2.5 rounded-lg border border-white/5 transition backdrop-blur-sm">
-                    התחברות
-                </a>
+                <a href="/login" class="text-sm font-bold text-white bg-white/5 hover:bg-white/10 px-5 py-2.5 rounded-lg border border-white/5 transition backdrop-blur-sm">התחברות</a>
             </div>
         </div>
     </nav>
 
-    <!-- Hero Section -->
     <header class="relative pt-32 pb-20 md:pt-48 md:pb-32 container mx-auto px-6 text-center z-10 max-w-5xl">
-
-        <!-- Badge -->
         <div class="inline-flex items-center gap-2 px-4 py-2 rounded-full bg-blue-500/10 border border-blue-500/20 text-blue-400 text-sm font-bold mb-8 animate-fade-in-up">
             <span class="w-2 h-2 rounded-full bg-blue-400 animate-pulse"></span>
             הפלאפון של העבודה משתלט לך על החיים האישיים?
         </div>
 
-        <!-- H1 -->
         <h1 class="text-5xl md:text-7xl lg:text-8xl font-black font-display leading-[1.1] mb-8 tracking-tight">
-            My-Leads: תנו ל-<span class="text-transparent bg-clip-text bg-gradient-to-r from-blue-400 via-indigo-400 to-purple-400 drop-shadow-2xl">AI</span> לטפל בלידים,
-            <br class="hidden md:block" />
-            <span class="text-white">ותחזרו ליהנות מהזמן.</span>
+            תמלול פגישות וניהול לידים<br/>
+            <span class="text-transparent bg-clip-text bg-gradient-to-r from-blue-400 via-indigo-400 to-purple-400 drop-shadow-2xl">בפרטיות מוחלטת</span>
         </h1>
 
-        <!-- Subtitle -->
         <p class="text-lg md:text-2xl text-slate-400 mb-12 max-w-3xl mx-auto leading-relaxed font-light">
-            במקום להקשיב להודעות קוליות ארוכות באמצע ארוחת ערב, המערכת של My-Leads מתמללת, מנתחת כוונות קנייה ומסנכרנת הכל ל-CRM אוטומטית.
+            במקום להקשיב להודעות קוליות ארוכות, המערכת של My-Leads מתמללת, מנתחת כוונות קנייה ומסנכרנת הכל בשרת פרטי ומאובטח.
             <span class="text-slate-200 font-medium">שקט נפשי ב-₪99 לחודש.</span>
         </p>
 
-        <!-- CTA Buttons -->
         <div class="flex flex-col md:flex-row gap-5 justify-center items-center">
             <div class="flex flex-col items-center w-full md:w-auto group">
                 <a href="/register" class="btn-shimmer animate-shimmer w-full md:w-auto relative px-10 py-5 rounded-2xl font-bold text-lg text-white shadow-[0_10px_40px_-10px_rgba(37,99,235,0.5)] hover:shadow-[0_20px_60px_-15px_rgba(37,99,235,0.6)] hover:-translate-y-1 transition-all duration-300 border border-blue-400/30">
-                    אני רוצה לנסות את My-Leads
+                    אני רוצה לנסות בחינם
                     <i class="fas fa-arrow-left mr-2 transition-transform group-hover:-translate-x-1"></i>
                 </a>
-                <span class="text-xs text-blue-300/80 mt-3 font-medium tracking-wide">✨ 30 יום ראשונים במחיר השקה</span>
+                <span class="text-xs text-blue-300/80 mt-3 font-medium tracking-wide">✨ 30 יום ראשונים ללא התחייבות</span>
             </div>
 
-            <a href="#pricing" class="w-full md:w-auto px-10 py-5 rounded-2xl font-bold text-lg text-slate-300 bg-slate-800/40 hover:bg-slate-800/80 border border-slate-700 hover:border-slate-600 hover:text-white transition-all duration-300 backdrop-blur-sm">
-                כמה זה עולה?
+            <a href="#privacy" class="w-full md:w-auto px-10 py-5 rounded-2xl font-bold text-lg text-slate-300 bg-slate-800/40 hover:bg-slate-800/80 border border-slate-700 hover:border-slate-600 hover:text-white transition-all duration-300 backdrop-blur-sm">
+                איך אתם שומרים על המידע?
             </a>
         </div>
     </header>
 
-    <!-- Social Proof / Trust Section -->
     <div class="border-y border-white/5 bg-slate-900/50 backdrop-blur-sm py-12 relative z-10">
         <div class="container mx-auto px-6">
-            <p class="text-center text-slate-500 text-sm font-bold uppercase tracking-[0.2em] mb-8">בשימוש על ידי 50+ עסקים מובילים</p>
+            <p class="text-center text-slate-500 text-sm font-bold uppercase tracking-[0.2em] mb-8">בשימוש על ידי 50+ קליניקות ועסקים</p>
             <div class="flex flex-wrap justify-center items-center gap-8 md:gap-16">
-                <!-- Logos with Grayscale Hover Effect -->
-                <i class="fab fa-aws text-4xl md:text-5xl text-slate-600 transition-all duration-500 hover:text-[#FF9900] hover:scale-110 cursor-pointer hover:drop-shadow-[0_0_15px_rgba(255,153,0,0.5)]"></i>
-                <i class="fab fa-google text-4xl md:text-5xl text-slate-600 transition-all duration-500 hover:text-[#EA4335] hover:scale-110 cursor-pointer hover:drop-shadow-[0_0_15px_rgba(234,67,53,0.5)]"></i>
-                <i class="fab fa-meta text-4xl md:text-5xl text-slate-600 transition-all duration-500 hover:text-[#0668E1] hover:scale-110 cursor-pointer hover:drop-shadow-[0_0_15px_rgba(6,104,225,0.5)]"></i>
-                <i class="fab fa-whatsapp text-4xl md:text-5xl text-slate-600 transition-all duration-500 hover:text-[#25D366] hover:scale-110 cursor-pointer hover:drop-shadow-[0_0_15px_rgba(37,211,102,0.5)]"></i>
+                <i class="fab fa-aws text-4xl md:text-5xl text-slate-600 transition-all hover:text-[#FF9900]"></i>
+                <i class="fab fa-google text-4xl md:text-5xl text-slate-600 transition-all hover:text-[#EA4335]"></i>
+                <i class="fab fa-whatsapp text-4xl md:text-5xl text-slate-600 transition-all hover:text-[#25D366]"></i>
             </div>
         </div>
     </div>
 
-    <!-- Features Section -->
-    <section class="container mx-auto px-6 py-32 relative z-10">
-        <div class="text-center mb-16">
-            <h2 class="text-3xl md:text-5xl font-bold font-display mb-4">איך זה עובד?</h2>
-            <p class="text-slate-400">הטכנולוגיה שעובדת בשבילך, לא להפך.</p>
-        </div>
-
-        <div class="grid md:grid-cols-3 gap-8">
-            <!-- Feature 1 -->
-            <div class="glass-card p-10 rounded-[2rem] group hover:-translate-y-2 transition-all duration-300 hover:shadow-2xl hover:shadow-blue-500/10 hover:border-blue-500/30">
-                <div class="w-20 h-20 bg-gradient-to-br from-blue-500/10 to-cyan-500/10 rounded-2xl flex items-center justify-center text-blue-400 text-4xl mb-8 group-hover:scale-110 group-hover:rotate-3 transition-transform duration-300 border border-blue-500/10">
-                    <i class="fas fa-microphone-lines"></i>
-                </div>
-                <h3 class="text-2xl font-bold mb-4 font-display">תמלול וניתוח</h3>
-                <p class="text-slate-400 leading-loose text-lg">ה-AI שלנו מאזין להודעות קוליות וטקסט 24/7, ומחלץ מהן את המידע הקריטי (שם, צורך, דחיפות) תוך שניות בודדות.</p>
+    <section id="privacy" class="container mx-auto px-6 py-24 relative z-10 bg-slate-800/20 rounded-[3rem] border border-white/5 my-20">
+        <div class="grid md:grid-cols-2 gap-16 items-center">
+            <div class="text-right">
+                <h2 class="text-3xl md:text-4xl font-bold font-display mb-6">המידע שלך לא יוצא מהחדר.</h2>
+                <p class="text-slate-400 text-lg md:text-xl leading-loose mb-8">
+                    בשונה משירותים אחרים, My-Leads מבצעת את <span class="text-blue-400 font-bold">התמלול והניתוח מקומית</span> על השרתים הפרטיים שלנו.
+                    אנחנו לא שולחים את ההקלטות הרגישות של המטופלים שלך ל-OpenAI או לגוגל.
+                </p>
+                <ul class="space-y-4 text-slate-300">
+                    <li class="flex items-center gap-3 justify-start flex-row-reverse">
+                        <i class="fas fa-shield-halved text-blue-500"></i>
+                        <span>הצפנה מלאה מקצה לקצה (AES-256)</span>
+                    </li>
+                    <li class="flex items-center gap-3 justify-start flex-row-reverse">
+                        <i class="fas fa-server text-blue-500"></i>
+                        <span>עיבוד נתונים בשרת פרטי (Private Cloud)</span>
+                    </li>
+                    <li class="flex items-center gap-3 justify-start flex-row-reverse">
+                        <i class="fas fa-trash-can text-blue-500"></i>
+                        <span>מחיקת הקלטות אוטומטית לאחר 24 שעות</span>
+                    </li>
+                </ul>
             </div>
-
-            <!-- Feature 2 -->
-            <div class="glass-card p-10 rounded-[2rem] group hover:-translate-y-2 transition-all duration-300 hover:shadow-2xl hover:shadow-purple-500/10 hover:border-purple-500/30">
-                <div class="w-20 h-20 bg-gradient-to-br from-purple-500/10 to-pink-500/10 rounded-2xl flex items-center justify-center text-purple-400 text-4xl mb-8 group-hover:scale-110 group-hover:-rotate-3 transition-transform duration-300 border border-purple-500/10">
-                    <i class="fas fa-brain"></i>
+            <div class="glass-card p-8 rounded-3xl border-blue-500/20 shadow-2xl shadow-blue-500/10 relative overflow-hidden">
+                <div class="absolute -right-10 -top-10 w-40 h-40 bg-blue-500/20 rounded-full blur-3xl"></div>
+                <i class="fas fa-user-secret text-8xl text-blue-500/20 absolute bottom-4 left-4"></i>
+                <div class="space-y-6 relative z-10">
+                    <div class="flex items-center gap-3 text-green-400 text-sm font-mono border-b border-white/10 pb-4">
+                        <span class="w-2 h-2 bg-green-400 rounded-full animate-pulse"></span>
+                        SECURE CONNECTION ESTABLISHED
+                    </div>
+                    <div class="h-4 w-3/4 bg-blue-500/20 rounded-full"></div>
+                    <div class="h-4 w-1/2 bg-slate-700 rounded-full"></div>
+                    <div class="h-4 w-5/6 bg-slate-700 rounded-full"></div>
+                    <p class="text-blue-400 font-mono text-xs tracking-widest mt-8">LOCAL PROCESSING ACTIVE</p>
                 </div>
-                <h3 class="text-2xl font-bold mb-4 font-display">זיהוי כוונות קנייה</h3>
-                <p class="text-slate-400 leading-loose text-lg">המערכת מעניקה ציון <span class="text-white font-bold bg-white/10 px-2 py-0.5 rounded">1-10</span> לכל ליד, כך שתדעו בדיוק במי להשקיע את האנרגיה שלכם וממי להתעלם.</p>
-            </div>
-
-            <!-- Feature 3 -->
-            <div class="glass-card p-10 rounded-[2rem] group hover:-translate-y-2 transition-all duration-300 hover:shadow-2xl hover:shadow-green-500/10 hover:border-green-500/30">
-                <div class="w-20 h-20 bg-gradient-to-br from-green-500/10 to-emerald-500/10 rounded-2xl flex items-center justify-center text-emerald-400 text-4xl mb-8 group-hover:scale-110 group-hover:rotate-3 transition-transform duration-300 border border-green-500/10">
-                    <i class="fas fa-sync-alt"></i>
-                </div>
-                <h3 class="text-2xl font-bold mb-4 font-display">סנכרון CRM</h3>
-                <p class="text-slate-400 leading-loose text-lg">אין צורך להקליד נתונים ידנית. הליד נכנס לוואטסאפ? הוא מופיע מיד בלוח הבקרה שלך עם סיכום השיחה.</p>
             </div>
         </div>
     </section>
 
-    <!-- Pricing Section -->
     <section class="container mx-auto px-6 py-20 text-center relative z-10" id="pricing">
-        <div class="max-w-md mx-auto relative group">
+        <h2 class="text-3xl md:text-5xl font-black font-display mb-4">השקעה קטנה, שקט נפשי ענק</h2>
+        <p class="text-slate-400 mb-16">בחרו את המסלול שמתאים לקצב העבודה שלכם</p>
 
-            <!-- Glow behind card -->
-            <div class="absolute -inset-1 bg-gradient-to-r from-blue-600 to-indigo-600 rounded-[2.5rem] blur opacity-25 group-hover:opacity-50 transition duration-1000 group-hover:duration-200"></div>
+        <div class="grid md:grid-cols-2 gap-8 max-w-5xl mx-auto">
 
-            <div class="relative bg-slate-900 border border-slate-700 rounded-[2.2rem] p-1 overflow-hidden">
-                <!-- Ribbon -->
-                <div class="absolute top-0 right-0">
-                    <div class="bg-gradient-to-r from-yellow-500 to-amber-500 text-slate-900 text-[11px] font-black px-10 py-1.5 transform rotate-45 translate-x-10 translate-y-5 shadow-sm uppercase tracking-wider">
-                        מבצע השקה
-                    </div>
+            <div class="glass-card p-10 rounded-[2.5rem] border-slate-700 hover:border-blue-500/50 transition relative group">
+                <h3 class="text-2xl font-bold mb-2 text-slate-200">Starter</h3>
+                <p class="text-slate-400 mb-6 text-sm">לעסקים בתחילת הדרך</p>
+                <div class="text-6xl font-black text-white mb-8">₪99<span class="text-xl text-slate-500 font-medium">/חודש</span></div>
+
+                <ul class="text-right space-y-4 mb-10 text-slate-300 px-4">
+                    <li class="flex items-center gap-3"><i class="fas fa-check text-blue-500"></i> <span>ניתוח לידים מהוואטסאפ</span></li>
+                    <li class="flex items-center gap-3"><i class="fas fa-check text-blue-500"></i> <span>עד 3 שעות תמלול בחודש</span></li>
+                    <li class="flex items-center gap-3"><i class="fas fa-check text-blue-500"></i> <span>דשבורד PWA לטלפון</span></li>
+                </ul>
+                <a href="/register?plan=starter" class="block w-full py-4 bg-slate-800 text-white rounded-2xl font-bold hover:bg-slate-700 transition border border-white/5">התחל עכשיו</a>
+            </div>
+
+            <div class="relative p-1 rounded-[2.5rem] bg-gradient-to-b from-blue-500 to-indigo-600 shadow-2xl shadow-blue-500/20 transform md:-translate-y-4">
+                <div class="absolute -top-4 left-1/2 -translate-x-1/2 bg-gradient-to-r from-yellow-400 to-orange-500 text-slate-900 px-6 py-1.5 rounded-full text-xs font-black uppercase tracking-wider shadow-lg">
+                    הבחירה של המאמנים
                 </div>
+                <div class="bg-slate-900 rounded-[2.4rem] p-10 h-full flex flex-col">
+                    <h3 class="text-2xl font-bold mb-2 text-white">Professional</h3>
+                    <p class="text-blue-400 mb-6 font-bold text-sm">דיסקרטיות וביצועים מקסימליים</p>
+                    <div class="text-6xl font-black text-white mb-8">₪299<span class="text-xl text-slate-500 font-medium">/חודש</span></div>
 
-                <div class="bg-slate-900/90 backdrop-blur-xl rounded-[2rem] p-8 md:p-12 h-full flex flex-col">
-                    <h3 class="text-2xl font-bold text-slate-200 mb-2 font-display">My-Leads Starter</h3>
-                    <p class="text-slate-400 text-sm mb-6">החבילה המושלמת לעסקים קטנים</p>
-
-                    <div class="flex items-end justify-center gap-3 mb-4">
-                        <span class="text-slate-500 text-xl line-through decoration-red-500/60 decoration-2">₪250</span>
-                        <div class="text-7xl font-black text-white tracking-tighter">₪99</div>
-                    </div>
-                    <p class="text-blue-400 text-sm font-bold mb-8 bg-blue-500/10 py-2 rounded-lg border border-blue-500/20">לחודש (למשך 3 חודשים ראשונים)</p>
-
-                    <div class="w-full h-px bg-gradient-to-r from-transparent via-slate-700 to-transparent mb-8"></div>
-
-                    <ul class="text-right space-y-5 mb-10 text-slate-300 flex-grow px-2">
-                        <li class="flex items-center gap-4">
-                            <div class="w-6 h-6 rounded-full bg-green-500/20 flex items-center justify-center shrink-0 border border-green-500/20"><i class="fas fa-check text-[10px] text-green-400"></i></div>
-                            <span class="font-light">ניתוח לידים <span class="text-white font-medium">ללא הגבלה</span></span>
-                        </li>
-                        <li class="flex items-center gap-4">
-                            <div class="w-6 h-6 rounded-full bg-green-500/20 flex items-center justify-center shrink-0 border border-green-500/20"><i class="fas fa-check text-[10px] text-green-400"></i></div>
-                            <span class="font-light">התאמה אישית לסוג העסק שלך</span>
-                        </li>
-                        <li class="flex items-center gap-4">
-                            <div class="w-6 h-6 rounded-full bg-green-500/20 flex items-center justify-center shrink-0 border border-green-500/20"><i class="fas fa-check text-[10px] text-green-400"></i></div>
-                            <span class="font-light">דשבורד ניהול מתקדם (PWA)</span>
-                        </li>
-                         <li class="flex items-center gap-4">
-                            <div class="w-6 h-6 rounded-full bg-green-500/20 flex items-center justify-center shrink-0 border border-green-500/20"><i class="fas fa-check text-[10px] text-green-400"></i></div>
-                            <span class="font-light">תמיכה בוואטסאפ</span>
-                        </li>
+                    <ul class="text-right space-y-4 mb-10 text-slate-200 px-4 flex-grow">
+                        <li class="flex items-center gap-3"><i class="fas fa-check-circle text-green-400"></i> <span>תמלול פגישות <span class="font-bold text-white">ללא הגבלה</span></span></li>
+                        <li class="flex items-center gap-3"><i class="fas fa-check-circle text-green-400"></i> <span>סיכומי תובנות פסיכולוגיות</span></li>
+                        <li class="flex items-center gap-3"><i class="fas fa-lock text-green-400"></i> <span>עיבוד בשרת מקומי (פרטיות מלאה)</span></li>
+                        <li class="flex items-center gap-3"><i class="fas fa-star text-green-400"></i> <span>ארכיון פגישות מוצפן</span></li>
                     </ul>
-
-                    <a href="/register" class="btn-shimmer animate-shimmer block w-full text-white py-5 rounded-xl font-bold shadow-lg shadow-blue-600/20 transition transform hover:-translate-y-1 active:scale-95 border border-white/10 text-lg">
-                        שריינו את המחיר עכשיו
-                    </a>
-                    <div class="flex justify-center items-center gap-2 mt-6 text-xs text-slate-500">
-                        <i class="fas fa-lock text-slate-600"></i>
-                        תשלום מאובטח בביט. ניתן לבטל בכל רגע.
-                    </div>
+                    <a href="/register?plan=pro" class="btn-shimmer animate-shimmer block w-full py-5 text-white rounded-2xl font-bold text-lg shadow-lg">הצטרף לנבחרת</a>
                 </div>
             </div>
         </div>
@@ -274,7 +219,8 @@
             <a href="#" class="hover:text-blue-500 transition"><i class="fab fa-instagram text-xl"></i></a>
             <a href="#" class="hover:text-blue-500 transition"><i class="fab fa-linkedin text-xl"></i></a>
         </div>
-        <p class="text-sm">&copy; 2026 My-Leads AI. כל הזכויות שמורות.</p>
+        <p class="text-sm tracking-widest uppercase mb-4">My-Leads AI - הדיסקרטיות שלך, הטכנולוגיה שלנו.</p>
+        <p class="text-xs">&copy; 2026 כל הזכויות שמורות.</p>
     </footer>
 </body>
 </html>
