@@ -1,10 +1,9 @@
-# Professional comment: GitHub Action to automate deployment to EC2
 name: Deploy to EC2
 
 on:
   push:
     branches:
-      - main  # Runs every time you push to the main branch
+      - main
 
 jobs:
   deploy:
@@ -21,8 +20,18 @@ jobs:
           username: ${{ secrets.EC2_USERNAME }}
           key: ${{ secrets.EC2_SSH_KEY }}
           script: |
-            # Professional comment: Commands to run on the EC2 server
+            # Professional Comment: Deploy script with Force Sync strategy
             cd ~/myleads
-            git pull origin main
-            docker-compose up -d --build
-            echo "Deployment successful!"
+            
+            # 1. Force sync with GitHub (Discards local manual changes/conflicts)
+            git fetch --all
+            git reset --hard origin/main
+            
+            # 2. Rebuild containers with new architecture
+            # --remove-orphans: Cleans up old Redis/Celery containers if they exist
+            docker-compose up -d --build --remove-orphans
+            
+            # 3. Cleanup to save disk space on EC2
+            docker image prune -f
+            
+            echo "Deployment successful! System is live."
