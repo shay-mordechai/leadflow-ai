@@ -19,7 +19,7 @@ class Settings(BaseSettings):
 
     # --- Infrastructure Connections ---
     DATABASE_URL: str = Field(..., description="PostgreSQL Connection String")
-    REDIS_URL: str = Field(..., description="Redis Connection URL")
+    #REDIS_URL: str = Field(..., description="Redis Connection URL")
 
     # --- Security Secrets ---
     SECRET_KEY: str = Field(..., min_length=32)

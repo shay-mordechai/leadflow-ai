@@ -1,21 +1,17 @@
-# .gitignore
-
-# Python & Environment
-venv/
-__pycache__/
-*.pyc
+# --- Secrets ---
 .env
+certs/
+*.pem
+*.key
 
-# Database & Docker Volumes
-postgres_data/
-*.db
-*.sqlite3
+# --- Python ---
+__pycache__/
+*.py[cod]
+venv/
+.pytest_cache/
 
-# IDE & System
-.idea/
-.vscode/
+# --- System & DB ---
 .DS_Store
-
-# Logs
-*.log
-certs/*.pem
+postgres_data/
+caddy_data/
+caddy_config/
