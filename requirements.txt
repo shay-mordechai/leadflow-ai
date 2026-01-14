@@ -1,30 +1,28 @@
 # --- Core Framework & Server ---
-fastapi==0.115.6
-#starlette==0.51.0 - removed
+fastapi
 uvicorn[standard]
 
 # --- Database ---
-SQLAlchemy==2.0.45
+SQLAlchemy
 psycopg2-binary
-pydantic==2.12.5
-pydantic_settings==2.12.0
+pydantic
+pydantic-settings
 
-# --- UI & Templates (New) ---
+# --- UI & Templates ---
 jinja2
 python-multipart
 aiofiles
 
 # --- AI & Processing ---
-faster_whisper==1.2.1
-protobuf==6.33.4
+faster_whisper
 openai
 google-generativeai
 
 # --- Security & Auth ---
-bleach==6.3.0
-cryptography==46.0.3
-passlib[bcrypt]==1.7.4
-python-dotenv==1.2.1
+bleach
+cryptography
+passlib[bcrypt]
+python-dotenv
 slowapi
 
 # --- Background Tasks ---
