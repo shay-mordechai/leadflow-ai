@@ -1,21 +1,20 @@
-# RedHat Docker
 version: '3.8'
 
 services:
   leadflow_app:
     container_name: leadflow_app
-    #build: .
+    image: ghcr.io/shay-mordechai/leadflow-ai:latest
     ports:
       - "443:8443"
     env_file:
       - .env
-    volume:
+    volumes:  # תוקן מ-volume ל-volumes
       - ./certs:/app/certs:ro
     command: >
-      uvicorn src.main:app 
-      --host 0.0.0.0 
-      --port 8443 
-      --ssl-keyfile /app/certs/key.pem 
+      uvicorn src.main:app
+      --host 0.0.0.0
+      --port 8443
+      --ssl-keyfile /app/certs/key.pem
       --ssl-certfile /app/certs/cert.pem
     depends_on:
       - leadflow_db
@@ -28,7 +27,6 @@ services:
       - postgres_data:/var/lib/pgsql/data
     environment:
       # --- Red Hat Specific Variables ---
-      # Docker Hub uses POSTGRES_USER, Red Hat uses POSTGRESQL_USER
       - POSTGRESQL_USER=myuser
       - POSTGRESQL_PASSWORD=mypassword
       - POSTGRESQL_DATABASE=leadflow

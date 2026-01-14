@@ -1,4 +1,4 @@
-name: Professional Build and Deploy
+name: LeadFlow Professional Deploy
 
 on:
   push:
@@ -26,7 +26,7 @@ jobs:
         with:
           context: .
           push: true
-          # Professional tag: mapping to GitHub Packages
+          # This creates the tag: ghcr.io/shay-mordechai/leadflow-ai:latest
           tags: ghcr.io/${{ github.repository }}:latest
 
   deploy:
@@ -41,18 +41,19 @@ jobs:
           username: ${{ secrets.EC2_USERNAME }}
           key: ${{ secrets.EC2_SSH_KEY }}
           script: |
-            # 1. Professional comment: Login and update image
+            # 1. Navigate to project folder
             cd ~/myleads
+
+            # 2. Login to Registry
             echo ${{ secrets.GITHUB_TOKEN }} | podman login ghcr.io -u ${{ github.actor }} --password-stdin
-            
-            # 2. Pull pre-built image from GitHub Registry
+
+            # 3. Pull the NEW LeadFlow image
             podman pull ghcr.io/${{ github.repository }}:latest
-            
-            # 3. Update the container
-            # Make sure your docker-compose.yml uses the correct image name
+
+            # 4. Refresh containers (Recreates leadflow_app with new image)
             podman-compose up -d
-            
-            # 4. Clean up old images to save disk space
+
+            # 5. Cleanup (Anti-Sha'ariyot)
             podman image prune -a -f
-            
-            echo "Deployment successful from Registry!"
+
+            echo "LeadFlow deployed successfully!"
