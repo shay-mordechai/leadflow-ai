@@ -31,7 +31,7 @@ services:
       # Docker Hub uses POSTGRES_USER, Red Hat uses POSTGRESQL_USER
       - POSTGRESQL_USER=myuser
       - POSTGRESQL_PASSWORD=mypassword
-      - POSTGRESQL_DATABASE=myleads
+      - POSTGRESQL_DATABASE=leadflow
     restart: always
 
 volumes:
