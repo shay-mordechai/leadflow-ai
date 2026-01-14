@@ -4,7 +4,7 @@ version: '3.8'
 services:
   leadflow_app:
     container_name: leadflow_app
-    build: .
+    #build: .
     ports:
       - "443:8443"
     env_file:

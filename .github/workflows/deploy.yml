@@ -1,42 +1,58 @@
-name: Deploy to EC2 (Podman)
+name: Professional Build and Deploy
 
 on:
   push:
-    branches:
-      - main
+    branches: [ main ]
 
 jobs:
-  deploy:
+  build-and-push:
     runs-on: ubuntu-latest
-
+    permissions:
+      contents: read
+      packages: write
     steps:
       - name: Checkout code
         uses: actions/checkout@v3
 
-      - name: Deploy to Server via SSH
+      - name: Login to GitHub Container Registry
+        uses: docker/login-action@v2
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Build and Push Image
+        uses: docker/build-push-action@v4
+        with:
+          context: .
+          push: true
+          # Professional tag: mapping to GitHub Packages
+          tags: ghcr.io/${{ github.repository }}:latest
+
+  deploy:
+    needs: build-and-push
+    runs-on: ubuntu-latest
+    if: success()
+    steps:
+      - name: Deploy to EC2 via SSH
         uses: appleboy/ssh-action@v1.0.3
         with:
           host: ${{ secrets.EC2_HOST }}
           username: ${{ secrets.EC2_USERNAME }}
           key: ${{ secrets.EC2_SSH_KEY }}
           script: |
-            # Professional Comment: Deploy using Podman
+            # 1. Professional comment: Login and update image
             cd ~/myleads
+            echo ${{ secrets.GITHUB_TOKEN }} | podman login ghcr.io -u ${{ github.actor }} --password-stdin
             
-            # 1. Force sync with GitHub
-            git fetch --all
-            git reset --hard origin/main
+            # 2. Pull pre-built image from GitHub Registry
+            podman pull ghcr.io/${{ github.repository }}:latest
             
-            # 2. Ensure podman-compose is installed
-            if ! command -v podman-compose &> /dev/null; then
-                pip3 install podman-compose
-            fi
+            # 3. Update the container
+            # Make sure your docker-compose.yml uses the correct image name
+            podman-compose up -d
             
-            # 3. Build and Run using Podman
-            # Note: Podman handles orphans differently, so standard up --build is usually enough
-            podman-compose up -d --build
+            # 4. Clean up old images to save disk space
+            podman image prune -a -f
             
-            # 4. Cleanup
-            podman image prune -f
-            
-            echo "Deployment successful with Podman!"
+            echo "Deployment successful from Registry!"
