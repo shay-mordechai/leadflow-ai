@@ -24,6 +24,7 @@ cryptography
 passlib[bcrypt]
 python-dotenv
 slowapi
+email-validator
 
 # --- Background Tasks ---
 celery
