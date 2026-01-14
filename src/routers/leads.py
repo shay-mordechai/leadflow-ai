@@ -1,64 +1,51 @@
-from fastapi import APIRouter, Depends, HTTPException
-from sqlalchemy.orm import Session
-from pydantic import BaseModel, field_validator
-from typing import List
-from src.database.session import get_db
-from src.database.models import Lead
-from src.security.tenant import get_current_tenant_id
-from src.security.validation import SecurityValidator
+import logging
+from fastapi import APIRouter, HTTPException, status
+from pydantic import BaseModel, Field, EmailStr
+from typing import Optional
 
-router = APIRouter(tags=["Leads"])
+# Professional English Comment: Initialize Router
+router = APIRouter(tags=["Leads Management"])
 
-# Pydantic DTO (Data Transfer Object) for stricter validation
-class CreateLeadSchema(BaseModel):
-    name: str
-    phone: str
+# Professional English Comment: Configure local logger for this module
+logger = logging.getLogger(__name__)
 
-    @field_validator('name')
-    @classmethod
-    def sanitize_name(cls, v: str) -> str:
-        clean = SecurityValidator.sanitize_input(v)
-        if len(clean) < 2:
-            raise ValueError("Name too short")
-        return clean
+# Professional English Comment:
+# Pydantic Model for incoming leads via Webhook (e.g., from Pagix Landing Pages).
+# Enforces strict typing for data integrity.
+class PagixLead(BaseModel):
+    name: str = Field(..., min_length=2, title="Full Name")
+    phone: str = Field(..., min_length=9, title="Phone Number")
+    email: Optional[EmailStr] = Field(None, title="Email Address")
+    source: str = Field(default="pagix_landing_page", title="Lead Source")
 
-    @field_validator('phone')
-    @classmethod
-    def validate_phone(cls, v: str) -> str:
-        is_valid, clean_num = SecurityValidator.validate_israeli_phone(v)
-        if not is_valid:
-            raise ValueError("Invalid Israeli phone number")
-        return clean_num
-
-@router.get("/")
-def list_leads(
-    db: Session = Depends(get_db),
-    tenant_id: str = Depends(get_current_tenant_id)
-):
+@router.post("/pagix", status_code=status.HTTP_201_CREATED)
+async def receive_pagix_lead(lead: PagixLead):
     """
-    Returns leads strictly for the authenticated tenant.
-    Encryption is handled automatically by the Model TypeDecorator.
+    Webhook Endpoint: Receives lead data from Pagix landing pages.
+
+    Process:
+    1. Validates payload via Pydantic.
+    2. Logs the received data for audit purposes.
+    3. (Future) Insert into database via Service layer.
     """
-    return Lead.get_query(db).all()
+    try:
+        # Professional English Comment:
+        # In a real production scenario, avoid logging PII (Personally Identifiable Information)
+        # directly without masking. For this demo, we log to verify connectivity.
+        logger.info(f"New Lead Received via Webhook: {lead.name} | Source: {lead.source}")
 
-@router.post("/")
-def create_lead(
-    lead_data: CreateLeadSchema,
-    db: Session = Depends(get_db),
-    tenant_id: str = Depends(get_current_tenant_id)
-):
-    # Check for duplicate within tenant
-    existing = Lead.get_query(db).filter(Lead.phone_number == lead_data.phone).first()
-    if existing:
-        raise HTTPException(status_code=400, detail="Lead already exists")
+        # Placeholder for Database insertion logic
+        # e.g., await lead_service.create_lead(lead)
 
-    new_lead = Lead(
-        name=lead_data.name,
-        phone_number=lead_data.phone,
-        tenant_id=tenant_id
-    )
-    db.add(new_lead)
-    db.commit()
-    db.refresh(new_lead)
+        return {
+            "status": "success",
+            "message": "Lead processed successfully",
+            "lead_id": lead.phone[-4:]  # responding with partial ID for confirmation
+        }
 
-    return {"id": new_lead.id, "status": "created"}
+    except Exception as e:
+        logger.error(f"Error processing webhook: {str(e)}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Internal Server Error processing lead"
+        )
