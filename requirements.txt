@@ -29,3 +29,5 @@ email-validator
 # --- Background Tasks ---
 celery
 redis
+python-multipart
+python-multipart

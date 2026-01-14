@@ -1,8 +1,8 @@
+# src/database/session.py
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
 from src.config import settings
 
-# Professional English Comment:
 # Optimized Engine Configuration for Scalability.
 # pool_size=20: Keeps 20 connections open to avoid handshake overhead.
 # max_overflow=10: Allows 10 temporary connections during spikes.

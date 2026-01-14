@@ -1,63 +1,86 @@
-import secrets
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.orm import Session
-from src.database.session import get_db
-from src.database.models import Tenant
-from pydantic import BaseModel
+from pydantic import BaseModel, EmailStr
 from typing import Optional
+
+from src.database.session import get_db
+from src.database.models import User
 
 router = APIRouter()
 
-# Schema to match your JavaScript fetch payload
+# --- Schemas ---
+# Defines what data we expect from the frontend during registration
 class RegisterSchema(BaseModel):
     name: str
-    personal_whatsapp: str
-    business_whatsapp: Optional[str] = None
-    needs_new_number: bool
-    business_type: str
-    city_coverage: str
+    email: EmailStr
+    password: str
+    # Optional: We can add 'business_name' or 'phone' later if needed
+
+class LoginSchema(BaseModel):
+    email: EmailStr
+    password: str
+
+# --- Routes ---
 
 @router.post("/register")
-async def register_tenant(data: RegisterSchema, db: Session = Depends(get_db)):
-    # 1. Check if the personal phone already exists in the system
-    existing = db.query(Tenant).filter(Tenant.personal_whatsapp == data.personal_whatsapp).first()
-    if existing:
+async def register_user(data: RegisterSchema, db: Session = Depends(get_db)):
+    """
+    Registers a new SaaS user.
+    """
+    # 1. Check if email already exists
+    existing_user = db.query(User).filter(User.email == data.email).first()
+    if existing_user:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
-            detail="מספר וואטסאפ אישי זה כבר קיים במערכת"
+            detail="Email is already registered"
         )
 
-    # 2. Generate a secure API Key for the new tenant
-    # Since your model requires api_key_hash, we generate a random one for now
-    generated_api_key = secrets.token_urlsafe(32)
-
-    # 3. Create new Tenant instance mapping to your Model
-    new_tenant = Tenant(
+    # 2. Create new User instance
+    # TODO: In production, use bcrypt to hash the password!
+    # e.g., hashed_pw = pwd_context.hash(data.password)
+    new_user = User(
         name=data.name,
-        whatsapp_number=data.business_whatsapp if not data.needs_new_number else None,
-        personal_whatsapp=data.personal_whatsapp,
-        requires_new_number=data.needs_new_number,
-        city_coverage=data.city_coverage,
-        business_type=data.business_type,
-        api_key_hash=generated_api_key, # In production, hash this key!
+        email=data.email,
+        hashed_password=data.password, # Storing plain text for DEV only
+        plan_tier="STARTER",           # Default plan
         is_active=True
     )
 
     try:
-        db.add(new_tenant)
+        db.add(new_user)
         db.commit()
-        db.refresh(new_tenant)
+        db.refresh(new_user)
 
         return {
             "status": "success",
-            "tenant_id": str(new_tenant.id),
-            "upsell_triggered": data.needs_new_number
+            "user_id": str(new_user.id),
+            "message": "Account created successfully"
         }
     except Exception as e:
         db.rollback()
-        # Professional Logging
         print(f"Database Error: {e}")
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail="שגיאה פנימית ביצירת החשבון"
+            detail="Internal server error during registration"
         )
+
+@router.post("/login")
+async def login_user(data: LoginSchema, db: Session = Depends(get_db)):
+    """
+    Simple login that returns a mock token.
+    """
+    user = db.query(User).filter(User.email == data.email).first()
+    
+    if not user:
+        raise HTTPException(status_code=404, detail="User not found")
+    
+    # Simple password check
+    if user.hashed_password != data.password:
+        raise HTTPException(status_code=403, detail="Invalid credentials")
+    
+    # Return a fake token (dependencies.py will accept this)
+    return {
+        "access_token": "fake-jwt-token-dev-mode",
+        "token_type": "bearer",
+        "user_name": user.name
+    }
