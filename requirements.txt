@@ -16,7 +16,7 @@ aiofiles
 # --- AI & Processing ---
 faster_whisper
 openai
-google-generativeai
+google-genai
 
 # --- Security & Auth ---
 bleach
@@ -30,4 +30,10 @@ email-validator
 celery
 redis
 python-multipart
+python-multipart
+httpx
+python-multipart
+pydantic-settings
+httpx
+openai
 python-multipart

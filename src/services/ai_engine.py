@@ -9,7 +9,7 @@ genai.configure(api_key=settings.GOOGLE_API_KEY)
 
 class AIEngine:
     def __init__(self):
-        self.model = genai.GenerativeModel('gemini-pro')
+        self.model = genai.GenerativeModel('gemini-2.5-flash')
 
     def _clean_json_text(self, text: str) -> str:
         text = text.strip()

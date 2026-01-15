@@ -1,35 +1,59 @@
 version: '3.8'
 
 services:
-  leadflow_app:
+  # 1. The Brain: FastAPI Application
+  web:
+    build: .
     container_name: leadflow_app
-    image: ghcr.io/shay-mordechai/leadflow-ai:latest
+    # Using the fix we discovered: Explicit DNS to allow external connections (Google/GitHub)
+    dns:
+      - 8.8.8.8
+    command: uvicorn src.main:app --host 0.0.0.0 --port 8000 --workers 4
+    volumes:
+      - ./storage:/app/storage  # Persist audio files locally
     ports:
-      - "443:8443"
+      - "8000:8000"
     env_file:
       - .env
-    volumes:  # תוקן מ-volume ל-volumes
-      - ./certs:/app/certs:ro
-    command: >
-      uvicorn src.main:app
-      --host 0.0.0.0
-      --port 8443
-      --ssl-keyfile /app/certs/key.pem
-      --ssl-certfile /app/certs/cert.pem
     depends_on:
-      - leadflow_db
+      - db
+      - redis
     restart: always
 
-  leadflow_db:
+  # 2. The Muscle: Celery Worker (Background Tasks)
+  # (Optional: Only if your code is actively using Celery for the audio processing)
+  worker:
+    build: .
+    container_name: leadflow_worker
+    # Worker also needs DNS to download files/contact Gemini
+    dns:
+      - 8.8.8.8
+    command: celery -A src.worker.tasks worker --loglevel=info
+    env_file:
+      - .env
+    depends_on:
+      - db
+      - redis
+    restart: always
+
+  # 3. Memory: PostgreSQL Database
+  db:
+    image: postgres:15
     container_name: leadflow_db
-    image: registry.redhat.io/rhel9/postgresql-15
     volumes:
-      - postgres_data:/var/lib/pgsql/data
+      - postgres_data:/var/lib/postgresql/data
     environment:
-      # --- Red Hat Specific Variables ---
-      - POSTGRESQL_USER=myuser
-      - POSTGRESQL_PASSWORD=mypassword
-      - POSTGRESQL_DATABASE=leadflow
+      - POSTGRES_USER=${POSTGRES_USER:-postgres}         # Reads from .env or defaults to postgres
+      - POSTGRES_PASSWORD=${POSTGRES_PASSWORD:-password} # Reads from .env or defaults to password
+      - POSTGRES_DB=${POSTGRES_DB:-leadflow}
+    restart: always
+    ports:
+      - "5432:5432" # Exposed for local debugging (optional)
+
+  # 4. Speed: Redis (For Task Queue)
+  redis:
+    image: redis:7
+    container_name: leadflow_redis
     restart: always
 
 volumes:

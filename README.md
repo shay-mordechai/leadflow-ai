@@ -1,41 +1,39 @@
 # LeadFlowAI 🚀
 
-**AI-Powered CRM & Lead Management for Small Businesses.**
-LeadFlowAI is a secure, cloud-ready SaaS platform designed to help coaches and service providers manage leads via WhatsApp voice notes, automate follow-ups, and schedule appointments intelligently.
+**Next-Gen SaaS CRM for Service Providers.**
+LeadFlowAI is a secure, containerized SaaS platform designed to automate lead intake via WhatsApp, process audio using AI, and manage customer relationships with strict data isolation.
 
 ![Python](https://img.shields.io/badge/Python-3.11+-blue.svg)
 ![FastAPI](https://img.shields.io/badge/FastAPI-0.109-009688.svg)
 ![PostgreSQL](https://img.shields.io/badge/PostgreSQL-15-336791.svg)
-![Docker](https://img.shields.io/badge/Docker-Ready-2496ED.svg)
+![Podman](https://img.shields.io/badge/Podman-Ready-892CA0.svg)
 ![License](https://img.shields.io/badge/License-MIT-green.svg)
 
 ## ✨ Key Features
 
-* **🎙️ Voice-to-Data:** Analyzes WhatsApp voice notes using **Google Gemini AI** to extract lead intent, sentiment, and details.
-* **🧠 Smart Replies:** Generates context-aware Hebrew reply drafts for WhatsApp with a single click.
-* **📅 Smart Calendar:** Integrated scheduling system with 14-day availability management.
-* **🔔 Retention Tools:** Automated follow-up reminders and visual indicators for "hot" leads.
-* **📊 Data Ownership:** Full CSV export capabilities for tenant data sovereignty.
-* **🔒 Enterprise Security:**
-    * Argon2 & BCrypt hashing (Pre-hashed SHA-256 for compatibility).
-    * Fernet Encryption for PII (Personal Identifiable Information) in the DB.
-    * Rate Limiting & Secure Headers.
+* **🏢 True SaaS Architecture:** Built from the ground up with **User-Based Multi-Tenancy**. Each user sees only their own data.
+* **🔐 Secure Authentication:** Complete Registration & Login flows using JWT tokens and password hashing (Argon2/BCrypt).
+* **🎙️ AI Audio Pipeline:** (In Progress) Ingests WhatsApp voice notes, transcribes via **Whisper**, and summarizes via LLMs.
+* **🛡️ Hardened Security:**
+    * Dependency Injection based Security Gates (`dependencies.py`).
+    * Strict Context Variable isolation for user requests.
+    * Encryption-at-Rest for sensitive PII data.
+* **🐳 Cloud Native:** Fully containerized with Podman/Docker, ready for CI/CD deployment via GitHub Actions.
 
 ## 🛠️ Tech Stack
 
-* **Backend:** FastAPI (Python), SQLAlchemy (Async), Pydantic.
-* **Database:** PostgreSQL.
-* **Caching & Broker:** Redis.
-* **Async Tasks:** Celery (for AI processing and background jobs).
-* **AI Engine:** Google Gemini Pro API.
-* **Frontend:** Server-Side Rendering with Jinja2 + TailwindCSS.
-* **Infrastructure:** Docker & Podman Compose.
+* **Backend:** FastAPI (Python), SQLAlchemy (Sync/Async), Pydantic.
+* **Database:** PostgreSQL 15.
+* **Environment Management:** Miniforge / Mamba.
+* **Containerization:** Podman & Docker Compose.
+* **Frontend:** Server-Side Rendering (Jinja2) + TailwindCSS.
+* **DevOps:** GitHub Actions (Build & Push to GHCR).
 
 ## 🚀 Getting Started
 
 ### Prerequisites
-* Docker & Docker Compose (or Podman).
-* Google Gemini API Key.
+* **Podman** (Recommended) or Docker.
+* **Python 3.11+** (if running locally without containers).
 
 ### Installation
 
@@ -51,63 +49,69 @@ LeadFlowAI is a secure, cloud-ready SaaS platform designed to help coaches and s
     # App Config
     SECRET_KEY=your_super_secret_key_change_this
     DEBUG=True
-    ALLOWED_HOSTS=["*"]
 
     # Database
-    POSTGRES_USER=postgres
-    POSTGRES_PASSWORD=postgres
-    POSTGRES_DB=coaching_db
-    DATABASE_URL=postgresql://postgres:postgres@db:5432/coaching_db
-
-    # Redis
-    REDIS_URL=redis://redis:6379/0
-
-    # AI Service
-    GOOGLE_API_KEY=your_gemini_api_key_here
+    POSTGRES_USER=myuser
+    POSTGRES_PASSWORD=mypassword
+    POSTGRES_DB=leadflow
+    POSTGRES_HOST=127.0.0.1
+    # Internal Docker URL: postgresql://myuser:mypassword@db:5432/leadflow
     ```
 
-3.  **Run with Docker/Podman:**
+3.  **Run with Podman/Docker:**
     ```bash
-    # Build and start services
-    docker-compose up -d --build
+    # Build and start the App and DB
+    podman-compose up -d --build
     ```
 
-4.  **Initialize Database:**
+4.  **Initialize Database (Nuclear Reset):**
+    ⚠️ *Note: This script wipes the public schema and creates the new SaaS tables (Users, Leads).*
     ```bash
-    # Run the initialization script to create tables and seed demo data
-    docker-compose exec web python src/scripts/init_db.py
+    podman exec leadflow_app python src/scripts/reset_db_schema.py
     ```
 
 5.  **Access the App:**
-    Open your browser at `http://localhost:8000`.
+    * **Landing Page:** `http://localhost:8000`
+    * **Login/Dashboard:** `http://localhost:8000/login`
+    * **Docs:** `http://localhost:8000/docs`
 
 ## 📂 Project Structure
 
 ```text
 ├── src/
-│   ├── database/      # SQLAlchemy models & session
-│   ├── routers/       # API endpoints (leads, sessions)
-│   ├── security/      # Encryption & Hashing logic
-│   ├── services/      # AI integration & Celery tasks
-│   ├── static/        # CSS & Assets
-│   ├── templates/     # HTML (Jinja2) UI
-│   └── main.py        # App entry point
+│   ├── database/      
+│   │   ├── models.py      # User & Lead Models
+│   │   └── session.py     # DB Connection logic
+│   ├── routers/       
+│   │   ├── auth.py        # Login/Register endpoints
+│   │   ├── leads.py       # Protected Lead management
+│   │   └── ui.py          # Frontend views
+│   ├── security/      
+│   │   └── dependencies.py # Auth Gatekeeper (Context Vars)
+│   ├── scripts/
+│   │   └── reset_db_schema.py # Migration utility
+│   ├── templates/         # HTML (Jinja2) UI
+│   └── main.py            # App entry point
 ├── docker-compose.yml
 └── requirements.txt
 
 ```
 
-## 🛡️ Security Note
+## 🔄 CI/CD Workflow
 
-This project uses **Encryption-at-Rest**. Sensitive fields (Phone, Name) are encrypted in the database using a symmetric key. Ensure you keep your `SECRET_KEY` safe in production.
+This project uses **GitHub Actions** for automated deployment:
+
+1. **Push to Main:** Code is linted and built.
+2. **Build:** A container image is created and pushed to `ghcr.io`.
+3. **Deploy:** The EC2 server pulls the new image and restarts the service via SSH.
 
 ## 👤 Author
 
 **Shay Mordechai**
 
 * Full-Stack Developer & Security Researcher.
-* Passion for Cloud Architecture and AI Solutions.
+* Specializing in Secure SaaS Architecture & AI Automation.
 
 ---
 
-*Built for the Modern Solopreneur.*
+*Built with ❤️ and Python.*

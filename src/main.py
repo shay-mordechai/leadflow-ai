@@ -14,7 +14,7 @@ from src.config import settings
 from src.database.session import engine, get_db
 from src.database.models import Base
 # Import the new UI router and the Leads API router
-from src.routers import leads, ui, auth
+from src.routers import leads, ui, auth, webhooks
 
 # Configure Root Logger
 logging.basicConfig(level=logging.INFO)
@@ -64,6 +64,7 @@ app.mount("/static", StaticFiles(directory="src/static"), name="static")
 # 1. API Routes (JSON Data)
 app.include_router(leads.router, prefix="/api/v1/leads")
 app.include_router(auth.router, prefix="/api/v1/auth", tags=["Auth"])
+app.include_router(webhooks.router, prefix="/webhooks")
 
 # 2. UI Routes (HTML Pages)
 app.include_router(ui.router)
