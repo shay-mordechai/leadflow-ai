@@ -21,20 +21,28 @@
             <p class="text-slate-400 text-sm">הפרד בין העסק לחיים האישיים</p>
         </div>
 
-        <form id="registerForm" action="/api/v1/auth/register" method="POST" class="space-y-6 p-8">
+        <form id="registerForm" class="space-y-6 p-8">
 
             <div>
-                <label class="block text-sm font-bold text-slate-700 mb-1.5">שם העסק / מאמן</label>
-                <input type="text" name="name" required class="w-full px-4 py-3 rounded-lg bg-slate-50 border border-slate-200 outline-none focus:ring-2 focus:ring-blue-500 transition font-medium text-slate-800 placeholder-slate-400" placeholder="לדוגמה: יוסי כהן נדל״ן">
+                <label class="block text-sm font-bold text-slate-700 mb-1.5">שם מלא / שם העסק</label>
+                <input type="text" name="name" required class="w-full px-4 py-3 rounded-lg bg-slate-50 border border-slate-200 outline-none focus:ring-2 focus:ring-blue-500 transition font-medium text-slate-800 placeholder-slate-400" placeholder="לדוגמה: יוסי כהן">
+            </div>
+
+            <div>
+                <label class="block text-sm font-bold text-slate-700 mb-1.5">כתובת אימייל</label>
+                <input type="email" name="email" required dir="ltr" class="w-full px-4 py-3 rounded-lg bg-slate-50 border border-slate-200 outline-none focus:ring-2 focus:ring-blue-500 transition text-right" placeholder="your@email.com">
+            </div>
+
+            <div>
+                <label class="block text-sm font-bold text-slate-700 mb-1.5">סיסמה</label>
+                <input type="password" name="password" required dir="ltr" minlength="6" class="w-full px-4 py-3 rounded-lg bg-slate-50 border border-slate-200 outline-none focus:ring-2 focus:ring-blue-500 transition text-right" placeholder="******">
             </div>
 
             <div class="relative">
                 <label class="block text-sm font-bold text-slate-700 mb-1.5">
-                    וואטסאפ אישי (לקבלת התראות בלבד)
-                    <span class="text-red-500">*</span>
+                    וואטסאפ אישי (לקבלת התראות)
                 </label>
-                <input type="tel" name="personal_whatsapp" required dir="ltr" class="w-full px-4 py-3 rounded-lg bg-slate-50 border border-slate-200 outline-none focus:ring-2 focus:ring-blue-500 transition text-right" placeholder="050-XXXXXXX">
-                <p class="text-[10px] text-slate-400 mt-1">אנו נשלח לכאן עדכונים על לידים חמים. הלקוחות לא יראו את המספר הזה.</p>
+                <input type="tel" name="personal_whatsapp" dir="ltr" class="w-full px-4 py-3 rounded-lg bg-slate-50 border border-slate-200 outline-none focus:ring-2 focus:ring-blue-500 transition text-right" placeholder="050-XXXXXXX">
             </div>
 
             <hr class="border-slate-100">
@@ -59,46 +67,22 @@
 
             <div class="grid grid-cols-1 gap-4">
                 <div>
-                    <label class="block text-sm font-bold text-slate-700 mb-1.5">תחום עיסוק (חשוב לדיוק ה-AI)</label>
+                    <label class="block text-sm font-bold text-slate-700 mb-1.5">תחום עיסוק</label>
                     <div class="relative">
-                        <select name="business_type" required class="w-full px-4 py-3 rounded-lg bg-slate-50 border border-slate-200 focus:border-blue-500 focus:bg-white focus:ring-2 focus:ring-blue-100 outline-none transition appearance-none text-slate-700 font-medium">
+                        <select name="business_type" class="w-full px-4 py-3 rounded-lg bg-slate-50 border border-slate-200 focus:border-blue-500 focus:bg-white focus:ring-2 focus:ring-blue-100 outline-none transition appearance-none text-slate-700 font-medium">
                             <option value="" disabled selected>בחר את התחום שלך...</option>
-
                             <optgroup label="נדל״ן ופיננסים">
                                 <option value="Real Estate Agent">תיווך ושיווק נדל"ן</option>
                                 <option value="Mortgage Advisor">ייעוץ משכנתאות</option>
                                 <option value="Insurance Agent">סוכן ביטוח</option>
                             </optgroup>
-
-                            <optgroup label="גוף ונפש">
-                                <option value="Fitness Coach">מאמן כושר / סטודיו</option>
-                                <option value="NLP Coach">אימון אישי / NLP / CBT</option>
-                                <option value="Alternative Medicine">רפואה משלימה / עיסוי</option>
-                            </optgroup>
-
-                            <optgroup label="ביוטי ואסתטיקה">
-                                <option value="Aesthetics Clinic">קוסמטיקה ואסתטיקה רפואית</option>
-                                <option value="Hair Stylist">עיצוב שיער / ספרות</option>
-                                <option value="Makeup Artist">איפור וכלות</option>
-                            </optgroup>
-
-                            <optgroup label="שירותים ובעלי מקצוע">
-                                <option value="Renovation Contractor">קבלן שיפוצים / הנדימן</option>
-                                <option value="Driving Instructor">מורה נהיגה</option>
-                                <option value="Event Planner">הפקת אירועים / DJ</option>
-                                <option value="Lawyer">עריכת דין</option>
-                                <option value="Other">אחר (כללי)</option>
-                            </optgroup>
-                        </select>
-                        <div class="absolute inset-y-0 left-0 flex items-center px-4 pointer-events-none text-slate-500">
-                            <svg class="h-4 w-4 fill-current" viewBox="0 0 20 20"><path d="M5.293 7.293a1 1 0 011.414 0L10 10.586l3.293-3.293a1 1 0 111.414 1.414l-4 4a1 1 0 01-1.414 0l-4-4a1 1 0 010-1.414z"/></svg>
-                        </div>
+                            </select>
                     </div>
                 </div>
 
                 <div>
                     <label class="block text-sm font-bold text-slate-700 mb-1.5">עיר שירות עיקרית</label>
-                    <input type="text" name="city_coverage" required class="w-full px-4 py-3 rounded-lg bg-slate-50 border border-slate-200 outline-none focus:ring-2 focus:ring-blue-500 transition" placeholder="תל אביב, רמת גן...">
+                    <input type="text" name="city_coverage" class="w-full px-4 py-3 rounded-lg bg-slate-50 border border-slate-200 outline-none focus:ring-2 focus:ring-blue-500 transition" placeholder="תל אביב, רמת גן...">
                 </div>
             </div>
 
@@ -110,14 +94,14 @@
             </div>
 
             <button type="submit" class="w-full bg-blue-600 hover:bg-blue-700 text-white font-bold py-4 rounded-xl shadow-lg shadow-blue-500/30 transition transform active:scale-95 mt-4">
-                המשך לתשלום
+                הרשמה למערכת
             </button>
 
         </form>
     </div>
 
     <script>
-        // Upsell Logic: Toggle Input Visibility
+        // --- UI Logic: Upsell Toggle ---
         const checkbox = document.getElementById('needNumberCheck');
         const businessInput = document.getElementById('businessInput');
         const container = document.getElementById('businessPhoneContainer');
@@ -125,24 +109,22 @@
 
         checkbox.addEventListener('change', function() {
             if (this.checked) {
-                // User wants to buy a number
                 container.style.opacity = '0.4';
                 container.style.pointerEvents = 'none';
                 businessInput.value = '';
-                businessInput.required = false;
+                // businessInput.required = false; // Not strictly required by current backend
                 businessInput.placeholder = "יוקצה אוטומטית לאחר התשלום";
-                upsellBox.classList.add('bg-blue-100', 'border-blue-300'); // Highlight effect
+                upsellBox.classList.add('bg-blue-100', 'border-blue-300');
             } else {
-                // User provides their own number
                 container.style.opacity = '1';
                 container.style.pointerEvents = 'auto';
-                businessInput.required = true;
+                // businessInput.required = true;
                 businessInput.placeholder = "054-XXXXXXX";
                 upsellBox.classList.remove('bg-blue-100', 'border-blue-300');
             }
         });
 
-        // Form Submission
+        // --- Form Submission Logic ---
         document.getElementById('registerForm').onsubmit = async (e) => {
             e.preventDefault();
 
@@ -152,8 +134,16 @@
             btn.disabled = true;
 
             const formData = new FormData(e.target);
+
+            // Construct payload to match Backend Schema (src/routers/auth.py)
+            // Note: Currently backend only saves name, email, password.
+            // Other fields are sent but might be ignored by the backend until updated.
             const payload = {
                 name: formData.get('name'),
+                email: formData.get('email'),        // Critical Fix
+                password: formData.get('password'),  // Critical Fix
+                
+                // Extra fields (Logic to be implemented in backend later)
                 personal_whatsapp: formData.get('personal_whatsapp'),
                 business_whatsapp: formData.get('business_whatsapp'),
                 needs_new_number: checkbox.checked,
@@ -168,20 +158,45 @@
                     body: JSON.stringify(payload)
                 });
 
+                // Parse the JSON response immediately
+                const result = await response.json();
+
                 if (response.ok) {
-                    const result = await response.json();
+                    // Success!
                     if (result.upsell_triggered) {
                         alert('נרשמת בהצלחה! כעת נעביר אותך לרכישת המספר הוירטואלי.');
+                    } else {
+                        alert('הרשמה בוצעה בהצלחה!');
                     }
-                    window.location.href = '/payment';
+                    // Redirect to login or dashboard
+                    // window.location.href = '/login.html'; 
                 } else {
-                    const err = await response.json();
-                    alert('שגיאה: ' + (err.detail || 'אירעה שגיאה בשרת'));
-                    btn.innerText = originalText;
-                    btn.disabled = false;
+                    // Error Handling (The fix for [object Object])
+                    console.error("Server Error Detail:", result.detail);
+                    
+                    let errorMessage = "שגיאה בהרשמה:\n";
+
+                    if (Array.isArray(result.detail)) {
+                        // Handle Pydantic Validation Errors (422)
+                        result.detail.forEach(err => {
+                            // Extract field name (usually from loc array)
+                            const field = err.loc[1] || err.loc[0];
+                            errorMessage += `- שדה '${field}': ${err.msg}\n`;
+                        });
+                    } else if (typeof result.detail === 'string') {
+                        // Handle standard HTTP Exceptions (e.g., 400 Email exists)
+                        errorMessage += result.detail;
+                    } else {
+                        errorMessage += "אירעה שגיאה לא צפויה.";
+                    }
+
+                    alert(errorMessage);
                 }
             } catch (error) {
-                alert('שגיאת תקשורת. בדוק את החיבור לאינטרנט.');
+                console.error("Network/Client Error:", error);
+                alert('שגיאת תקשורת. אנא בדוק את החיבור לאינטרנט.');
+            } finally {
+                // Reset button state
                 btn.innerText = originalText;
                 btn.disabled = false;
             }
