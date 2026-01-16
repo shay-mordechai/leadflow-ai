@@ -26,7 +26,6 @@ jobs:
         with:
           context: .
           push: true
-          # This creates the tag: ghcr.io/shay-mordechai/leadflow-ai:latest
           tags: ghcr.io/${{ github.repository }}:latest
 
   deploy:
@@ -41,21 +40,33 @@ jobs:
           username: ${{ secrets.EC2_USERNAME }}
           key: ${{ secrets.EC2_SSH_KEY }}
           script: |
-            cd ~/myleads
-
-            # 1. Update server files
-            git pull origin main
-
-            # 2. Login to Registry
+            # 1. Login to Registry
             echo ${{ secrets.GITHUB_TOKEN }} | podman login ghcr.io -u ${{ github.actor }} --password-stdin
 
-            # 3. Pull the NEW LeadFlow image
+            # 2. Pull the NEW LeadFlow image
             podman pull ghcr.io/${{ github.repository }}:latest
 
-            # 4. Refresh containers (Recreates leadflow_app with new image)
-            podman-compose up -d
+            # 3. Stop the Entire Pod (K8s Style Shutdown)
+            # This stops all containers in the pod including the DB
+            podman pod stop leadflow-pod || true
 
-            # 5. Cleanup (Anti-Sha'ariyot)
-            podman image prune -a -f
+            # 4. Remove ONLY the app container
+            # We keep leadflow_db so we don't have to re-run its complex config
+            podman rm -f leadflow_app || true
 
-            echo "LeadFlow deployed successfully!"
+            # 5. Run the NEW app container inside the existing Pod
+            # Notice: No port mapping here (-p), it's handled by the Pod
+            podman run --name leadflow_app \
+              --pod leadflow-pod \
+              --dns 8.8.8.8 \
+              --env-file ~/leadflow-ai/.env \
+              -v ~/leadflow-ai/storage:/app/storage:Z \
+              -d ghcr.io/${{ github.repository }}:latest
+
+            # 6. Start the Pod back up
+            podman pod start leadflow-pod
+
+            # 7. Cleanup old images (Anti-Sha'ariyot)
+            podman image prune -f
+
+            echo "🚀 LeadFlow Pod updated and restarted successfully!"
