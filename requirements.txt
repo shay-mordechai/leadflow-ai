@@ -3,19 +3,26 @@ fastapi
 uvicorn[standard]
 gunicorn
 prettytable
+
 # --- Database ---
 SQLAlchemy
 psycopg2-binary
 pydantic
 pydantic-settings
+python-dotenv
 
-# --- UI & Templates ---
+# --- UI & Utilities ---
 jinja2
 python-multipart
 aiofiles
+email-validator
+
+# --- HTTP Clients & Networking ---
+httpx
+requests
 
 # --- AI & Processing ---
-faster_whisper
+faster-whisper
 openai
 google-genai
 
@@ -23,20 +30,4 @@ google-genai
 bleach
 cryptography
 passlib[bcrypt]
-python-dotenv
 slowapi
-email-validator
-
-# --- Background Tasks ---
-celery
-redis
-python-multipart
-python-multipart
-httpx
-python-multipart
-pydantic-settings
-httpx
-openai
-python-multipart
-gunicorn
-gunicorn

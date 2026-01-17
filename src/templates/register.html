@@ -69,14 +69,37 @@
                 <div>
                     <label class="block text-sm font-bold text-slate-700 mb-1.5">תחום עיסוק</label>
                     <div class="relative">
-                        <select name="business_type" class="w-full px-4 py-3 rounded-lg bg-slate-50 border border-slate-200 focus:border-blue-500 focus:bg-white focus:ring-2 focus:ring-blue-100 outline-none transition appearance-none text-slate-700 font-medium">
+                        <select name="business_type" id="business_type" onchange="toggleOtherField()" class="w-full px-4 py-3 rounded-lg bg-slate-50 border border-slate-200 focus:border-blue-500 focus:bg-white focus:ring-2 focus:ring-blue-100 outline-none transition appearance-none text-slate-700 font-medium" required>
                             <option value="" disabled selected>בחר את התחום שלך...</option>
+                            
+                            <optgroup label="כושר ואורח חיים">
+                                <option value="Fitness Coach">מאמן כושר</option>
+                                <option value="Nutritionist">תזונאי/ת</option>
+                                <option value="Yoga Instructor">מורה ליוגה/פילאטיס</option>
+                            </optgroup>
+
+                            <optgroup label="אימון וייעוץ">
+                                <option value="Life Coach">קואוצ’ינג (אימון אישי)</option>
+                                <option value="Business Consultant">יועץ עסקי</option>
+                                <option value="Therapist">מטפל/ת</option>
+                            </optgroup>
+
                             <optgroup label="נדל״ן ופיננסים">
                                 <option value="Real Estate Agent">תיווך ושיווק נדל"ן</option>
                                 <option value="Mortgage Advisor">ייעוץ משכנתאות</option>
                                 <option value="Insurance Agent">סוכן ביטוח</option>
                             </optgroup>
-                            </select>
+
+                            <option value="Other">אחר...</option>
+                        </select>
+                    </div>
+
+                    <div id="other_business_div" style="display:none;" class="mt-2">
+                        <input type="text" name="other_business_type" id="other_business_type" 
+                               placeholder="מה התחום שלך?" 
+                               class="w-full px-4 py-3 rounded-lg bg-slate-50 border border-slate-200 outline-none focus:ring-2 focus:ring-blue-500 transition font-medium text-slate-800 placeholder-slate-400"
+                               maxlength="30"
+                               pattern="^[a-zA-Zא-ת\s\-]+$">
                     </div>
                 </div>
 
@@ -101,6 +124,23 @@
     </div>
 
     <script>
+        // --- UI Logic: Other Field Toggle (Moved outside HTML structure) ---
+        function toggleOtherField() {
+            const select = document.getElementById('business_type');
+            const otherDiv = document.getElementById('other_business_div');
+            const otherInput = document.getElementById('other_business_type');
+            
+            if (select.value === 'Other') {
+                otherDiv.style.display = 'block';
+                // Fix: Javascript uses lowercase 'true'
+                otherInput.required = true; 
+            } else {
+                otherDiv.style.display = 'none';
+                // Fix: Javascript uses lowercase 'false'
+                otherInput.required = false;
+            }
+        }
+
         // --- UI Logic: Upsell Toggle ---
         const checkbox = document.getElementById('needNumberCheck');
         const businessInput = document.getElementById('businessInput');
@@ -112,13 +152,11 @@
                 container.style.opacity = '0.4';
                 container.style.pointerEvents = 'none';
                 businessInput.value = '';
-                // businessInput.required = false; // Not strictly required by current backend
                 businessInput.placeholder = "יוקצה אוטומטית לאחר התשלום";
                 upsellBox.classList.add('bg-blue-100', 'border-blue-300');
             } else {
                 container.style.opacity = '1';
                 container.style.pointerEvents = 'auto';
-                // businessInput.required = true;
                 businessInput.placeholder = "054-XXXXXXX";
                 upsellBox.classList.remove('bg-blue-100', 'border-blue-300');
             }
@@ -135,19 +173,18 @@
 
             const formData = new FormData(e.target);
 
-            // Construct payload to match Backend Schema (src/routers/auth.py)
-            // Note: Currently backend only saves name, email, password.
-            // Other fields are sent but might be ignored by the backend until updated.
             const payload = {
                 name: formData.get('name'),
-                email: formData.get('email'),        // Critical Fix
-                password: formData.get('password'),  // Critical Fix
+                email: formData.get('email'),
+                password: formData.get('password'),
                 
-                // Extra fields (Logic to be implemented in backend later)
+                // Extra fields
                 personal_whatsapp: formData.get('personal_whatsapp'),
                 business_whatsapp: formData.get('business_whatsapp'),
                 needs_new_number: checkbox.checked,
                 business_type: formData.get('business_type'),
+                // Added: Send the 'other' field text
+                other_business_type: formData.get('other_business_type'),
                 city_coverage: formData.get('city_coverage')
             };
 
@@ -158,33 +195,25 @@
                     body: JSON.stringify(payload)
                 });
 
-                // Parse the JSON response immediately
                 const result = await response.json();
 
                 if (response.ok) {
-                    // Success!
                     if (result.upsell_triggered) {
                         alert('נרשמת בהצלחה! כעת נעביר אותך לרכישת המספר הוירטואלי.');
                     } else {
                         alert('הרשמה בוצעה בהצלחה!');
                     }
-                    // Redirect to login or dashboard
                     // window.location.href = '/login.html'; 
                 } else {
-                    // Error Handling (The fix for [object Object])
                     console.error("Server Error Detail:", result.detail);
-                    
                     let errorMessage = "שגיאה בהרשמה:\n";
 
                     if (Array.isArray(result.detail)) {
-                        // Handle Pydantic Validation Errors (422)
                         result.detail.forEach(err => {
-                            // Extract field name (usually from loc array)
                             const field = err.loc[1] || err.loc[0];
                             errorMessage += `- שדה '${field}': ${err.msg}\n`;
                         });
                     } else if (typeof result.detail === 'string') {
-                        // Handle standard HTTP Exceptions (e.g., 400 Email exists)
                         errorMessage += result.detail;
                     } else {
                         errorMessage += "אירעה שגיאה לא צפויה.";
@@ -196,7 +225,6 @@
                 console.error("Network/Client Error:", error);
                 alert('שגיאת תקשורת. אנא בדוק את החיבור לאינטרנט.');
             } finally {
-                // Reset button state
                 btn.innerText = originalText;
                 btn.disabled = false;
             }

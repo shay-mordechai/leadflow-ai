@@ -2,59 +2,61 @@ version: '3.8'
 
 services:
   # 1. The Brain: FastAPI Application
-  web:
+  app:
     build: .
     container_name: leadflow_app
-    # Using the fix we discovered: Explicit DNS to allow external connections (Google/GitHub)
+    restart: always
+    # Explicit DNS to ensure external connections (Meta/OpenAI) work
     dns:
       - 8.8.8.8
-    command: uvicorn src.main:app --host 0.0.0.0 --port 8000 --workers 4
+    # Run Uvicorn directly
+    command: ["uvicorn", "src.main:app", "--host", "0.0.0.0", "--port", "8000"]
     volumes:
-      - ./storage:/app/storage  # Persist audio files locally
+      - ./storage:/app/storage  # Shared volume for audio files
     ports:
       - "8000:8000"
     env_file:
       - .env
     depends_on:
       - db
-      - redis
-    restart: always
 
-  # 2. The Muscle: Celery Worker (Background Tasks)
-  # (Optional: Only if your code is actively using Celery for the audio processing)
+  # 2. The Muscle: Python Background Worker (RAM Optimized)
+  # Replaces Celery to save ~150MB RAM by using DB polling
   worker:
     build: .
     container_name: leadflow_worker
-    # Worker also needs DNS to download files/contact Gemini
+    restart: always
     dns:
       - 8.8.8.8
-    command: celery -A src.worker.tasks worker --loglevel=info
+    # Runs the dedicated worker script we created earlier
+    command: ["python", "src/worker.py"]
+    volumes:
+      - ./storage:/app/storage  # Must match the app volume to access files!
     env_file:
       - .env
     depends_on:
       - db
-      - redis
-    restart: always
 
   # 3. Memory: PostgreSQL Database
   db:
     image: postgres:15
     container_name: leadflow_db
+    restart: always
     volumes:
       - postgres_data:/var/lib/postgresql/data
     environment:
-      - POSTGRES_USER=${POSTGRES_USER:-postgres}         # Reads from .env or defaults to postgres
-      - POSTGRES_PASSWORD=${POSTGRES_PASSWORD:-password} # Reads from .env or defaults to password
+      - POSTGRES_USER=${POSTGRES_USER:-postgres}
+      - POSTGRES_PASSWORD=${POSTGRES_PASSWORD:-password}
       - POSTGRES_DB=${POSTGRES_DB:-leadflow}
-    restart: always
     ports:
-      - "5432:5432" # Exposed for local debugging (optional)
+      - "5432:5432"
 
-  # 4. Speed: Redis (For Task Queue)
-  redis:
-    image: redis:7
-    container_name: leadflow_redis
+  # 4. Security: Cloudflare Tunnel (Exposes localhost to the web)
+  cloudflared:
+    image: cloudflare/cloudflared:latest
+    container_name: cloudflared
     restart: always
+    command: tunnel --no-autoupdate run --token ${CLOUDFLARE_TOKEN}
 
 volumes:
   postgres_data:
