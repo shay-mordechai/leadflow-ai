@@ -54,7 +54,9 @@ class User(Base):
     name = Column(String, nullable=False)
     email = Column(String, unique=True, index=True, nullable=False)
     hashed_password = Column(String, nullable=False)
-    
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
+    last_login_ip = Column(String, nullable=True)
+
     # SaaS & Subscription Logic
     plan_tier = Column(Enum(PlanTier), default=PlanTier.STARTER, nullable=False)
     subscription_status = Column(Enum(SubscriptionStatus), default=SubscriptionStatus.TRIAL, nullable=False)
