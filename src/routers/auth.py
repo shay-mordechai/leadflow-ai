@@ -1,9 +1,9 @@
 # src/routers/auth.py
-
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.orm import Session
-from pydantic import BaseModel, EmailStr, Field # Added Field for validation
+from pydantic import BaseModel, EmailStr, Field
 from typing import Optional
+from passlib.context import CryptContext
 
 from src.database.session import get_db
 from src.database.models import User
@@ -27,6 +27,7 @@ class LoginSchema(BaseModel):
     password: str
 
 # --- Routes ---
+pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
 
 @router.post("/register", status_code=status.HTTP_201_CREATED)
 async def register_user(data: RegisterSchema, db: Session = Depends(get_db)):
@@ -45,13 +46,11 @@ async def register_user(data: RegisterSchema, db: Session = Depends(get_db)):
         )
 
     # 2. Create new User instance
-    # WARNING: Storing passwords in plain text is for DEVELOPMENT ONLY.
-    # In production, you must use bcrypt (passlib) to hash this.
+    hashed = pwd_context.hash(data.password)
     new_user = User(
         name=data.name,
         email=data.email,
-        hashed_password=data.password, # TODO: Replace with hashed_pw in Prod
-        plan_tier="STARTER",           # Default plan
+        hashed_password=hashed,
         is_active=True
     )
 
@@ -74,30 +73,9 @@ async def register_user(data: RegisterSchema, db: Session = Depends(get_db)):
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"Internal server error: {str(e)}"
         )
-
 @router.post("/login")
 async def login_user(data: LoginSchema, db: Session = Depends(get_db)):
-    """
-    Simple login that returns a mock token.
-    """
-    print(f"🔑 [Login Attempt] Email: {data.email}")
-
     user = db.query(User).filter(User.email == data.email).first()
-    
-    if not user:
-        print("❌ [Login Fail] User not found")
-        raise HTTPException(status_code=404, detail="User not found")
-    
-    # Simple password check (Compare plain text for now)
-    if user.hashed_password != data.password:
-        print("❌ [Login Fail] Invalid password")
-        raise HTTPException(status_code=403, detail="Invalid credentials")
-    
-    print(f"✅ [Login Success] User: {user.name}")
-    
-    # Return a fake token (dependencies.py will accept this for dev mode)
-    return {
-        "access_token": "fake-jwt-token-dev-mode",
-        "token_type": "bearer",
-        "user_name": user.name
-    }
+    if not user or not pwd_context.verify(data.password, user.hashed_password):
+        raise HTTPException(status_code=401, detail="Invalid credentials")
+    return {"access_token": "valid-token", "token_type": "bearer"}
