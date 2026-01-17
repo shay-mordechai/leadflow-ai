@@ -3,13 +3,13 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>My-Leads | Dashboard</title>
+    <title>LeadFlowAI | Dashboard</title>
 
     <meta name="theme-color" content="#0f172a">
     <meta name="mobile-web-app-capable" content="yes">
     <meta name="apple-mobile-web-app-capable" content="yes">
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
-    <meta name="apple-mobile-web-app-title" content="My-Leads">
+    <meta name="apple-mobile-web-app-title" content="LeadFlowAI">
 
     <link rel="manifest" href="/static/manifest.json">
     <link rel="apple-touch-icon" href="https://img.icons8.com/color/192/artificial-intelligence.png">
@@ -21,13 +21,15 @@
 
     <style>
         body { font-family: 'Heebo', sans-serif; background-color: #f1f5f9; }
-        /* Smooth scrolling for better UX */
         html { scroll-behavior: smooth; }
+        /* Hide scrollbar for clean mobile look */
+        .no-scrollbar::-webkit-scrollbar { display: none; }
+        .no-scrollbar { -ms-overflow-style: none; scrollbar-width: none; }
     </style>
 </head>
-<body class="text-slate-800 pb-24">
+<body class="text-slate-800 pb-24 selection:bg-blue-100">
 
-    <header class="bg-white border-b border-slate-200 sticky top-0 z-50 shadow-sm">
+    <header class="bg-white border-b border-slate-200 sticky top-0 z-50 shadow-sm/50 backdrop-blur-md bg-white/90">
         <div class="container mx-auto px-4 py-3 flex justify-between items-center">
             <div class="flex items-center gap-3">
                 <div class="w-9 h-9 bg-slate-900 rounded-lg flex items-center justify-center text-white shadow-lg shadow-blue-500/20">
@@ -35,16 +37,19 @@
                 </div>
                 <h1 class="font-black text-slate-800 text-lg tracking-tight">LeadFlow<span class="text-blue-600">AI</span></h1>
             </div>
+            
             <div class="flex items-center gap-3">
                 <a href="/api/v1/leads/export" class="hidden md:flex items-center gap-2 text-sm text-slate-600 bg-slate-100 px-3 py-2 rounded-lg hover:bg-slate-200 transition font-medium">
-                    <i class="fas fa-file-csv text-green-600"></i> ייצוא
+                    <i class="fas fa-file-csv text-green-600"></i> Export
                 </a>
 
                 <a href="/schedule" class="flex items-center gap-2 text-sm text-white bg-blue-600 px-4 py-2 rounded-lg hover:bg-blue-700 transition font-bold shadow-md shadow-blue-500/20">
-                    <i class="fas fa-calendar-alt"></i> יומן
+                    <i class="fas fa-calendar-alt"></i> Calendar
                 </a>
 
-                <a href="/logout" class="text-slate-400 hover:text-red-500 transition px-2"><i class="fas fa-sign-out-alt text-lg"></i></a>
+                <a href="/logout" class="text-slate-400 hover:text-red-500 transition px-2" aria-label="Logout">
+                    <i class="fas fa-sign-out-alt text-lg"></i>
+                </a>
             </div>
         </div>
     </header>
@@ -52,18 +57,20 @@
     <section class="container mx-auto px-4 py-6">
         <div class="grid grid-cols-3 gap-3">
             <div class="bg-white p-4 rounded-2xl shadow-sm border border-slate-100 text-center">
-                <p class="text-[10px] text-slate-400 uppercase font-bold tracking-wider mb-1">סה"כ לידים</p>
+                <p class="text-[10px] text-slate-400 uppercase font-bold tracking-wider mb-1">Total Leads</p>
                 <p class="text-3xl font-black text-slate-800">{{ stats.total }}</p>
             </div>
+            
             <div class="bg-white p-4 rounded-2xl shadow-sm border border-slate-100 text-center">
-                <p class="text-[10px] text-slate-400 uppercase font-bold tracking-wider mb-1">לידים חמים</p>
+                <p class="text-[10px] text-slate-400 uppercase font-bold tracking-wider mb-1">Hot Leads</p>
                 <p class="text-3xl font-black text-emerald-500">{{ stats.qualified }}</p>
             </div>
+            
             <div class="bg-white p-4 rounded-2xl shadow-sm border border-slate-100 text-center relative overflow-hidden">
                 {% if stats.followups > 0 %}
                 <div class="absolute top-2 right-2 w-2 h-2 bg-red-500 rounded-full animate-ping"></div>
                 {% endif %}
-                <p class="text-[10px] text-slate-400 uppercase font-bold tracking-wider mb-1">לטיפול היום</p>
+                <p class="text-[10px] text-slate-400 uppercase font-bold tracking-wider mb-1">Follow-up</p>
                 <p class="text-3xl font-black text-orange-500">{{ stats.followups }}</p>
             </div>
         </div>
@@ -71,17 +78,23 @@
 
     <main class="container mx-auto px-4">
         <div class="flex items-center justify-between mb-4">
-            <h2 class="text-xl font-bold text-slate-800">לידים אחרונים</h2>
-            <span class="text-xs text-slate-400 bg-white px-2 py-1 rounded-md border border-slate-100">מתעדכן בזמן אמת</span>
+            <h2 class="text-xl font-bold text-slate-800">Recent Leads</h2>
+            <div class="flex items-center gap-2">
+                <span class="relative flex h-2 w-2">
+                  <span class="animate-ping absolute inline-flex h-full w-full rounded-full bg-green-400 opacity-75"></span>
+                  <span class="relative inline-flex rounded-full h-2 w-2 bg-green-500"></span>
+                </span>
+                <span class="text-xs text-slate-400 font-medium">Live Updates</span>
+            </div>
         </div>
 
-        <div class="space-y-4">
+        <div class="space-y-4" id="leadsContainer">
             {% for lead in leads %}
-            <div class="bg-white rounded-2xl p-5 shadow-sm border border-slate-200 relative overflow-hidden transition hover:shadow-md">
+            <div class="bg-white rounded-2xl p-5 shadow-sm border border-slate-200 relative overflow-hidden transition hover:shadow-md group">
 
                 {% if lead.needs_followup %}
-                <div class="absolute top-3 left-3 bg-orange-50 text-orange-600 px-2 py-1 rounded-lg text-xs font-bold flex items-center gap-1 border border-orange-100">
-                    <i class="fas fa-bell animate-bounce"></i> נדרש פולואפ
+                <div class="absolute top-3 left-3 bg-orange-50 text-orange-600 px-2 py-1 rounded-lg text-xs font-bold flex items-center gap-1 border border-orange-100 z-10">
+                    <i class="fas fa-bell animate-bounce"></i> Action Needed
                 </div>
                 {% endif %}
 
@@ -94,59 +107,102 @@
                 <div class="mr-4">
                     <div class="flex justify-between items-start mb-2">
                         <div>
-                            <h3 class="font-bold text-lg text-slate-900 leading-none">{{ lead.name or 'מספר לא שמור' }}</h3>
-                            <p class="text-sm font-mono text-slate-400 mt-1" dir="ltr">{{ lead.phone_number }}</p>
+                            <h3 class="font-bold text-lg text-slate-900 leading-none group-hover:text-blue-600 transition">
+                                {{ lead.name or 'Unknown Number' }}
+                            </h3>
+                            <a href="tel:{{ lead.phone_number }}" class="text-sm font-mono text-slate-400 mt-1 hover:text-slate-600" dir="ltr">
+                                {{ lead.phone_number }}
+                            </a>
                         </div>
                     </div>
 
                     <div class="flex items-center gap-3 mb-4 text-sm text-slate-600">
                         {% if lead.city %}
-                        <span class="bg-slate-50 px-2 py-0.5 rounded border border-slate-100"><i class="fas fa-map-marker-alt text-slate-400 ml-1"></i> {{ lead.city }}</span>
+                        <span class="bg-slate-50 px-2 py-0.5 rounded border border-slate-100 flex items-center gap-1">
+                            <i class="fas fa-map-marker-alt text-slate-400"></i> {{ lead.city }}
+                        </span>
                         {% endif %}
-                        <span class="text-xs text-slate-400">{{ lead.created_at.strftime('%H:%M | %d/%m') }}</span>
+                        <span class="text-xs text-slate-400">
+                            {{ lead.created_at.strftime('%H:%M | %d/%m') }}
+                        </span>
                     </div>
 
-                    <div class="bg-slate-50 rounded-xl p-3 text-sm text-slate-700 leading-relaxed border border-slate-100 mb-5 relative">
-                        <div class="absolute -top-3 -right-2 bg-white p-1 rounded-full border border-slate-100 shadow-sm">
+                    <div class="bg-slate-50 rounded-xl p-4 text-sm text-slate-700 leading-relaxed border border-slate-100 mb-5 relative">
+                        <div class="absolute -top-3 -right-2 bg-white p-1.5 rounded-full border border-slate-100 shadow-sm z-10">
                             <i class="fas fa-robot text-blue-500 text-xs"></i>
                         </div>
 
                         {% if lead.summary_text %}
                             {{ lead.summary_text }}
                         {% else %}
-                            <div class="flex items-center gap-2 text-slate-400 italic">
-                                <span class="w-1.5 h-1.5 bg-slate-400 rounded-full animate-bounce"></span>
-                                מנתח שיחה...
+                            <div class="animate-pulse space-y-2">
+                                <div class="h-2 bg-slate-200 rounded w-3/4"></div>
+                                <div class="h-2 bg-slate-200 rounded w-1/2"></div>
+                                <div class="flex items-center gap-2 mt-2">
+                                    <span class="w-1.5 h-1.5 bg-blue-400 rounded-full animate-bounce"></span>
+                                    <span class="text-xs text-blue-500 font-bold">AI is analyzing...</span>
+                                </div>
                             </div>
                         {% endif %}
                     </div>
 
                     <div class="grid grid-cols-1 gap-3">
                         {% if lead.suggested_reply %}
-                        <a href="https://wa.me/{{ lead.phone_number }}?text={{ lead.suggested_reply }}" target="_blank" class="flex items-center justify-center gap-2 bg-[#25D366] hover:bg-[#20bd5a] text-white py-3.5 rounded-xl font-bold text-sm shadow-sm transition active:scale-95">
-                            <i class="fab fa-whatsapp text-lg"></i> שלח תשובת AI
+                        <a href="https://wa.me/{{ lead.phone_number }}?text={{ lead.suggested_reply | urlencode }}" 
+                           target="_blank" 
+                           rel="noopener noreferrer"
+                           class="flex items-center justify-center gap-2 bg-[#25D366] hover:bg-[#20bd5a] text-white py-3.5 rounded-xl font-bold text-sm shadow-sm transition active:scale-[0.98] ring-offset-2 focus:ring-2 ring-green-500">
+                            <i class="fab fa-whatsapp text-lg"></i> Send AI Reply
                         </a>
                         {% else %}
-                        <a href="https://wa.me/{{ lead.phone_number }}" target="_blank" class="flex items-center justify-center gap-2 bg-slate-800 hover:bg-slate-700 text-white py-3.5 rounded-xl font-bold text-sm shadow-sm transition active:scale-95">
-                             <i class="fab fa-whatsapp"></i> פתח בוואטסאפ
+                        <a href="https://wa.me/{{ lead.phone_number }}" 
+                           target="_blank" 
+                           rel="noopener noreferrer"
+                           class="flex items-center justify-center gap-2 bg-slate-800 hover:bg-slate-700 text-white py-3.5 rounded-xl font-bold text-sm shadow-sm transition active:scale-[0.98]">
+                             <i class="fab fa-whatsapp"></i> Open WhatsApp
                         </a>
                         {% endif %}
                     </div>
                 </div>
             </div>
             {% endfor %}
+            
+            {% if not leads %}
+            <div class="text-center py-12">
+                <div class="bg-slate-100 w-16 h-16 rounded-full flex items-center justify-center mx-auto mb-4">
+                    <i class="fas fa-inbox text-slate-400 text-2xl"></i>
+                </div>
+                <h3 class="text-slate-500 font-medium">No leads yet...</h3>
+                <p class="text-sm text-slate-400 mt-1">Send a test audio message to the bot!</p>
+            </div>
+            {% endif %}
         </div>
     </main>
 
     <footer class="mt-12 text-center pb-8">
         <div class="inline-block bg-white px-6 py-3 rounded-full shadow-sm border border-slate-100">
             <p class="text-sm text-slate-500">
-                צריכים עזרה?
-                <a href="mailto:support@my-leads.app" class="text-blue-600 font-bold hover:underline">support@my-leads.app</a>
+                Need Help?
+                <a href="mailto:support@leadflow.ai" class="text-blue-600 font-bold hover:underline">support@leadflow.ai</a>
             </p>
         </div>
-        <p class="text-xs text-slate-300 mt-4">&copy; 2026 My-Leads AI</p>
+        <p class="text-xs text-slate-300 mt-4">&copy; 2026 LeadFlow AI</p>
     </footer>
 
+    <script>
+        // Auto-refresh page every 60 seconds to fetch new leads/updates
+        setTimeout(function() {
+            window.location.reload();
+        }, 60000);
+
+        // Simple animation for the "Bolt" icon on load
+        document.addEventListener('DOMContentLoaded', () => {
+            const bolt = document.querySelector('.fa-bolt');
+            if(bolt) {
+                bolt.parentElement.classList.add('animate-pulse');
+                setTimeout(() => bolt.parentElement.classList.remove('animate-pulse'), 1000);
+            }
+        });
+    </script>
 </body>
 </html>

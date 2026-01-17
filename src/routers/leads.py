@@ -1,5 +1,8 @@
+# src/routers/leads.py
+
 import logging
-from fastapi import APIRouter, HTTPException, status, Depends
+from datetime import datetime
+from fastapi import APIRouter, HTTPException, status, Depends, Query
 from sqlalchemy.orm import Session
 from pydantic import BaseModel, Field, EmailStr
 from typing import List, Optional
@@ -15,18 +18,28 @@ router = APIRouter(tags=["Leads Management"])
 logger = logging.getLogger(__name__)
 
 # --- Schemas ---
+
 class PagixLead(BaseModel):
-    name: str = Field(..., min_length=2)
-    phone: str = Field(..., min_length=9)
+    """
+    Schema for incoming webhook data from Landing Pages (Pagix/Elementor/Wix).
+    """
+    name: str = Field(..., min_length=2, description="Lead's full name")
+    phone: str = Field(..., min_length=9, description="Lead's phone number")
     email: Optional[EmailStr] = None
     source: str = Field(default="pagix_landing_page")
 
 class LeadResponse(BaseModel):
+    """
+    Schema for outgoing lead data to the Dashboard.
+    """
     id: str
     name: str
     phone_number: str
+    email: Optional[str] = None  # FIX: Added email to response
     status: str
-    created_at: str
+    summary_text: Optional[str] = None # Useful for the dashboard
+    suggested_reply: Optional[str] = None
+    created_at: datetime # FIX: Changed from str to datetime for better sorting in frontend
     
     class Config:
         from_attributes = True
@@ -35,42 +48,61 @@ class LeadResponse(BaseModel):
 
 @router.get("/", response_model=List[LeadResponse])
 def get_my_leads(
+    limit: int = Query(50, ge=1, le=100), # FIX: Added Pagination (Default 50, Max 100)
+    offset: int = Query(0, ge=0),
     db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_user) # <--- THE SECURITY GATEKEEPER
+    current_user: User = Depends(get_current_user)
 ):
     """
     SECURE ENDPOINT: Returns leads ONLY for the logged-in user.
-    Hacker proofing: 
-    1. 'get_current_user' validates the Token. If invalid -> 401 Error immediately.
-    2. The query filters by 'current_user.id'. User A can NEVER see User B's leads.
+    Includes pagination to prevent server overload.
     """
-    leads = db.query(Lead).filter(Lead.user_id == current_user.id).all()
+    # Professional English Comment: 
+    # Always filter by current_user.id to prevent horizontal privilege escalation.
+    query = db.query(Lead).filter(Lead.user_id == current_user.id)
+    
+    # Apply sorting (newest first) and pagination
+    leads = query.order_by(Lead.created_at.desc()).offset(offset).limit(limit).all()
+    
     return leads
 
-@router.post("/pagix", status_code=status.HTTP_201_CREATED)
-async def receive_pagix_lead(
+@router.post("/webhook/{user_id}", status_code=status.HTTP_201_CREATED)
+async def receive_external_lead(
+    user_id: str, # FIX: Accept user_id in URL to know who owns the lead
     lead_data: PagixLead, 
     db: Session = Depends(get_db)
-    # Note: Webhooks usually don't have user tokens. 
-    # In the future, we will add an API Key check here to identify the target user.
-    # For now, we will attach it to the first admin user found for testing.
 ):
     """
-    Webhook Endpoint: Receives lead data and saves to DB.
+    Webhook Endpoint: Receives lead data from landing pages.
+    The URL must contain the target User ID: /api/v1/leads/webhook/<USER_UUID>
     """
     try:
-        # TEMP: Find a default user to assign the lead to (since webhook has no login context)
-        # In production, the URL would be /pagix/{user_id} or contain an API Key.
-        default_user = db.query(User).first()
-        if not default_user:
-             raise HTTPException(status_code=500, detail="No users in system to assign lead")
+        # 1. Validate User Exists
+        # We assume the 'user_id' acts as a public API key for the landing page configuration.
+        target_user = db.query(User).filter(User.id == user_id).first()
+        if not target_user:
+             logger.warning(f"Webhook failed: User ID {user_id} not found.")
+             raise HTTPException(status_code=404, detail="Target user not found")
 
-        # Create DB Entry
+        # 2. Duplicate Check (Logic Upgrade)
+        # Prevent spamming the same lead multiple times in a short period (optional but recommended)
+        # Here we check if this phone number exists for this user in the 'NEW' status.
+        existing_lead = db.query(Lead).filter(
+            Lead.user_id == target_user.id,
+            Lead.phone_number == lead_data.phone,
+            Lead.status == LeadStatus.NEW
+        ).first()
+
+        if existing_lead:
+            logger.info(f"Skipping duplicate lead {lead_data.phone} for user {user_id}")
+            return {"status": "ignored", "message": "Lead already exists"}
+
+        # 3. Create DB Entry
         new_lead = Lead(
-            user_id=default_user.id,
-            # Using the setters we defined in models.py (which handle encryption!)
+            user_id=target_user.id,
             name=lead_data.name,
             phone_number=lead_data.phone,
+            email=lead_data.email, # FIX: Now actually saving the email!
             source=LeadSource.LANDING_PAGE,
             status=LeadStatus.NEW
         )
@@ -78,7 +110,10 @@ async def receive_pagix_lead(
         db.add(new_lead)
         db.commit()
         
-        logger.info(f"New Lead Saved: {lead_data.name} for User: {default_user.email}")
+        # TODO: Trigger Celery task here for Gemini Analysis
+        # background_tasks.add_task(analyze_lead, new_lead.id)
+        
+        logger.info(f"New Lead Saved via Webhook: {lead_data.name} for User: {target_user.email}")
 
         return {"status": "success", "lead_id": str(new_lead.id)}
 

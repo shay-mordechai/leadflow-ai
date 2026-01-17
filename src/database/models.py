@@ -1,10 +1,9 @@
 # src/database/models.py
-
 import uuid
 import enum
 from datetime import datetime
 from sqlalchemy import (
-    Column, String, DateTime, Boolean, Text, ForeignKey, Enum, Integer
+    Column, String, DateTime, Boolean, Text, ForeignKey, Enum, Integer, func
 )
 from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import declarative_base, relationship
@@ -13,8 +12,6 @@ from src.security.encryption import protector
 Base = declarative_base()
 
 # --- ENUMS ---
-# Defining Enums here ensures consistency across the application and database.
-
 class PlanTier(str, enum.Enum):
     STARTER = "STARTER"
     PRO = "PRO"
@@ -48,7 +45,6 @@ class MediaType(str, enum.Enum):
 class User(Base):
     """
     Represents a SaaS customer (Coach/Business Owner).
-    Replaces the previous 'Tenant' model to support SaaS subscriptions.
     """
     __tablename__ = "users"
 
@@ -63,18 +59,47 @@ class User(Base):
     plan_tier = Column(Enum(PlanTier), default=PlanTier.STARTER, nullable=False)
     subscription_status = Column(Enum(SubscriptionStatus), default=SubscriptionStatus.TRIAL, nullable=False)
     is_active = Column(Boolean, default=True)
-    created_at = Column(DateTime, default=datetime.utcnow)
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
 
-    # Virtual Number (Twilio) - Nullable for STARTER tier
+    # Virtual Number (Twilio)
     assigned_phone_number = Column(String, unique=True, index=True, nullable=True)
     
-    # BYOK (Bring Your Own Key) - Encrypted storage recommended in production, keeping simple for now
+    # BYOK (Bring Your Own Key)
     openai_api_key = Column(String, nullable=True)
 
     # Relationships
+    # cascade="all, delete-orphan" ensures Python-side cleanup
     leads = relationship("Lead", back_populates="user", cascade="all, delete-orphan")
     media_files = relationship("MediaInteraction", back_populates="user", cascade="all, delete-orphan")
     integrations = relationship("Integration", back_populates="user", cascade="all, delete-orphan")
+    
+    # One-to-One relationship with BusinessProfile
+    business_profile = relationship("BusinessProfile", uselist=False, back_populates="user", cascade="all, delete-orphan")
+
+
+class BusinessProfile(Base):
+    """
+    Stores the 'Brain' configuration for the AI Agent.
+    Defines how the AI should behave, speak, and sell for this specific user.
+    """
+    __tablename__ = "business_profiles"
+
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    user_id = Column(UUID(as_uuid=True), ForeignKey("users.id", ondelete="CASCADE"), unique=True, nullable=False)
+    
+    business_name = Column(String, nullable=False, default="My Business")
+    business_type = Column(String, default="General") # e.g., "Real Estate", "Fitness"
+    
+    # AI Personality Configuration
+    ai_tone = Column(String, default="Professional") # Professional, Friendly, Urgent
+    products_services = Column(Text, nullable=True) # "We sell X for $Y..."
+    custom_instructions = Column(Text, nullable=True) # "Never mention price..."
+    
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
+    updated_at = Column(DateTime(timezone=True), onupdate=func.now())
+
+    # Relationship
+    user = relationship("User", back_populates="business_profile")
 
 
 class Lead(Base):
@@ -85,11 +110,12 @@ class Lead(Base):
     __tablename__ = "leads"
 
     id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
-    user_id = Column(UUID(as_uuid=True), ForeignKey("users.id"), nullable=False, index=True)
+    user_id = Column(UUID(as_uuid=True), ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True)
 
     # Encrypted PII Columns
     _name_encrypted = Column("name", String, nullable=True)
     _phone_encrypted = Column("phone_number", String, nullable=True)
+    email = Column(String, nullable=True) # Not encrypted for easier searching/mailing, can be encrypted if strict GDPR required.
     
     # Metadata
     city = Column(String, nullable=True)
@@ -101,15 +127,12 @@ class Lead(Base):
     original_transcript = Column(Text, nullable=True)   # Raw Text
     coach_feedback = Column(Text, nullable=True)        # Notes from the user
     
-    # Conversion Tracking
-    is_converted = Column(Boolean, default=False)
-    
     # Retention & Automation
     suggested_reply = Column(Text, nullable=True)       # AI drafted reply
     needs_followup = Column(Boolean, default=False)
     followup_date = Column(DateTime, nullable=True)
     
-    created_at = Column(DateTime, default=datetime.utcnow)
+    created_at = Column(DateTime(timezone=True), server_default=func.now(), index=True)
 
     # Relationships
     user = relationship("User", back_populates="leads")
@@ -136,23 +159,19 @@ class Lead(Base):
 class MediaInteraction(Base):
     """
     Tracks raw media files (WhatsApp Voice Notes, Images).
-    Used for:
-    1. Transcribing audio to text.
-    2. Enforcing the 24-hour retention policy (Privacy).
     """
     __tablename__ = "media_interactions"
 
     id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
-    user_id = Column(UUID(as_uuid=True), ForeignKey("users.id"), nullable=False)
-    lead_id = Column(UUID(as_uuid=True), ForeignKey("leads.id"), nullable=True) # Nullable if lead not yet identified
+    user_id = Column(UUID(as_uuid=True), ForeignKey("users.id", ondelete="CASCADE"), nullable=False)
+    lead_id = Column(UUID(as_uuid=True), ForeignKey("leads.id", ondelete="SET NULL"), nullable=True)
 
-    file_path = Column(String, nullable=False) # Path to local storage / S3
+    file_path = Column(String, nullable=False)
     media_type = Column(Enum(MediaType), default=MediaType.AUDIO, nullable=False)
     
-    processed = Column(Boolean, default=False) # Has AI processed this?
+    processed = Column(Boolean, default=False)
     
-    # Crucial for Cron Job (Delete files where created_at < 24h ago)
-    created_at = Column(DateTime, default=datetime.utcnow, index=True)
+    created_at = Column(DateTime(timezone=True), server_default=func.now(), index=True)
 
     # Relationships
     user = relationship("User", back_populates="media_files")
@@ -166,25 +185,12 @@ class Integration(Base):
     __tablename__ = "integrations"
 
     id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
-    user_id = Column(UUID(as_uuid=True), ForeignKey("users.id"), nullable=False)
+    user_id = Column(UUID(as_uuid=True), ForeignKey("users.id", ondelete="CASCADE"), nullable=False)
 
-    platform_name = Column(String, nullable=False) # e.g., "FACEBOOK", "HUBSPOT"
-    access_token = Column(String, nullable=False)  # Encrypt this in production!
+    platform_name = Column(String, nullable=False)
+    access_token = Column(String, nullable=False)
     webhook_url = Column(String, nullable=True)
     
-    created_at = Column(DateTime, default=datetime.utcnow)
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
 
     user = relationship("User", back_populates="integrations")
-
-
-# Keeps previous models if needed for legacy support, 
-# otherwise they should be migrated or removed.
-class AuditLog(Base):
-    __tablename__ = "audit_logs"
-    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
-    timestamp = Column(DateTime, default=datetime.utcnow, index=True)
-    user_id = Column(UUID(as_uuid=True), ForeignKey("users.id"), nullable=True)
-    ip_address = Column(String(45), nullable=True)
-    action = Column(String(50), nullable=False)
-    details = Column(Text, nullable=True)
-    severity = Column(String(20), default="INFO")
