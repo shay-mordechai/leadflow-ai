@@ -1,7 +1,8 @@
 # --- Core Framework & Server ---
 fastapi
 uvicorn[standard]
-
+gunicorn
+prettytable
 # --- Database ---
 SQLAlchemy
 psycopg2-binary
