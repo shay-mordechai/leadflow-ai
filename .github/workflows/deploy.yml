@@ -46,11 +46,15 @@ jobs:
             # 2. Pull the NEW image
             podman pull ghcr.io/${{ github.repository }}:latest
 
-            # 3. Handle App Refresh inside the existing Pod
-            podman stop leadflow_app || true
-            podman rm leadflow_app || true
+            # -------------------------------------------
+            # 3. Stop OLD Containers
+            # -------------------------------------------
+            podman stop leadflow_app leadflow_worker || true
+            podman rm leadflow_app leadflow_worker || true
 
-            # 4. Run the NEW version with Gunicorn
+            # -------------------------------------------
+            # 4. Run APP (Web Server)
+            # -------------------------------------------
             podman run --name leadflow_app \
               --pod leadflow-pod \
               --dns 8.8.8.8 \
@@ -59,7 +63,18 @@ jobs:
               -d ghcr.io/${{ github.repository }}:latest \
               gunicorn src.main:app --workers 2 --worker-class uvicorn.workers.UvicornWorker --bind 0.0.0.0:8000 --timeout 120
 
-            # 5. Cleanup old images
+            # -------------------------------------------
+            # 5. Run WORKER (Transcriber) - SAME Image, DIFFERENT Command
+            # -------------------------------------------
+            podman run --name leadflow_worker \
+              --pod leadflow-pod \
+              --dns 8.8.8.8 \
+              --env-file ~/leadflow-ai/.env \
+              -v ~/leadflow-ai/storage:/app/storage:Z \
+              -d ghcr.io/${{ github.repository }}:latest \
+              python src/worker.py
+
+            # 6. Cleanup
             podman image prune -f
 
-            echo "🚀 LeadFlow (Gunicorn Edition) deployed successfully to leadflow-pod!"
+            echo "🚀 LeadFlow (App + Worker) deployed successfully!"
