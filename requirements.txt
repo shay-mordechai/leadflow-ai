@@ -37,3 +37,4 @@ pydantic-settings
 httpx
 openai
 python-multipart
+gunicorn
