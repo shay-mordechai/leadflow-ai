@@ -46,40 +46,64 @@
             </div>
         </form>
     </div>
-    
     <script>
-        document.getElementById('loginForm').onsubmit = async (e) => {
-            e.preventDefault();
-            const btn = e.target.querySelector('button');
-            const originalText = btn.innerText;
-            btn.innerHTML = '...מתחבר';
-            btn.disabled = true;
+    document.getElementById('loginForm').onsubmit = async (e) => {
+        e.preventDefault();
+        const btn = e.target.querySelector('button');
+        btn.innerHTML = 'Connecting...'; // Update UI state
+        btn.disabled = true;
 
-            const formData = new FormData(e.target);
-            const payload = new URLSearchParams();
-            payload.append('username', formData.get('phone'));
-            payload.append('password', formData.get('password'));
+        const formData = new FormData(e.target);
+        const emailValue = formData.get('phone'); // Mapping the phone input to email field
 
-            try {
-                const response = await fetch('/api/v1/auth/token', {
-                    method: 'POST',
-                    headers: {'Content-Type': 'application/x-www-form-urlencoded'},
-                    body: payload
-                });
+        const data = {
+            email: emailValue,
+            password: formData.get('password')
+        };
 
-                if (response.ok) {
-                    window.location.href = '/dashboard';
-                } else {
-                    alert('פרטי התחברות שגויים');
-                    btn.innerText = originalText;
-                    btn.disabled = false;
+        try {
+            console.log('Sending login request...', data);
+            const response = await fetch('/api/v1/auth/login', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(data)
+            });
+
+            // Parse response once
+            const result = await response.json();
+
+            if (response.ok) {
+                console.log('Login successful, processing token...');
+
+                if (result.access_token) {
+                    // 1. Save to LocalStorage for Frontend access
+                    localStorage.setItem('token', result.access_token);
+                    
+                    // 2. Save to Cookie for Backend/Dashboard authentication (24h expiry)
+                    const now = new Date();
+                    now.setTime(now.getTime() + (24 * 60 * 60 * 1000));
+                    document.cookie = `access_token=${result.access_token}; expires=${now.toUTCString()}; path=/; SameSite=Lax`;
+                    
+                    console.log('Authentication cookie stored');
                 }
-            } catch (error) {
-                alert('שגיאת תקשורת');
-                btn.innerText = originalText;
+                
+                // Redirect to secured dashboard
+                window.location.href = '/dashboard';
+            } else {
+                console.error('Login failed:', result);
+                // Handle 422 Validation errors or 401 Unauthorized
+                const errorMsg = result.detail?.[0]?.msg || result.detail || 'Invalid credentials';
+                alert('Server Error: ' + errorMsg);
+                btn.innerHTML = 'כניסה למערכת';
                 btn.disabled = false;
             }
-        };
-    </script>
+        } catch (error) {
+            console.error('Network/Communication Error:', error);
+            alert('Connection error: Please ensure you entered a valid email format');
+            btn.innerHTML = 'כניסה למערכת';
+            btn.disabled = false;
+        }
+    };
+</script>
 </body>
 </html>
