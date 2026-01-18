@@ -1,19 +1,23 @@
-import time
 import os
-import sys
-from sqlalchemy import create_engine
+import time
+import json
+import logging
+from sqlalchemy import create_engine, text
 from sqlalchemy.orm import sessionmaker
 
-# --- Path Setup: Allow imports from the src directory ---
-sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-
-# --- Imports ---
-from src.database.models import MediaInteraction, User, ProcessingStatus
-from src.database.session import DATABASE_URL
-
-# Import the services we created
+# --- IMPORTS (Crucial for Worker Logic) ---
+from src.models.user import User
+from src.models.lead import MediaInteraction, ProcessingStatus
 from src.services.transcription import transcribe_audio
-from src.services.ai_engine import ai_engine
+from src.services import ai_engine 
+
+# --- CONFIGURATION ---
+# Fix: Get DB URL directly from env to prevent ImportError
+DATABASE_URL = os.getenv("DATABASE_URL", "postgresql://user:pass@db:5432/leadflow")
+
+# SQLAlchemy fix for Postgres protocols
+if DATABASE_URL and DATABASE_URL.startswith("postgres://"):
+    DATABASE_URL = DATABASE_URL.replace("postgres://", "postgresql://", 1)
 
 # --- Database Setup for Worker ---
 # The worker needs its own synchronous DB engine
@@ -61,7 +65,11 @@ def process_jobs():
         if job.media_type == "AUDIO":
             try:
                 if not job.file_path or not os.path.exists(job.file_path):
-                    raise FileNotFoundError(f"Audio file missing at: {job.file_path}")
+                    # Try to fix path if relative
+                    if job.file_path and os.path.exists(os.path.join("/app", job.file_path)):
+                         job.file_path = os.path.join("/app", job.file_path)
+                    else:
+                         raise FileNotFoundError(f"Audio file missing at: {job.file_path}")
 
                 print(f"   --> Transcribing file: {job.file_path}")
                 # Using the imported Whisper service
@@ -88,7 +96,6 @@ def process_jobs():
             print(f"   --> Analyzing with Gemini...")
             
             # Fetch User Context (Business Type/City)
-            # Assuming MediaInteraction has a 'user_id' column
             context = get_user_context(db, job.user_id)
             
             # Call the AI Engine service
@@ -99,7 +106,6 @@ def process_jobs():
             )
             
             # Map the JSON result back to the Database
-            # Note: Ensure your MediaInteraction model has these columns
             job.ai_summary = ai_result.get("summary")
             job.suggested_reply = ai_result.get("suggested_reply")
             
@@ -109,7 +115,7 @@ def process_jobs():
             print("   ✅ AI Analysis complete.")
         
         else:
-            print("   ⚠️ No text content to analyze.")
+            print("   ⚠ No text content to analyze.")
             job.ai_summary = "No text detected."
 
         # --- STEP 3: Finalize ---

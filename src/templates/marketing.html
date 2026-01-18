@@ -1,38 +1,97 @@
 {% extends "base.html" %}
 
 {% block content %}
-    <header class="relative pt-10 pb-20 md:pt-20 md:pb-32 container mx-auto px-6 text-center max-w-5xl">
-        <div class="inline-flex items-center gap-2 px-4 py-2 rounded-full bg-blue-500/10 border border-blue-500/20 text-blue-400 text-sm font-bold mb-8 animate-fade-in-up">
-            <span class="w-2 h-2 rounded-full bg-blue-400 animate-pulse"></span>
-            הפלאפון של העבודה משתלט לך על החיים האישיים?
-        </div>
-
-        <h1 class="text-5xl md:text-7xl lg:text-8xl font-black font-display leading-[1.1] mb-8 tracking-tight">
-            תמלול פגישות וניהול לידים<br/>
-            <span class="text-transparent bg-clip-text bg-gradient-to-r from-blue-400 via-indigo-400 to-purple-400 drop-shadow-2xl">בפרטיות מוחלטת</span>
-        </h1>
+<section class="relative pt-20 pb-32 overflow-hidden">
+    <div class="container mx-auto px-4 text-center relative z-10">
         
-        <p class="text-lg md:text-2xl text-slate-400 mb-12 max-w-3xl mx-auto leading-relaxed font-light">
+        <h1 class="text-4xl md:text-6xl font-bold mb-6 leading-tight">
+            <span class="text-white">הפלאפון של העבודה</span>
+            <br />
+            <span class="text-transparent bg-clip-text bg-gradient-to-r from-blue-400 to-purple-500">
+                משתלט לך על החיים האישיים?
+            </span>
+        </h1>
+
+        <p class="text-xl text-gray-400 mb-10 max-w-2xl mx-auto">
+            תמלול פגישות וניהול לידים <span class="text-white font-bold">בפרטיות מוחלטת</span>.
+            <br>
             המערכת שתקשיב להודעות הקוליות במקומך, תבין מה הלקוח רוצה, ותנסח תשובה מדויקת תוך שניות.
         </p>
 
-        <div class="flex flex-col md:flex-row gap-5 justify-center items-center">
-            <div class="flex flex-col items-center w-full md:w-auto group">
-                <a href="/register" class="btn-shimmer animate-shimmer w-full md:w-auto relative px-10 py-5 rounded-2xl font-bold text-lg text-white shadow-[0_10px_40px_-10px_rgba(37,99,235,0.5)] hover:shadow-[0_20px_60px_-15px_rgba(37,99,235,0.6)] hover:-translate-y-1 transition-all duration-300 border border-blue-400/30">
-                    אני רוצה לנסות בחינם
-                    <i class="fas fa-arrow-left mr-2 transition-transform group-hover:-translate-x-1"></i>
-                </a>
-                <span class="text-xs text-slate-500 mt-2">ללא צורך בכרטיס אשראי</span>
-            </div>
-        </div>
-    </header>
-
-    <div class="border-y border-white/5 bg-slate-900/50 backdrop-blur-sm py-12 relative z-10">
-        <div class="flex flex-wrap justify-center items-center gap-8 md:gap-16 grayscale opacity-70 hover:grayscale-0 hover:opacity-100 transition duration-500">
-            <i class="fab fa-aws text-4xl md:text-5xl text-slate-400 hover:text-[#FF9900]"></i>
-            <i class="fab fa-google text-4xl md:text-5xl text-slate-400 hover:text-[#EA4335]"></i>
-            <i class="fab fa-whatsapp text-4xl md:text-5xl text-slate-400 hover:text-[#25D366]"></i>
-            <i class="fas fa-shield-alt text-4xl md:text-5xl text-slate-400 hover:text-blue-500"></i>
+        <div class="flex justify-center gap-4">
+            <a href="/register" class="px-8 py-4 bg-blue-600 hover:bg-blue-700 text-white rounded-xl font-bold text-lg transition-all shadow-lg shadow-blue-500/30">
+                אני רוצה לנסות בחינם 🚀
+                <span class="block text-xs font-normal opacity-80 mt-1">ללא צורך בכרטיס אשראי</span>
+            </a>
         </div>
     </div>
+</section>
+
+<section class="py-20 bg-gray-800/50">
+    <div class="container mx-auto px-4">
+        <div class="grid md:grid-cols-3 gap-8 text-center">
+            <div class="p-6 bg-gray-900 rounded-2xl border border-gray-700">
+                <div class="text-4xl mb-4">🔒</div>
+                <h3 class="text-xl font-bold text-white mb-2">פרטיות מוחלטת</h3>
+                <p class="text-gray-400">המידע שלך לא משמש לאימון מודלים חיצוניים.</p>
+            </div>
+            <div class="p-6 bg-gray-900 rounded-2xl border border-gray-700">
+                <div class="text-4xl mb-4">🎙️</div>
+                <h3 class="text-xl font-bold text-white mb-2">תמלול וניתוח</h3>
+                <p class="text-gray-400">הופך הודעות קוליות לטקסט ולמשימות ברורות.</p>
+            </div>
+            <div class="p-6 bg-gray-900 rounded-2xl border border-gray-700">
+                <div class="text-4xl mb-4">⚡</div>
+                <h3 class="text-xl font-bold text-white mb-2">תגובה בשניות</h3>
+                <p class="text-gray-400">מנסח תשובות חכמות שחוסכות לך זמן יקר.</p>
+            </div>
+        </div>
+    </div>
+</section>
+
+<section id="pricing" class="py-20">
+    <div class="container mx-auto px-4">
+        <h2 class="text-3xl font-bold text-center text-white mb-12">חבילות ומחירים</h2>
+        
+        <div class="grid md:grid-cols-3 gap-8 max-w-5xl mx-auto">
+            <div class="bg-gray-900 border border-gray-700 rounded-2xl p-8 hover:border-blue-500 transition-colors">
+                <h3 class="text-xl font-bold text-white mb-2">Start</h3>
+                <div class="text-3xl font-bold text-blue-400 mb-4">0 ₪</div>
+                <p class="text-gray-400 text-sm mb-6">למתחילים שרוצים לבדוק את המערכת.</p>
+                <ul class="space-y-3 text-gray-300 mb-8">
+                    <li>✅ עד 20 לידים בחודש</li>
+                    <li>✅ תמלול הודעות קוליות</li>
+                    <li>✅ ניסוח תשובות בסיסי</li>
+                </ul>
+                <a href="/register" class="block w-full py-3 border border-blue-600 text-blue-400 hover:bg-blue-600 hover:text-white text-center rounded-lg transition-all">התחל חינם</a>
+            </div>
+
+            <div class="bg-gray-800 border-2 border-blue-600 rounded-2xl p-8 relative transform scale-105 shadow-2xl shadow-blue-900/20">
+                <div class="absolute top-0 right-0 bg-blue-600 text-white text-xs px-3 py-1 rounded-bl-lg rounded-tr-lg">מומלץ</div>
+                <h3 class="text-xl font-bold text-white mb-2">Pro</h3>
+                <div class="text-3xl font-bold text-white mb-4">99 ₪ <span class="text-sm font-normal text-gray-400">/חודש</span></div>
+                <p class="text-gray-400 text-sm mb-6">לבעלי עסקים שרוצים אוטומציה מלאה.</p>
+                <ul class="space-y-3 text-gray-300 mb-8">
+                    <li>✅ לידים ללא הגבלה</li>
+                    <li>✅ תמלול ללא הגבלה</li>
+                    <li>✅ התאמה אישית של הבוט</li>
+                    <li>✅ תמיכה בוואטסאפ</li>
+                </ul>
+                <a href="/register" class="block w-full py-3 bg-blue-600 text-white hover:bg-blue-700 text-center rounded-lg transition-all font-bold">נסה 14 יום חינם</a>
+            </div>
+
+            <div class="bg-gray-900 border border-gray-700 rounded-2xl p-8 hover:border-purple-500 transition-colors">
+                <h3 class="text-xl font-bold text-white mb-2">Business</h3>
+                <div class="text-3xl font-bold text-purple-400 mb-4">צור קשר</div>
+                <p class="text-gray-400 text-sm mb-6">לחברות וארגונים.</p>
+                <ul class="space-y-3 text-gray-300 mb-8">
+                    <li>✅ התממשקות ל-CRM</li>
+                    <li>✅ דאשבורד מנהלים</li>
+                    <li>✅ API פרטי</li>
+                </ul>
+                <a href="/contact" class="block w-full py-3 border border-gray-600 text-gray-300 hover:bg-gray-700 text-center rounded-lg transition-all">דבר איתנו</a>
+            </div>
+        </div>
+    </div>
+</section>
 {% endblock %}
