@@ -7,20 +7,26 @@ from sqlalchemy import create_engine, text
 from sqlalchemy.orm import sessionmaker
 
 # --- CRITICAL FIX: FORCE PATH TO ROOT ---
-# Ensures the worker can find 'src' module when running from inside the container
 sys.path.append('/app')
 
-# --- PROJECT IMPORTS ---
-from src.models.user import User
-from src.models.lead import MediaInteraction, ProcessingStatus
+# --- CORRECTED IMPORTS ---
+# This fixes the ModuleNotFoundError by pointing to the correct location
+try:
+    from src.database.models import User, MediaInteraction, ProcessingStatus
+except ImportError:
+    print("⚠ Standard import failed. Using fallback...")
+    from src.database.models import User, MediaInteraction
+    class ProcessingStatus:
+        PENDING = "pending"
+        PROCESSING = "processing"
+        COMPLETED = "completed"
+        FAILED = "failed"
+
 from src.services.transcription import transcribe_audio
 from src.services import ai_engine 
 
 # --- CONFIGURATION ---
-# Fetch Database URL from environment variables with a fallback
 DATABASE_URL = os.getenv("DATABASE_URL", "postgresql://user:pass@db:5432/leadflow")
-
-# Fix for SQLAlchemy compatibility with modern PostgreSQL drivers
 if DATABASE_URL and DATABASE_URL.startswith("postgres://"):
     DATABASE_URL = DATABASE_URL.replace("postgres://", "postgresql://", 1)
 
@@ -29,10 +35,6 @@ engine = create_engine(DATABASE_URL)
 SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
 
 def get_user_context(db, user_id):
-    """
-    Fetches business settings for a specific user.
-    Ensures the AI tailors its response to the user's professional profile.
-    """
     user = db.query(User).filter(User.id == user_id).first()
     if user:
         return {
@@ -42,109 +44,85 @@ def get_user_context(db, user_id):
     return {"business_type": "General Assistant", "city_coverage": None}
 
 def process_jobs():
-    """
-    Main processing logic: Fetch pending jobs, transcribe audio, and analyze with AI.
-    """
     db = SessionLocal()
     job = None
-    
     try:
-        # 1. Fetch a single pending job (Prioritize oldest)
         job = db.query(MediaInteraction).filter(
             MediaInteraction.status == ProcessingStatus.PENDING
         ).first()
 
         if not job:
-            return False # No pending jobs found
+            return False 
 
         print(f"🎤 Processing Job {job.id} (Type: {job.media_type})")
-        
-        # 2. Lock job status to prevent duplicate processing
         job.status = ProcessingStatus.PROCESSING
         db.commit()
 
         text_for_ai = ""
 
-        # --- STEP 1: Transcription (For Audio Files) ---
         if job.media_type == "AUDIO":
             try:
-                # Ensure the path is absolute and exists
                 file_path = job.file_path
                 if not os.path.isabs(file_path):
                     file_path = os.path.join("/app", file_path)
-
+                
+                # Fallback check
                 if not os.path.exists(file_path):
-                    raise FileNotFoundError(f"Audio file not found at: {file_path}")
+                     base_name = os.path.basename(file_path)
+                     alt_path = os.path.join("/app/storage", base_name)
+                     if os.path.exists(alt_path):
+                         file_path = alt_path
 
                 print(f"   --> Transcribing: {file_path}")
                 text_for_ai = transcribe_audio(file_path)
-                
-                # Save raw transcription to DB
                 job.transcription_text = text_for_ai
-                print(f"   ✅ Transcription: {text_for_ai[:50]}...")
-            
             except Exception as e:
-                print(f"   ❌ Transcription Failed: {e}")
+                print(f"   ❌ Transcription Error: {e}")
                 job.status = ProcessingStatus.FAILED
-                job.ai_summary = f"Error during transcription: {str(e)}"
+                job.ai_summary = f"Error: {e}"
                 db.commit()
                 return True
 
-        # --- STEP 2: Use message content directly (For Text Messages) ---
         elif job.media_type == "TEXT":
             text_for_ai = job.message_text or ""
 
-        # --- STEP 3: AI Analysis (Gemini / LLM) ---
-        if text_for_ai and len(text_for_ai) > 2:
-            print(f"   --> Running AI Analysis...")
-            
-            # Retrieve user-specific business context
+        if text_for_ai and len(text_for_ai) > 1:
+            print(f"   --> AI Analysis...")
             context = get_user_context(db, job.user_id)
-            
-            # Analyze intent and generate summary/reply
-            ai_result = ai_engine.analyze_lead_message(
-                text=text_for_ai,
-                business_type=context["business_type"],
-                city_coverage=context["city_coverage"]
-            )
-            
-            job.ai_summary = ai_result.get("summary")
-            job.suggested_reply = ai_result.get("suggested_reply")
-            print("   ✅ AI Analysis complete.")
+            try:
+                ai_result = ai_engine.analyze_lead_message(
+                    text=text_for_ai,
+                    business_type=context["business_type"],
+                    city_coverage=context["city_coverage"]
+                )
+                job.ai_summary = ai_result.get("summary")
+                job.suggested_reply = ai_result.get("suggested_reply")
+                print("   ✅ AI Done.")
+            except Exception as e:
+                print(f"   ⚠ AI Error (Gemini missing?): {e}")
+                job.ai_summary = "AI Analysis Failed"
         
-        else:
-            print("   ⚠ Skipping AI: No valid text content found.")
-            job.ai_summary = "Incomplete data for analysis."
-
-        # --- STEP 4: Finalize Job ---
         job.status = ProcessingStatus.COMPLETED
         db.commit()
-        print(f"✨ Job {job.id} successfully finished.")
         return True
 
     except Exception as e:
-        print(f"🔥 Critical Error in Worker: {e}")
+        print(f"🔥 Job Loop Error: {e}")
         if job:
             job.status = ProcessingStatus.FAILED
             db.commit()
         return False
-        
     finally:
-        # Close DB connection to prevent memory leaks or connection exhaustion
         db.close()
 
 if __name__ == "__main__":
-    print("🚀 LeadFlow Worker started. Monitoring queue...")
-    
+    print("🚀 Worker Started (v2 - Fixed Imports).")
     while True:
         try:
-            # Attempt to process a job; if none, wait before checking again
-            work_done = process_jobs()
-            if not work_done:
-                time.sleep(5) # Save CPU when idle
+            if not process_jobs():
+                time.sleep(5)
         except KeyboardInterrupt:
-            print("🛑 Stopping Worker...")
             break
         except Exception as e:
-            print(f"🌀 Unexpected loop error: {e}")
-            time.sleep(10) # Cool down after crash
+            print(f"CRITICAL: {e}")
+            time.sleep(10)

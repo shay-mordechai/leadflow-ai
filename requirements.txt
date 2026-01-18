@@ -30,4 +30,4 @@ google-genai
 bleach
 cryptography
 passlib[bcrypt]
-slowapi
+slowapigoogle-generativeai
