@@ -16,7 +16,24 @@
 </head>
 <body class="text-slate-800 pb-24 bg-slate-50">
 
-    <header class="glass-header border-b border-slate-200 sticky top-0 z-50">
+    {% if user.plan_tier == "STARTER" %}
+    <div class="bg-gradient-to-r from-indigo-600 to-blue-500 text-white px-4 py-3 shadow-lg relative z-40">
+        <div class="container mx-auto flex flex-col md:flex-row items-center justify-between gap-3">
+            <div class="flex items-center gap-3">
+                <span class="bg-white/20 p-1.5 rounded-lg"><i class="fas fa-crown text-yellow-300"></i></span>
+                <div>
+                    <p class="text-sm font-bold">אתה משתמש בחבילת ההתחלה (חינם)</p>
+                    <p class="text-xs text-blue-100">שדרג ל-Pro כדי לקבל לידים ללא הגבלה ותשובות AI חכמות.</p>
+                </div>
+            </div>
+            <a href="/api/v1/payments/checkout/pro" class="whitespace-nowrap bg-white text-blue-600 px-5 py-2 rounded-full font-bold text-xs hover:bg-blue-50 transition shadow-sm">
+                שדרג ל-Pro ב-99₪ <i class="fas fa-arrow-left mr-1"></i>
+            </a>
+        </div>
+    </div>
+    {% endif %}
+
+    <header class="glass-header border-b border-slate-200 sticky top-0 z-30">
         <div class="container mx-auto px-4 h-16 flex justify-between items-center">
             <div class="flex items-center gap-3">
                 <a href="/" class="w-8 h-8 bg-slate-900 rounded-lg flex items-center justify-center text-white shadow-lg">
@@ -26,7 +43,17 @@
             </div>
             
             <div class="flex items-center gap-3">
-                <span class="text-sm font-bold text-slate-600 hidden md:block">{{ user.full_name }}</span>
+                {% if user.plan_tier == "PRO" %}
+                <span class="bg-emerald-100 text-emerald-700 text-[10px] font-bold px-2 py-1 rounded-full border border-emerald-200">
+                    PRO
+                </span>
+                {% else %}
+                <span class="bg-slate-100 text-slate-500 text-[10px] font-bold px-2 py-1 rounded-full border border-slate-200">
+                    FREE
+                </span>
+                {% endif %}
+
+                <span class="text-sm font-bold text-slate-600 hidden md:block">{{ user.name }}</span>
                 <a href="/logout" class="w-8 h-8 rounded-full bg-slate-100 flex items-center justify-center text-slate-500 hover:bg-red-50 hover:text-red-500 transition">
                     <i class="fas fa-power-off text-xs"></i>
                 </a>
@@ -35,6 +62,8 @@
     </header>
 
     <section class="container mx-auto px-4 py-6">
+        <div id="paymentAlert" class="hidden mb-4 p-4 rounded-xl text-sm font-bold shadow-sm"></div>
+
         <div class="grid grid-cols-3 gap-3">
             <div class="bg-white p-4 rounded-2xl shadow-sm border border-slate-100 text-center">
                 <p class="text-[10px] text-slate-400 uppercase font-bold tracking-wider mb-1">סה״כ לידים</p>
@@ -81,7 +110,8 @@
                     {% else %}bg-slate-300{% endif %}">
                 </div>
 
-                <div class="pl-4"> <div class="flex justify-between items-start mb-2">
+                <div class="pl-4"> 
+                    <div class="flex justify-between items-start mb-2">
                         <div>
                             <h3 class="font-bold text-lg text-slate-900 leading-none group-hover:text-blue-600 transition">
                                 {{ lead.name or 'מספר לא מזוהה' }}
@@ -142,6 +172,23 @@
     </main>
 
     <script>
+        // Check URL for payment status
+        const urlParams = new URLSearchParams(window.location.search);
+        const paymentStatus = urlParams.get('payment');
+        const alertBox = document.getElementById('paymentAlert');
+
+        if (paymentStatus === 'success') {
+            alertBox.classList.remove('hidden');
+            alertBox.classList.add('bg-emerald-100', 'text-emerald-800', 'border', 'border-emerald-200');
+            alertBox.innerHTML = '🎉 תודה! החשבון שודרג בהצלחה ל-PRO.';
+            // Remove param from URL clean
+            window.history.replaceState({}, document.title, "/dashboard");
+        } else if (paymentStatus === 'cancel') {
+            alertBox.classList.remove('hidden');
+            alertBox.classList.add('bg-red-100', 'text-red-800', 'border', 'border-red-200');
+            alertBox.innerHTML = 'התשלום בוטל.';
+        }
+
         // Auto-refresh every 60 seconds
         setTimeout(function() {
             window.location.reload();

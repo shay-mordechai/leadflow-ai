@@ -24,10 +24,15 @@ requests
 # --- AI & Processing ---
 faster-whisper
 openai
-google-genai
+google-generativeai
 
 # --- Security & Auth ---
 bleach
 cryptography
 passlib[bcrypt]
-slowapigoogle-generativeai
+slowapi
+
+# --- Telephony Providers ---
+twilio
+telnyx
+vonage
