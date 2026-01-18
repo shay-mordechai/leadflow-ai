@@ -18,9 +18,12 @@
         <div class="bg-slate-50 p-8 text-center border-b border-slate-100">
             <h1 class="text-2xl font-black text-slate-800 mb-1">יצירת חשבון חדש</h1>
             <p class="text-slate-500 text-sm">הפרד בין העסק לחיים האישיים</p>
+            <p id="planDisplay" class="text-blue-600 text-xs font-bold mt-2"></p>
         </div>
 
         <form id="registerForm" class="space-y-5 p-8 max-h-[70vh] overflow-y-auto custom-scrollbar">
+            
+            <input type="hidden" name="plan" id="planInput" value="start">
 
             <div>
                 <label class="block text-xs font-bold text-slate-500 mb-1.5 uppercase">שם מלא</label>
@@ -99,6 +102,24 @@
     </div>
 
     <script>
+        // --- 1. CAPTURE PLAN FROM URL ---
+        window.onload = function() {
+            const urlParams = new URLSearchParams(window.location.search);
+            // Default to 'start' if no plan is specified
+            const selectedPlan = urlParams.get('plan') || 'start'; 
+            
+            // Set the hidden input value
+            document.getElementById('planInput').value = selectedPlan;
+            
+            // Optional: Update UI to show selection
+            const planDisplay = document.getElementById('planDisplay');
+            if(selectedPlan === 'pro') {
+                planDisplay.innerText = 'בחירה מצוינת: חבילת Pro';
+            } else if (selectedPlan === 'start') {
+                 planDisplay.innerText = 'נרשם לחבילת Start (חינם)';
+            }
+        };
+
         function toggleOtherField() {
             const isOther = document.getElementById('business_type').value === 'Other';
             const otherInput = document.getElementById('other_business_type');
@@ -131,10 +152,10 @@
             btn.disabled = true;
 
             const formData = new FormData(e.target);
-            // Convert to JSON object matching the Pydantic schema
             const payload = {};
             formData.forEach((value, key) => payload[key] = value);
-            // Fix boolean check
+            
+            // Explicitly handle boolean for needs_new_number
             payload.needs_new_number = checkbox.checked;
 
             try {

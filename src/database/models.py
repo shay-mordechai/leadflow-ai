@@ -7,7 +7,9 @@ from sqlalchemy import (
 )
 from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import declarative_base, relationship
-from src.security.encryption import protector
+
+# Ensure you have this module, otherwise comment out encryption lines
+from src.security.encryption import protector 
 
 Base = declarative_base()
 
@@ -39,6 +41,7 @@ class MediaType(str, enum.Enum):
     AUDIO = "AUDIO"
     IMAGE = "IMAGE"
     VIDEO = "VIDEO"
+    TEXT = "TEXT" # Added TEXT to prevent crashes with text messages
 
 class ProcessingStatus(str, enum.Enum):
     PENDING = "PENDING"
@@ -50,22 +53,29 @@ class ProcessingStatus(str, enum.Enum):
 
 class User(Base):
     __tablename__ = "users"
+    
     id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
     name = Column(String, nullable=False)
     email = Column(String, unique=True, index=True, nullable=False)
     hashed_password = Column(String, nullable=False)
     
+    # Billing & Plan Info
     plan_tier = Column(Enum(PlanTier), default=PlanTier.STARTER, nullable=False)
     subscription_status = Column(Enum(SubscriptionStatus), default=SubscriptionStatus.TRIAL, nullable=False)
-    is_active = Column(Boolean, default=True)
     
-    # Fixed duplicate created_at
+    is_active = Column(Boolean, default=True)
     created_at = Column(DateTime(timezone=True), server_default=func.now())
     last_login_ip = Column(String, nullable=True)
 
+    # Business Info
+    business_type = Column(String, nullable=True) # Added based on registration form
     assigned_phone_number = Column(String, unique=True, index=True, nullable=True)
+    personal_whatsapp = Column(String, nullable=True) # Added based on registration form
+    
+    # AI Settings
     openai_api_key = Column(String, nullable=True)
 
+    # Relationships
     leads = relationship("Lead", back_populates="user", cascade="all, delete-orphan")
     media_files = relationship("MediaInteraction", back_populates="user", cascade="all, delete-orphan")
     integrations = relationship("Integration", back_populates="user", cascade="all, delete-orphan")
@@ -73,31 +83,42 @@ class User(Base):
 
 class BusinessProfile(Base):
     __tablename__ = "business_profiles"
+    
     id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
     user_id = Column(UUID(as_uuid=True), ForeignKey("users.id", ondelete="CASCADE"), unique=True, nullable=False)
+    
     business_name = Column(String, nullable=False, default="My Business")
     business_type = Column(String, default="General")
     ai_tone = Column(String, default="Professional")
     products_services = Column(Text, nullable=True)
     custom_instructions = Column(Text, nullable=True)
+    
     created_at = Column(DateTime(timezone=True), server_default=func.now())
     updated_at = Column(DateTime(timezone=True), onupdate=func.now())
+    
     user = relationship("User", back_populates="business_profile")
 
 class Lead(Base):
     __tablename__ = "leads"
+    
     id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
     user_id = Column(UUID(as_uuid=True), ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True)
+    
+    # Encrypted Fields
     _name_encrypted = Column("name", String, nullable=True)
     _phone_encrypted = Column("phone_number", String, nullable=True)
+    
     email = Column(String, nullable=True)
     city = Column(String, nullable=True)
     source = Column(Enum(LeadSource), default=LeadSource.MANUAL, nullable=False)
     status = Column(Enum(LeadStatus), default=LeadStatus.NEW, nullable=False, index=True)
+    
+    # AI Analysis Data
     transcription_summary = Column(Text, nullable=True)
     original_transcript = Column(Text, nullable=True)
     coach_feedback = Column(Text, nullable=True)
     suggested_reply = Column(Text, nullable=True)
+    
     needs_followup = Column(Boolean, default=False)
     followup_date = Column(DateTime, nullable=True)
     created_at = Column(DateTime(timezone=True), server_default=func.now(), index=True)
@@ -105,12 +126,14 @@ class Lead(Base):
     user = relationship("User", back_populates="leads")
     media_files = relationship("MediaInteraction", back_populates="lead")
 
+    # Property getters/setters for encryption
     @property
     def name(self):
         return protector.decrypt(self._name_encrypted) if self._name_encrypted else None
     @name.setter
     def name(self, value):
         self._name_encrypted = protector.encrypt(value) if value else None
+    
     @property
     def phone_number(self):
         return protector.decrypt(self._phone_encrypted) if self._phone_encrypted else None
@@ -120,28 +143,37 @@ class Lead(Base):
 
 class MediaInteraction(Base):
     __tablename__ = "media_interactions"
+    
     id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
     user_id = Column(UUID(as_uuid=True), ForeignKey("users.id", ondelete="CASCADE"), nullable=False)
     lead_id = Column(UUID(as_uuid=True), ForeignKey("leads.id", ondelete="SET NULL"), nullable=True)
     
     file_path = Column(String, nullable=False)
+    message_text = Column(Text, nullable=True) # For text messages
     media_type = Column(Enum(MediaType), default=MediaType.AUDIO, nullable=False)
     
     # Worker Logic Fields
-    processed = Column(Boolean, default=False) # Legacy flag, kept for safety
+    processed = Column(Boolean, default=False) 
     status = Column(Enum(ProcessingStatus), default=ProcessingStatus.PENDING, index=True)
     transcription_text = Column(Text, nullable=True)
+    ai_summary = Column(Text, nullable=True)       # Added for worker compatibility
+    suggested_reply = Column(Text, nullable=True)  # Added for worker compatibility
     
     created_at = Column(DateTime(timezone=True), server_default=func.now(), index=True)
+    
     user = relationship("User", back_populates="media_files")
     lead = relationship("Lead", back_populates="media_files")
 
 class Integration(Base):
     __tablename__ = "integrations"
+    
     id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
     user_id = Column(UUID(as_uuid=True), ForeignKey("users.id", ondelete="CASCADE"), nullable=False)
+    
     platform_name = Column(String, nullable=False)
     access_token = Column(String, nullable=False)
     webhook_url = Column(String, nullable=True)
+    
     created_at = Column(DateTime(timezone=True), server_default=func.now())
+    
     user = relationship("User", back_populates="integrations")
