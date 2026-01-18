@@ -1,28 +1,34 @@
+import sys
 import os
+
+# --- CRITICAL FIX: FORCE PATH TO ROOT ---
+# This line tells Python to look for modules in the main /app folder
+sys.path.append('/app')
+
 import time
 import json
 import logging
 from sqlalchemy import create_engine, text
 from sqlalchemy.orm import sessionmaker
 
-# --- IMPORTS (Crucial for Worker Logic) ---
+# --- IMPORTS ---
+# Now these will work because we added /app to system path
 from src.models.user import User
 from src.models.lead import MediaInteraction, ProcessingStatus
 from src.services.transcription import transcribe_audio
 from src.services import ai_engine 
 
 # --- CONFIGURATION ---
-# Fix: Get DB URL directly from env to prevent ImportError
 DATABASE_URL = os.getenv("DATABASE_URL", "postgresql://user:pass@db:5432/leadflow")
 
-# SQLAlchemy fix for Postgres protocols
 if DATABASE_URL and DATABASE_URL.startswith("postgres://"):
     DATABASE_URL = DATABASE_URL.replace("postgres://", "postgresql://", 1)
 
-# --- Database Setup for Worker ---
-# The worker needs its own synchronous DB engine
+# --- Database Setup ---
 engine = create_engine(DATABASE_URL)
 SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
+
+print("🚀 Worker Coordinator started. Waiting for jobs...")
 
 print("🚀 Worker Coordinator started. Waiting for jobs...")
 

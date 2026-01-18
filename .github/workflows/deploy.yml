@@ -5,10 +5,8 @@ on:
     branches: [ main ]
 
 env:
-  # GitHub Container Registry Configuration
   REGISTRY: ghcr.io
-  # TODO: Ensure this matches your GitHub username/repo (lowercase)
-  IMAGE_NAME: shay-mordechai/leadflow-ai 
+  IMAGE_NAME: shay-mordechai/leadflow-ai
 
 jobs:
   # JOB 1: Build Docker Image & Push to Registry
@@ -35,7 +33,7 @@ jobs:
           push: true
           tags: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:latest
 
-  # JOB 2: Connect to EC2 & Restart Services
+  # JOB 2: Connect to EC2 & Restart Services (Podman Version)
   deploy:
     needs: build-and-push
     runs-on: ubuntu-latest
@@ -48,24 +46,47 @@ jobs:
           username: ec2-user
           key: ${{ secrets.EC2_SSH_KEY }}
           script: |
-            # 1. Login to GitHub Registry on the server
-            # This allows the server to pull private images
-            echo ${{ secrets.GITHUB_TOKEN }} | sudo docker login ghcr.io -u ${{ github.actor }} --password-stdin
+            # 1. Login to GitHub Registry (using Podman)
+            echo ${{ secrets.GITHUB_TOKEN }} | podman login ghcr.io -u ${{ github.actor }} --password-stdin
 
-            # 2. Navigate to project directory
-            cd leadflow-ai
-
-            # 3. Pull latest git changes (to update docker-compose.yaml if needed)
+            # 2. Navigate to project directory and pull git changes
+            cd ~/leadflow-ai
             git pull origin main
 
-            # 4. Pull the NEW Docker image we just built
-            sudo docker-compose pull
+            # 3. Pull the NEW Image
+            podman pull ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:latest
 
-            # 5. Restart containers using the new image
-            # 'up -d' recreates containers only if the image changed
-            sudo docker-compose up -d
+            # 4. Restart APP (Website)
+            # --replace automatically removes the old container
+            podman run --name leadflow_app \
+              --replace \
+              --pod leadflow-pod \
+              --env-file .env \
+              -v ./storage:/app/storage:Z \
+              -d ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:latest \
+              gunicorn src.main:app --workers 2 --worker-class uvicorn.workers.UvicornWorker --bind 0.0.0.0:8000
 
-            # 6. Cleanup: Remove unused images to save disk space
-            sudo docker system prune -f
+            # 5. Restart WORKER (Transcription & AI) - CRITICAL FIX INCLUDED
+            podman run --name leadflow_worker \
+              --replace \
+              --pod leadflow-pod \
+              --env-file .env \
+              --workdir /app \
+              -v ./storage:/app/storage:Z \
+              -d ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:latest \
+              python -m src.worker
+
+            # 6. Ensure Cloudflared is running (Just in case)
+            # We use the token from the .env file
+            source .env
+            podman run --name cloudflared \
+              --replace \
+              --pod leadflow-pod \
+              --env-file .env \
+              -d docker.io/cloudflare/cloudflared:latest \
+              tunnel --no-autoupdate run --token $CLOUDFLARE_TOKEN
+
+            # 7. Cleanup old images
+            podman image prune -f
             
-            echo "✅ Deployment Successful! System is live."
+            echo "✅ Deployment Successful! App and Worker are running properly."
