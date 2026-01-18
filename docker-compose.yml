@@ -30,10 +30,13 @@ services:
   worker:
     image: ghcr.io/shay-mordechai/leadflow-ai:latest
     container_name: leadflow_worker
-    # --- התיקון הקריטי כאן ---
-    # מריץ את הוורקר כמודול, מה שפותר את כל בעיות האימפורט
+    # --- CRITICAL CONFIGURATION ---
+    # Running as a module (-m) fixes relative import issues
     command: python -m src.worker
     working_dir: /app
+    environment:
+      # Ensures Python recognizes /app as the root package directory
+      - PYTHONPATH=/app
     volumes:
       - ./storage:/app/storage
     env_file: .env

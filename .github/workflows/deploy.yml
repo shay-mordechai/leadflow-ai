@@ -5,8 +5,10 @@ on:
     branches: [ main ]
 
 env:
+  # GitHub Container Registry Configuration
   REGISTRY: ghcr.io
-  IMAGE_NAME: shay-mordechai/leadflow-ai
+  # Ensure this matches your GitHub username/repo (lowercase)
+  IMAGE_NAME: shay-mordechai/leadflow-ai 
 
 jobs:
   # JOB 1: Build Docker Image & Push to Registry
@@ -46,18 +48,20 @@ jobs:
           username: ec2-user
           key: ${{ secrets.EC2_SSH_KEY }}
           script: |
-            # 1. Login to GitHub Registry (using Podman)
+            # 1. Login to GitHub Registry on the server
             echo ${{ secrets.GITHUB_TOKEN }} | podman login ghcr.io -u ${{ github.actor }} --password-stdin
 
-            # 2. Navigate to project directory and pull git changes
+            # 2. Navigate to project directory
             cd ~/leadflow-ai
+
+            # 3. Pull latest git changes (to ensure scripts are up to date)
             git pull origin main
 
-            # 3. Pull the NEW Image
+            # 4. Pull the NEW Docker image
             podman pull ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:latest
 
-            # 4. Restart APP (Website)
-            # --replace automatically removes the old container
+            # 5. Restart APP (Website)
+            # --replace automatically removes the old container if it exists
             podman run --name leadflow_app \
               --replace \
               --pod leadflow-pod \
@@ -66,18 +70,20 @@ jobs:
               -d ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:latest \
               gunicorn src.main:app --workers 2 --worker-class uvicorn.workers.UvicornWorker --bind 0.0.0.0:8000
 
-            # 5. Restart WORKER (Transcription & AI) - CRITICAL FIX INCLUDED
+            # 6. Restart WORKER (Transcription & AI)
+            # We add PYTHONPATH=/app to ensure Python finds the 'src' module correctly
             podman run --name leadflow_worker \
               --replace \
               --pod leadflow-pod \
               --env-file .env \
+              -e PYTHONPATH=/app \
               --workdir /app \
               -v ./storage:/app/storage:Z \
               -d ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:latest \
               python -m src.worker
 
-            # 6. Ensure Cloudflared is running (Just in case)
-            # We use the token from the .env file
+            # 7. Ensure Cloudflared is running
+            # We source .env to get the CLOUDFLARE_TOKEN variable
             source .env
             podman run --name cloudflared \
               --replace \
@@ -86,7 +92,7 @@ jobs:
               -d docker.io/cloudflare/cloudflared:latest \
               tunnel --no-autoupdate run --token $CLOUDFLARE_TOKEN
 
-            # 7. Cleanup old images
+            # 8. Cleanup: Remove unused images to save disk space
             podman image prune -f
             
-            echo "✅ Deployment Successful! App and Worker are running properly."
+            echo "✅ Deployment Successful! System is live."
