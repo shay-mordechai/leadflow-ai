@@ -1,0 +1,121 @@
+<!DOCTYPE html>
+<html lang="he" dir="rtl">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <meta name="theme-color" content="#0f172a">
+    <meta name="description" content="My-Leads - מערכת AI לניהול לידים ותמלול פגישות מאובטח באוטומט.">
+
+    <title>{% block title %}My-Leads | אוטומציה חכמה{% endblock %}</title>
+
+    <link rel="manifest" href="/static/manifest.json">
+    <link rel="apple-touch-icon" href="https://img.icons8.com/color/192/artificial-intelligence.png">
+    <link rel="icon" type="image/png" href="https://img.icons8.com/color/32/artificial-intelligence.png">
+
+    <script src="https://cdn.tailwindcss.com"></script>
+
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css" rel="stylesheet">
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Assistant:wght@300;400;600;800&family=Heebo:wght@300;400;500;700;900&display=swap" rel="stylesheet">
+
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    fontFamily: {
+                        sans: ['Heebo', 'sans-serif'],
+                        display: ['Assistant', 'sans-serif'],
+                    },
+                    animation: {
+                        'blob': 'blob 7s infinite',
+                        'shimmer': 'shimmer 2.5s linear infinite',
+                        'fade-in-up': 'fadeInUp 0.8s ease-out',
+                    },
+                    keyframes: {
+                        blob: {
+                            '0%': { transform: 'translate(0px, 0px) scale(1)' },
+                            '33%': { transform: 'translate(30px, -50px) scale(1.1)' },
+                            '66%': { transform: 'translate(-20px, 20px) scale(0.9)' },
+                            '100%': { transform: 'translate(0px, 0px) scale(1)' },
+                        },
+                        shimmer: {
+                            '0%': { backgroundPosition: '-1000px 0' },
+                            '100%': { backgroundPosition: '1000px 0' }
+                        },
+                        fadeInUp: {
+                            '0%': { opacity: '0', transform: 'translateY(20px)' },
+                            '100%': { opacity: '1', transform: 'translateY(0)' }
+                        }
+                    }
+                }
+            }
+        }
+    </script>
+
+    <style>
+        .glass-nav { background: rgba(15, 23, 42, 0.7); backdrop-filter: blur(12px); border-bottom: 1px solid rgba(255, 255, 255, 0.05); }
+        .glass-card { background: rgba(30, 41, 59, 0.4); backdrop-filter: blur(12px); border: 1px solid rgba(255, 255, 255, 0.05); }
+        html { scroll-behavior: smooth; }
+        .btn-shimmer { background: linear-gradient(to right, #2563eb 4%, #3b82f6 25%, #2563eb 36%); background-size: 1000px 100%; }
+        ::selection { background: #3b82f6; color: #fff; }
+    </style>
+</head>
+<body class="bg-slate-900 text-slate-50 overflow-x-hidden antialiased font-sans flex flex-col min-h-screen">
+
+    <div class="fixed inset-0 overflow-hidden pointer-events-none z-0">
+        <div class="absolute top-0 right-1/4 w-96 h-96 bg-blue-600/20 rounded-full blur-[100px] animate-blob"></div>
+        <div class="absolute bottom-0 left-1/4 w-96 h-96 bg-purple-600/10 rounded-full blur-[100px] animate-blob animation-delay-2000"></div>
+        <div class="absolute top-1/2 left-1/2 transform -translate-x-1/2 -translate-y-1/2 w-[500px] h-[500px] bg-indigo-600/10 rounded-full blur-[120px]"></div>
+    </div>
+
+    <nav class="fixed top-0 w-full z-50 glass-nav transition-all duration-300">
+        <div class="container mx-auto px-6 h-20 flex justify-between items-center">
+            <a href="/" class="text-2xl font-black tracking-tight flex items-center gap-3">
+                <div class="w-10 h-10 bg-gradient-to-br from-blue-600 to-indigo-600 rounded-xl flex items-center justify-center shadow-lg shadow-blue-500/30 border border-white/10">
+                    <i class="fas fa-bolt text-white text-base"></i>
+                </div>
+                <span class="font-display tracking-tight">My-Leads<span class="text-blue-500">AI</span></span>
+            </a>
+
+            <div class="flex items-center gap-6">
+                {% if user %}
+                    <span class="hidden md:block text-sm font-medium text-slate-300">
+                        שלום, {{ user.full_name }}
+                    </span>
+                    <a href="/dashboard" class="text-sm font-medium text-blue-400 hover:text-white transition">דשבורד</a>
+                    <a href="/logout" class="text-sm font-bold text-white bg-red-500/10 hover:bg-red-500/20 text-red-400 px-5 py-2.5 rounded-lg border border-red-500/10 transition backdrop-blur-sm">
+                        יציאה
+                    </a>
+                {% else %}
+                    <a href="/#privacy" class="hidden md:block text-sm font-medium text-slate-300 hover:text-white transition">פרטיות</a>
+                    <a href="/#pricing" class="hidden md:block text-sm font-medium text-slate-300 hover:text-white transition">מחירים</a>
+                    <a href="/login" class="text-sm font-bold text-white bg-white/5 hover:bg-white/10 px-5 py-2.5 rounded-lg border border-white/5 transition backdrop-blur-sm">
+                        התחברות
+                    </a>
+                {% endif %}
+            </div>
+        </div>
+    </nav>
+
+    <main class="relative z-10 flex-grow pt-24">
+        {% block content %}
+        {% endblock %}
+    </main>
+
+    <footer class="border-t border-white/5 bg-slate-900 pt-16 pb-8 text-center text-slate-600 relative z-10 mt-auto">
+        <div class="flex justify-center gap-6 mb-8">
+            <a href="#" class="hover:text-blue-500 transition"><i class="fab fa-facebook text-xl"></i></a>
+            <a href="#" class="hover:text-blue-500 transition"><i class="fab fa-instagram text-xl"></i></a>
+            <a href="#" class="hover:text-blue-500 transition"><i class="fab fa-linkedin text-xl"></i></a>
+        </div>
+        <div class="flex justify-center gap-4 text-xs mb-4">
+            <a href="/terms" class="hover:text-slate-300">תנאי שימוש</a>
+            <span class="text-slate-700">|</span>
+            <a href="/privacy" class="hover:text-slate-300">מדיניות פרטיות</a>
+        </div>
+        <p class="text-sm tracking-widest uppercase mb-4">My-Leads AI - הדיסקרטיות שלך, הטכנולוגיה שלנו.</p>
+        <p class="text-xs">&copy; 2026 כל הזכויות שמורות.</p>
+    </footer>
+</body>
+</html>

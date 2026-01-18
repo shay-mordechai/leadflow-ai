@@ -1,82 +1,142 @@
-# src/worker.py
 import time
 import os
 import sys
-from faster_whisper import WhisperModel
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
 
-# Add src to path to allow imports
+# --- Path Setup: Allow imports from the src directory ---
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-from src.database.models import MediaInteraction, ProcessingStatus
+# --- Imports ---
+from src.database.models import MediaInteraction, User, ProcessingStatus
 from src.database.session import DATABASE_URL
 
-# Setup separate DB connection for the worker
+# Import the services we created
+from src.services.transcription import transcribe_audio
+from src.services.ai_engine import ai_engine
+
+# --- Database Setup for Worker ---
+# The worker needs its own synchronous DB engine
 engine = create_engine(DATABASE_URL)
 SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
 
-MODEL_SIZE = "tiny" # Use "small" or "base" if RAM permits
-DEVICE = "cpu"
-COMPUTE_TYPE = "int8" # Crucial for low RAM usage
+print("🚀 Worker Coordinator started. Waiting for jobs...")
 
-print(f"🚀 Worker starting... Loading Whisper model ({MODEL_SIZE})...")
-model = WhisperModel(MODEL_SIZE, device=DEVICE, compute_type=COMPUTE_TYPE)
-print("✅ Model loaded. Waiting for jobs...")
+def get_user_context(db, user_id):
+    """
+    Fetches the business settings for the specific user.
+    This ensures the AI acts as a specific professional (e.g., "Real Estate Agent").
+    """
+    user = db.query(User).filter(User.id == user_id).first()
+    if user:
+        return {
+            "business_type": user.business_type or "General Business",
+            "city_coverage": user.city_coverage
+        }
+    return {"business_type": "General Assistant", "city_coverage": None}
 
 def process_jobs():
     db = SessionLocal()
+    job = None
+    
     try:
-        # Fetch one pending job
+        # 1. Fetch one pending job (Audio or Text)
         job = db.query(MediaInteraction).filter(
-            MediaInteraction.status == ProcessingStatus.PENDING,
-            MediaInteraction.media_type == "AUDIO"
+            MediaInteraction.status == ProcessingStatus.PENDING
         ).first()
 
         if not job:
             return False # No work found
 
-        print(f"🎤 Found job: {job.id}. Transcribing...")
+        print(f"🎤 Starting Job {job.id} (Type: {job.media_type})...")
         
-        # Lock job
+        # Lock the job
         job.status = ProcessingStatus.PROCESSING
         db.commit()
 
-        # Check file existence
-        if not os.path.exists(job.file_path):
-            print(f"❌ File not found: {job.file_path}")
-            job.status = ProcessingStatus.FAILED
-            job.transcription_text = "Error: File not found on server storage."
-            db.commit()
-            return True
+        # Variable to hold the text we will send to Gemini
+        text_for_ai = ""
 
-        # Transcribe
-        segments, _ = model.transcribe(job.file_path, beam_size=5)
-        text = " ".join([segment.text for segment in segments])
+        # --- STEP 1: Transcription (If Audio) ---
+        if job.media_type == "AUDIO":
+            try:
+                if not job.file_path or not os.path.exists(job.file_path):
+                    raise FileNotFoundError(f"Audio file missing at: {job.file_path}")
 
-        # Update DB
-        job.transcription_text = text.strip()
+                print(f"   --> Transcribing file: {job.file_path}")
+                # Using the imported Whisper service
+                text_for_ai = transcribe_audio(job.file_path)
+                
+                # Update DB with raw transcription
+                job.transcription_text = text_for_ai
+                print(f"   ✅ Transcription result: {text_for_ai[:50]}...")
+            
+            except Exception as e:
+                print(f"   ❌ Transcription Failed: {e}")
+                job.status = ProcessingStatus.FAILED
+                job.ai_summary = f"Transcription Error: {str(e)}"
+                db.commit()
+                return True
+
+        # If it was a text message (not audio), use the content directly
+        elif job.media_type == "TEXT":
+            text_for_ai = job.message_text or ""
+
+        # --- STEP 2: AI Analysis (Gemini) ---
+        # We only run AI if we have text (either from transcription or original message)
+        if text_for_ai and len(text_for_ai) > 2:
+            print(f"   --> Analyzing with Gemini...")
+            
+            # Fetch User Context (Business Type/City)
+            # Assuming MediaInteraction has a 'user_id' column
+            context = get_user_context(db, job.user_id)
+            
+            # Call the AI Engine service
+            ai_result = ai_engine.analyze_lead_message(
+                text=text_for_ai,
+                business_type=context["business_type"],
+                city_coverage=context["city_coverage"]
+            )
+            
+            # Map the JSON result back to the Database
+            # Note: Ensure your MediaInteraction model has these columns
+            job.ai_summary = ai_result.get("summary")
+            job.suggested_reply = ai_result.get("suggested_reply")
+            
+            # Optional: If you have columns for score/intent, save them too
+            # job.intent_score = ai_result.get("intent_score")
+            
+            print("   ✅ AI Analysis complete.")
+        
+        else:
+            print("   ⚠️ No text content to analyze.")
+            job.ai_summary = "No text detected."
+
+        # --- STEP 3: Finalize ---
         job.status = ProcessingStatus.COMPLETED
         db.commit()
-        
-        print(f"✅ Job {job.id} completed! Length: {len(text)} chars.")
+        print(f"✨ Job {job.id} Finished Successfully!")
         return True
 
     except Exception as e:
-        print(f"🔥 Error processing job: {e}")
+        print(f"🔥 Critical Worker Error: {e}")
         if job:
             job.status = ProcessingStatus.FAILED
             db.commit()
         return False
+        
     finally:
+        # Always close the DB connection to prevent leaks
         db.close()
 
 if __name__ == "__main__":
+    # Main Loop
     while True:
         try:
             had_work = process_jobs()
             if not had_work:
-                time.sleep(5) # Sleep if no work to save CPU
+                # Sleep if no work to save CPU
+                time.sleep(5)
         except KeyboardInterrupt:
             print("🛑 Worker stopping...")
             break

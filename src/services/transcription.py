@@ -1,21 +1,57 @@
-from faster_whisper import WhisperModel
+# src/services/transciption.py
 import os
+import logging
+from faster_whisper import WhisperModel
+# Assuming you have these in your config, otherwise use strings directly
+try:
+    from src.config import settings
+    MODEL_SIZE = getattr(settings, "WHISPER_MODEL_SIZE", "tiny")
+    DEVICE = getattr(settings, "WHISPER_DEVICE", "cpu")
+    COMPUTE_TYPE = getattr(settings, "WHISPER_COMPUTE_TYPE", "int8")
+except ImportError:
+    # Fallback defaults
+    MODEL_SIZE = "tiny" 
+    DEVICE = "cpu"
+    COMPUTE_TYPE = "int8"
 
-class TranscriptionService:
-    def __init__(self):
-        self.model = None
-        # נשתמש במודל הקטן ביותר לביצועים מקסימליים בשרת חלש
-        self.model_size = "tiny"
+# Setup Logger
+logger = logging.getLogger(__name__)
 
-    def transcribe(self, audio_path: str):
-        if self.model is None:
-            # טעינת המודל רק כשמגיעה ההקלטה הראשונה
-            # device="cpu" כי אין לנו כרטיס מסך ב-EC2
-            # compute_type="int8" חוסך המון RAM (קוונטיזציה)
-            self.model = WhisperModel(self.model_size, device="cpu", compute_type="int8")
+print(f"🔊 Loading Whisper Model ({MODEL_SIZE}) on {DEVICE}...")
 
-        segments, info = self.model.transcribe(audio_path, beam_size=5)
-        text = " ".join([segment.text for segment in segments])
-        return text.strip()
+# Load the model once at module level to save time on subsequent calls
+# 'int8' is crucial for running on low-RAM instances like EC2 t3.micro
+try:
+    model = WhisperModel(MODEL_SIZE, device=DEVICE, compute_type=COMPUTE_TYPE)
+    print("✅ Whisper Model Loaded successfully!")
+except Exception as e:
+    logger.critical(f"Failed to load Whisper model: {e}")
+    raise e
 
-transcription_service = TranscriptionService()
+def transcribe_audio(file_path: str) -> str:
+    """
+    Transcribes an audio file using the pre-loaded Whisper model.
+    
+    Args:
+        file_path (str): The absolute path to the audio file.
+        
+    Returns:
+        str: The combined transcribed text.
+        
+    Raises:
+        FileNotFoundError: If the file does not exist.
+    """
+    if not os.path.exists(file_path):
+        logger.error(f"Audio file not found: {file_path}")
+        raise FileNotFoundError(f"Audio file not found: {file_path}")
+
+    logger.info(f"Starting transcription for: {file_path}")
+    
+    # beam_size=5 provides better accuracy at the cost of slight speed
+    segments, info = model.transcribe(file_path, beam_size=5)
+    
+    logger.info(f"Detected language '{info.language}' with probability {info.language_probability}")
+
+    # Combine segments into a single string
+    full_text = " ".join([segment.text for segment in segments])
+    return full_text.strip()

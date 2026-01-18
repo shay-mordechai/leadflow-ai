@@ -2,115 +2,120 @@
 <html lang="he" dir="rtl">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>ניהול יומן | LeadFlowAI</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>ניהול יומן | My-Leads</title>
     <script src="https://cdn.tailwindcss.com"></script>
     <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" rel="stylesheet">
     <style>
         @import url('https://fonts.googleapis.com/css2?family=Heebo:wght@300;400;500;700&display=swap');
         body { font-family: 'Heebo', sans-serif; background-color: #f8fafc; }
-
-        /* Interactive Slot Styles */
-        .slot { transition: all 0.2s; cursor: pointer; }
-        .slot:hover { transform: scale(1.05); }
-        .slot.active { background-color: #3b82f6; color: white; border-color: #2563eb; box-shadow: 0 4px 6px -1px rgba(59, 130, 246, 0.3); }
-        .slot.inactive { background-color: white; color: #cbd5e1; border-color: #e2e8f0; }
+        .slot { transition: all 0.2s; user-select: none; }
+        .slot:active { transform: scale(0.95); }
+        .slot.active { background-color: #2563eb; color: white; border-color: #2563eb; }
+        .slot.inactive { background-color: white; color: #64748b; border-color: #e2e8f0; }
     </style>
 </head>
-<body class="pb-20">
+<body class="pb-24">
 
-    <header class="bg-white border-b border-slate-200 sticky top-0 z-50 p-4 flex justify-between items-center shadow-sm">
-        <div class="flex items-center gap-2">
-            <a href="/dashboard" class="bg-slate-100 p-2 rounded-full text-slate-600 hover:bg-slate-200 transition"><i class="fas fa-arrow-right"></i></a>
-            <h1 class="font-bold text-slate-800 text-lg">ניהול זמינות (14 יום)</h1>
+    <header class="bg-white/80 backdrop-blur-md border-b border-slate-200 sticky top-0 z-50 p-4 flex justify-between items-center shadow-sm">
+        <div class="flex items-center gap-3">
+            <a href="/dashboard" class="w-8 h-8 rounded-full bg-slate-100 flex items-center justify-center text-slate-600 hover:bg-slate-200 transition">
+                <i class="fas fa-arrow-right"></i>
+            </a>
+            <h1 class="font-black text-slate-800 text-lg">ניהול זמינות</h1>
         </div>
-        <div class="text-xs font-bold text-blue-600 bg-blue-50 px-2 py-1 rounded">
-            הקש כדי לפתוח/לסגור חלון
+        <div class="text-[10px] font-bold text-blue-600 bg-blue-50 px-2 py-1 rounded-lg border border-blue-100">
+            14 יום קדימה
         </div>
     </header>
 
-    <main class="container mx-auto px-4 py-6 max-w-2xl">
-        <p class="text-slate-500 text-sm mb-6 text-center">סמן את השעות בהן אתה פנוי לפגישות. הלקוחות יראו רק את מה שתסמן.</p>
-
-        <div id="calendar-grid" class="space-y-8">
-            <!-- JS will inject days here -->
+    <main class="container mx-auto px-4 py-6 max-w-xl">
+        <div class="bg-blue-50 p-4 rounded-2xl border border-blue-100 mb-6 flex items-start gap-3">
+            <i class="fas fa-info-circle text-blue-500 mt-1"></i>
+            <p class="text-xs text-blue-800 leading-relaxed">
+                סמן את השעות הפנויות שלך. <br>
+                הבוט יציע ללקוחות רק את השעות המסומנות בכחול.
+            </p>
         </div>
 
-        <div class="fixed bottom-6 left-0 right-0 px-4">
-             <div class="bg-slate-900 text-white text-center py-3 rounded-xl shadow-xl text-sm max-w-md mx-auto">
-                 קישור לזימון: <span class="font-mono text-blue-300">leadflow.ai/book/{{ tenant_id }}</span>
-             </div>
-        </div>
+        <div id="calendar-grid" class="space-y-6">
+            </div>
     </main>
 
+    <div class="fixed bottom-0 left-0 right-0 p-4 bg-white border-t border-slate-200 shadow-[0_-5px_20px_rgba(0,0,0,0.05)] z-40">
+        <div class="bg-slate-900 text-white text-center py-3 rounded-xl shadow-lg text-sm max-w-md mx-auto flex items-center justify-center gap-2 cursor-pointer active:scale-95 transition" onclick="copyLink()">
+            <i class="fas fa-link text-slate-400"></i>
+            <span>העתק קישור לזימון</span>
+        </div>
+    </div>
+
     <script>
-        // Data from Backend
-        // 'active_slots' is a Set of strings "YYYY-MM-DD HH:MM"
+        // Inject from Backend Jinja
         const activeSlots = new Set([
             {% for s in active_slots %}"{{ s }}",{% endfor %}
         ]);
 
         const container = document.getElementById('calendar-grid');
-        const days = ['א׳','ב׳','ג׳','ד׳','ה׳','ו׳','ש׳'];
+        const days = ['יום ראשון','יום שני','יום שלישי','יום רביעי','יום חמישי','יום שישי','שבת'];
 
-        // Generate next 14 days
         const today = new Date();
-
         for(let i=0; i<14; i++) {
             const date = new Date(today);
             date.setDate(today.getDate() + i);
-            const dateStr = date.toISOString().split('T')[0];
-            const dayName = days[date.getDay()];
-            const displayDate = `${dayName} - ${date.getDate()}/${date.getMonth()+1}`;
+            
+            // Skip weekends if needed (Example: Skip Saturday)
+            // if(date.getDay() === 6) continue; 
 
-            // Create Day Wrapper
-            const dayWrapper = document.createElement('div');
-            dayWrapper.innerHTML = `<h3 class="font-bold text-slate-700 mb-3 border-r-4 border-blue-500 pr-2">${displayDate}</h3>`;
+            const dateStr = date.toISOString().split('T')[0];
+            const displayDate = `${days[date.getDay()]} ${date.getDate()}/${date.getMonth()+1}`;
+
+            const wrapper = document.createElement('div');
+            wrapper.className = "bg-white p-4 rounded-2xl shadow-sm border border-slate-100";
+            
+            const header = document.createElement('h3');
+            header.className = "font-bold text-slate-700 mb-3 text-sm flex items-center gap-2";
+            header.innerHTML = `<span class="w-1.5 h-1.5 rounded-full bg-blue-500"></span> ${displayDate}`;
+            wrapper.appendChild(header);
 
             const grid = document.createElement('div');
-            grid.className = "grid grid-cols-4 gap-3";
+            grid.className = "grid grid-cols-4 gap-2";
 
-            // Generate Hours 09:00 to 18:00
             for(let h=9; h<=18; h++) {
                 const timeStr = `${h < 10 ? '0'+h : h}:00`;
                 const fullKey = `${dateStr} ${timeStr}`;
                 const isActive = activeSlots.has(fullKey);
 
                 const slot = document.createElement('div');
-                slot.className = `slot border rounded-xl py-3 text-center font-bold text-sm ${isActive ? 'active' : 'inactive'}`;
+                slot.className = `slot border rounded-lg py-2.5 text-center font-bold text-xs cursor-pointer ${isActive ? 'active' : 'inactive'}`;
                 slot.innerText = timeStr;
-
                 slot.onclick = () => toggleSlot(slot, dateStr, timeStr);
                 grid.appendChild(slot);
             }
-
-            dayWrapper.appendChild(grid);
-            container.appendChild(dayWrapper);
+            wrapper.appendChild(grid);
+            container.appendChild(wrapper);
         }
 
         async function toggleSlot(el, date, time) {
-            // Optimistic UI update
-            const wasActive = el.classList.contains('active');
             el.classList.toggle('active');
             el.classList.toggle('inactive');
 
             try {
-                const res = await fetch('/api/v1/schedule/toggle', {
+                await fetch('/api/v1/schedule/toggle', {
                     method: 'POST',
                     headers: {'Content-Type': 'application/json'},
                     body: JSON.stringify({ date_str: date, time_str: time })
                 });
-
-                if(!res.ok) {
-                    const err = await res.json();
-                    alert(err.detail || "שגיאה");
-                    // Revert UI
-                    el.classList.toggle('active');
-                    el.classList.toggle('inactive');
-                }
             } catch(e) {
-                alert("שגיאת רשת");
+                // Revert on error
+                el.classList.toggle('active');
+                el.classList.toggle('inactive');
+                alert("שגיאת תקשורת");
             }
+        }
+
+        function copyLink() {
+            navigator.clipboard.writeText("https://my-leads.app/book/{{ tenant_id }}");
+            alert("הקישור הועתק!");
         }
     </script>
 </body>

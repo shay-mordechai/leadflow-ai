@@ -1,72 +1,96 @@
 # src/services/whatsapp_adapter.py
-
+import os
+import logging
+import requests
 from sqlalchemy.orm import Session
-from src.database.models import Tenant
-from src.services.ai_engine import ai_engine
-from src.security.hashing import verify_hash
+from src.database.models import User, MediaInteraction, ProcessingStatus
+
+logger = logging.getLogger(__name__)
+
+# --- Configuration: Load from .env ---
+# These match the variables you provided in your prompt
+META_ACCESS_TOKEN = os.getenv("META_ACCESS_TOKEN")
+PHONE_ID = os.getenv("WHATSAPP_PHONE_ID")
+VERIFY_TOKEN = os.getenv("WHATSAPP_VERIFY_TOKEN")
+API_VERSION = "v17.0"
 
 class WhatsAppAdapter:
     """
-    Professional English Comment:
-    WhatsApp Adapter.
-    Handles Incoming Webhooks, Tenant Authentication, and Message sending.
+    WhatsApp Adapter (Official Meta Cloud API).
+    Handles message ingestion (Webhook) and sending outbound messages via Facebook Graph API.
     """
 
     def send_message(self, to_phone: str, text: str):
         """
-        Sends a message via the configured WhatsApp provider (Mock/Twilio/Meta).
+        Sends a WhatsApp message using the Official Meta Graph API.
         """
-        print(f"\n[WhatsApp Outgoing -> {to_phone}]:\n{text}\n")
+        if not META_ACCESS_TOKEN or not PHONE_ID:
+            logger.error("❌ Meta credentials missing in .env")
+            return False
 
-    def _is_forwarded_lead(self, text: str) -> bool:
+        url = f"https://graph.facebook.com/{API_VERSION}/{PHONE_ID}/messages"
+        
+        headers = {
+            "Authorization": f"Bearer {META_ACCESS_TOKEN}",
+            "Content-Type": "application/json"
+        }
+
+        # Meta expects the object to be 'messaging_product': 'whatsapp'
+        payload = {
+            "messaging_product": "whatsapp",
+            "to": to_phone,
+            "type": "text",
+            "text": {"body": text}
+        }
+
+        try:
+            response = requests.post(url, headers=headers, json=payload)
+            response.raise_for_status()
+            logger.info(f"🚀 Sent WhatsApp (Meta) to {to_phone}: {text[:30]}...")
+            return True
+        except requests.exceptions.RequestException as e:
+            # Enhanced error logging for Meta responses
+            error_msg = "Unknown Error"
+            if response is not None:
+                try:
+                    error_msg = response.json()
+                except:
+                    error_msg = response.text
+            
+            logger.error(f"🔥 Failed to send WhatsApp via Meta: {e}")
+            logger.error(f"Meta API Response: {error_msg}")
+            return False
+
+    def process_incoming_webhook(self, db: Session, user_id: str, sender_phone: str, message_text: str, media_url: str = None):
         """
-        Heuristic detection to check if a message is a forwarded lead.
+        Ingests the message immediately to the DB.
+        This remains the same regardless of the provider (Meta vs GreenAPI),
+        as the logic is internal to our system.
         """
-        triggers = ["forwarded", "מועבר", "הועבר", "שם:", "טלפון:", "name:", "phone:"]
-        normalized = text.lower()
-        return any(t in normalized for t in triggers)
+        # 1. Lookup User (Business Owner)
+        user = db.query(User).filter(User.id == user_id).first()
 
-    def process_incoming_webhook(self, db: Session, sender_phone: str, message_text: str, api_key: str):
-        """
-        Main logic flow: Auth -> Detect -> Analyze -> Reply.
-        """
-        # 1. Authenticate Tenant using the API Key
-        tenants = db.query(Tenant).filter(Tenant.is_active == True).all()
-        current_tenant = None
+        if not user:
+            logger.warning(f"⚠️ Webhook received for unknown User ID: {user_id}")
+            return False
 
-        for t in tenants:
-            if verify_hash(api_key, t.api_key_hash):
-                current_tenant = t
-                break
+        logger.info(f"📩 New message for User: {user.business_name}")
 
-        if not current_tenant:
-            print("Error: Unauthorized Webhook Attempt")
-            return
+        # 2. Save job to DB for the Worker
+        new_interaction = MediaInteraction(
+            user_id=user.id,
+            sender_phone=sender_phone,
+            media_type="AUDIO" if media_url else "TEXT",
+            message_text=message_text,
+            file_path=media_url, 
+            status=ProcessingStatus.PENDING 
+        )
+        
+        db.add(new_interaction)
+        db.commit()
+        
+        logger.info(f"✅ Job queued: {new_interaction.id}. Worker is watching.")
+        return True
 
-        # 2. Check if it's a lead
-        if self._is_forwarded_lead(message_text):
-            print(f"Detected potential lead for Business: {current_tenant.business_type}")
-
-            # 3. AI Analysis via Gemini
-            analysis = ai_engine.analyze_lead_message(
-                text=message_text,
-                business_type=current_tenant.business_type or "General Business",
-                city_coverage=current_tenant.city_coverage
-            )
-
-            # 4. Format Result for User
-            response_text = (
-                f"📊 **LeadFlowAI Analysis**\n"
-                f"------------------------\n"
-                f"🏢 Type: {current_tenant.business_type}\n"
-                f"👤 Name: {analysis.get('lead_name', 'Unknown')}\n"
-                f"📍 City: {analysis.get('location', 'Unknown')}\n"
-                f"🔥 Score: {analysis.get('intent_score')}/10\n\n"
-                f"📝 Summary: {analysis.get('summary')}"
-            )
-
-            self.send_message(sender_phone, response_text)
-        else:
-            print("Standard message received (Not a forwarded lead).")
-
+# Singleton Instance
 whatsapp_adapter = WhatsAppAdapter()

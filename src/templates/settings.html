@@ -2,98 +2,112 @@
 <html lang="he" dir="rtl">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>הגדרות הבוט | LeadFlowAI</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>הגדרות בוט | My-Leads</title>
     <script src="https://cdn.tailwindcss.com"></script>
     <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css" rel="stylesheet">
     <style>@import url('https://fonts.googleapis.com/css2?family=Heebo:wght@300;400;700&display=swap'); body { font-family: 'Heebo', sans-serif; }</style>
 </head>
-<body class="bg-slate-50 text-slate-800 pb-20">
+<body class="bg-slate-50 text-slate-800 pb-24">
 
     <header class="bg-white border-b border-slate-200 sticky top-0 z-50 p-4 flex justify-between items-center shadow-sm">
-        <h1 class="font-bold text-lg">⚙️ הגדרות ה-AI</h1>
-        <a href="/dashboard" class="text-slate-500 hover:text-blue-600"><i class="fas fa-times text-xl"></i></a>
+        <h1 class="font-black text-lg">⚙️ מוח ה-AI</h1>
+        <a href="/dashboard" class="w-8 h-8 rounded-full bg-slate-100 flex items-center justify-center text-slate-500 hover:bg-slate-200 transition">
+            <i class="fas fa-times"></i>
+        </a>
     </header>
 
-    <main class="max-w-2xl mx-auto p-4 space-y-6">
+    <main class="max-w-xl mx-auto p-4 space-y-6">
         
-        <div class="bg-blue-50 border border-blue-100 p-4 rounded-xl flex gap-3">
-            <i class="fas fa-brain text-blue-600 mt-1"></i>
-            <div>
-                <h3 class="font-bold text-blue-900 text-sm">איך זה עובד?</h3>
-                <p class="text-xs text-blue-700 mt-1">מה שתכתוב כאן ישפיע ישירות על איך שג'מיני ינתח את השיחות ויציע תשובות בוואטסאפ.</p>
+        <div class="bg-gradient-to-br from-blue-500 to-indigo-600 text-white p-5 rounded-2xl shadow-lg shadow-blue-500/20">
+            <div class="flex items-start gap-4">
+                <div class="bg-white/20 p-2 rounded-lg backdrop-blur-sm">
+                    <i class="fas fa-robot text-xl"></i>
+                </div>
+                <div>
+                    <h3 class="font-bold text-sm">איך הבוט מתנהג?</h3>
+                    <p class="text-xs text-blue-100 mt-1 leading-relaxed">
+                        ההגדרות כאן משפיעות ישירות על התשובות שג'מיני ינסח עבורך בוואטסאפ.
+                    </p>
+                </div>
             </div>
         </div>
 
         <form id="settingsForm" class="space-y-6">
             
-            <div class="bg-white p-6 rounded-2xl shadow-sm border border-slate-100 space-y-4">
-                <h2 class="font-bold text-slate-900 border-b pb-2">📦 מידע כללי</h2>
+            <div class="bg-white p-5 rounded-2xl shadow-sm border border-slate-100 space-y-4">
+                <div class="flex items-center gap-2 border-b border-slate-50 pb-2 mb-2">
+                    <i class="fas fa-store text-blue-500"></i>
+                    <h2 class="font-bold text-slate-800 text-sm">זהות העסק</h2>
+                </div>
                 
                 <div>
-                    <label class="block text-sm font-bold mb-1">שם העסק (כפי שיופיע בתשובות)</label>
-                    <input type="text" name="business_name" id="businessName" class="w-full p-3 bg-slate-50 rounded-lg border border-slate-200 focus:ring-2 focus:ring-blue-500 outline-none" placeholder="יוסי כהן נדל״ן">
+                    <label class="block text-xs font-bold text-slate-500 mb-1.5">שם העסק (כפי שיוצג ללקוח)</label>
+                    <input type="text" name="business_name" id="businessName" class="w-full px-4 py-3 bg-slate-50 rounded-xl border border-slate-200 focus:ring-2 focus:ring-blue-500 outline-none text-sm font-medium" placeholder="למשל: דני כהן נדל״ן">
                 </div>
 
                 <div>
-                    <label class="block text-sm font-bold mb-1">תחום עיסוק</label>
-                    <select name="business_type" id="businessType" class="w-full p-3 bg-slate-50 rounded-lg border border-slate-200 outline-none">
-                        <option value="Real Estate">נדל"ן</option>
-                        <option value="Fitness">כושר ובריאות</option>
-                        <option value="E-commerce">מסחר אלקטרוני</option>
-                        <option value="Consulting">ייעוץ ושירותים</option>
+                    <label class="block text-xs font-bold text-slate-500 mb-1.5">תחום עיסוק</label>
+                    <select name="business_type" id="businessType" class="w-full px-4 py-3 bg-slate-50 rounded-xl border border-slate-200 outline-none text-sm">
+                        <option value="Real Estate Agent">נדל"ן</option>
+                        <option value="Fitness Coach">כושר ובריאות</option>
+                        <option value="Sales">מכירות כללי</option>
+                        <option value="Consulting">ייעוץ</option>
                         <option value="Other">אחר</option>
                     </select>
                 </div>
             </div>
 
-            <div class="bg-white p-6 rounded-2xl shadow-sm border border-slate-100 space-y-4">
-                <h2 class="font-bold text-slate-900 border-b pb-2">🧠 אישיות הבוט</h2>
-
-                <div>
-                    <label class="block text-sm font-bold mb-1">טון הדיבור</label>
-                    <div class="grid grid-cols-3 gap-2">
-                        <label class="cursor-pointer">
-                            <input type="radio" name="ai_tone" value="Formal" class="peer sr-only">
-                            <div class="p-3 text-center rounded-lg border border-slate-200 peer-checked:bg-blue-600 peer-checked:text-white peer-checked:border-blue-600 transition text-sm">
-                                👔 רשמי
-                            </div>
-                        </label>
-                        <label class="cursor-pointer">
-                            <input type="radio" name="ai_tone" value="Friendly" class="peer sr-only">
-                            <div class="p-3 text-center rounded-lg border border-slate-200 peer-checked:bg-blue-600 peer-checked:text-white peer-checked:border-blue-600 transition text-sm">
-                                👋 חברי
-                            </div>
-                        </label>
-                        <label class="cursor-pointer">
-                            <input type="radio" name="ai_tone" value="Sales" class="peer sr-only">
-                            <div class="p-3 text-center rounded-lg border border-slate-200 peer-checked:bg-blue-600 peer-checked:text-white peer-checked:border-blue-600 transition text-sm">
-                                💰 מכירתי
-                            </div>
-                        </label>
-                    </div>
+            <div class="bg-white p-5 rounded-2xl shadow-sm border border-slate-100 space-y-4">
+                <div class="flex items-center gap-2 border-b border-slate-50 pb-2 mb-2">
+                    <i class="fas fa-theater-masks text-purple-500"></i>
+                    <h2 class="font-bold text-slate-800 text-sm">סגנון דיבור</h2>
                 </div>
 
-                <div>
-                    <label class="block text-sm font-bold mb-1">השירותים/מוצרים שלך</label>
-                    <textarea name="products_services" id="products" rows="3" class="w-full p-3 bg-slate-50 rounded-lg border border-slate-200 focus:ring-2 focus:ring-blue-500 outline-none text-sm" placeholder="למשל: אימון אישי עולה 250 ש״ח, מנוי חודשי 400 ש״ח. אנחנו פתוחים מ-8 בבוקר עד 10 בלילה..."></textarea>
-                    <p class="text-xs text-slate-400 mt-1">הבוט ישתמש במידע הזה כדי לענות על שאלות הלקוח.</p>
-                </div>
-
-                <div>
-                    <label class="block text-sm font-bold mb-1">הוראות מיוחדות (System Prompt)</label>
-                    <textarea name="custom_instructions" id="instructions" rows="2" class="w-full p-3 bg-slate-50 rounded-lg border border-slate-200 focus:ring-2 focus:ring-blue-500 outline-none text-sm" placeholder="למשל: לעולם אל תיתן מחיר בטלפון, תמיד תבקש לקבוע פגישת זום."></textarea>
+                <div class="grid grid-cols-3 gap-3">
+                    <label class="cursor-pointer relative">
+                        <input type="radio" name="ai_tone" value="Formal" class="peer sr-only">
+                        <div class="p-3 text-center rounded-xl border border-slate-200 bg-slate-50 peer-checked:bg-slate-800 peer-checked:text-white peer-checked:border-slate-800 transition hover:bg-slate-100">
+                            <div class="text-xl mb-1">👔</div>
+                            <span class="text-xs font-bold">רשמי</span>
+                        </div>
+                    </label>
+                    <label class="cursor-pointer relative">
+                        <input type="radio" name="ai_tone" value="Friendly" class="peer sr-only">
+                        <div class="p-3 text-center rounded-xl border border-slate-200 bg-slate-50 peer-checked:bg-slate-800 peer-checked:text-white peer-checked:border-slate-800 transition hover:bg-slate-100">
+                            <div class="text-xl mb-1">👋</div>
+                            <span class="text-xs font-bold">חברי</span>
+                        </div>
+                    </label>
+                    <label class="cursor-pointer relative">
+                        <input type="radio" name="ai_tone" value="Sales" class="peer sr-only">
+                        <div class="p-3 text-center rounded-xl border border-slate-200 bg-slate-50 peer-checked:bg-slate-800 peer-checked:text-white peer-checked:border-slate-800 transition hover:bg-slate-100">
+                            <div class="text-xl mb-1">🔥</div>
+                            <span class="text-xs font-bold">מכירתי</span>
+                        </div>
+                    </label>
                 </div>
             </div>
 
-            <button type="submit" class="w-full bg-slate-900 text-white py-4 rounded-xl font-bold shadow-lg hover:bg-slate-800 transition active:scale-95">
-                שמור הגדרות
+            <div class="bg-white p-5 rounded-2xl shadow-sm border border-slate-100 space-y-4">
+                <div class="flex items-center gap-2 border-b border-slate-50 pb-2 mb-2">
+                    <i class="fas fa-lightbulb text-yellow-500"></i>
+                    <h2 class="font-bold text-slate-800 text-sm">ידע עסקי</h2>
+                </div>
+
+                <div>
+                    <label class="block text-xs font-bold text-slate-500 mb-1.5">המוצרים/שירותים שלך</label>
+                    <textarea name="products_services" id="products" rows="4" class="w-full p-3 bg-slate-50 rounded-xl border border-slate-200 focus:ring-2 focus:ring-blue-500 outline-none text-sm" placeholder="למשל:&#10;- אימון אישי: 250 ש״ח&#10;- מנוי חודשי: 400 ש״ח&#10;- שעות פתיחה: 08:00 עד 20:00"></textarea>
+                </div>
+            </div>
+
+            <button type="submit" class="w-full bg-blue-600 text-white py-4 rounded-xl font-bold shadow-lg shadow-blue-500/30 hover:bg-blue-700 transition active:scale-95 fixed bottom-6 left-4 right-4 max-w-xl mx-auto z-40">
+                שמור שינויים
             </button>
         </form>
     </main>
 
     <script>
-        // Load settings on page load
         async function loadSettings() {
             try {
                 const res = await fetch('/api/v1/settings/');
@@ -103,22 +117,21 @@
                 document.getElementById('businessName').value = data.business_name || '';
                 document.getElementById('businessType').value = data.business_type || 'Other';
                 document.getElementById('products').value = data.products_services || '';
-                document.getElementById('instructions').value = data.custom_instructions || '';
                 
-                // Select Radio Button
-                const tone = data.ai_tone || 'Professional';
-                document.querySelector(`input[name="ai_tone"][value="${tone}"]`).checked = true;
+                const tone = data.ai_tone || 'Friendly';
+                const radio = document.querySelector(`input[name="ai_tone"][value="${tone}"]`);
+                if(radio) radio.checked = true;
+                
             } catch (e) {
                 console.error("Failed to load settings");
             }
         }
 
-        // Save settings
         document.getElementById('settingsForm').onsubmit = async (e) => {
             e.preventDefault();
             const btn = e.target.querySelector('button');
             const originalText = btn.innerText;
-            btn.innerText = 'שומר...';
+            btn.innerHTML = '<i class="fas fa-circle-notch fa-spin"></i> שומר...';
             btn.disabled = true;
 
             const formData = new FormData(e.target);
@@ -132,15 +145,15 @@
                 });
                 
                 if (res.ok) {
-                    alert('✅ ההגדרות נשמרו בהצלחה! מעכשיו הבוט יעבוד לפי ההוראות החדשות.');
+                    alert('✅ המוח עודכן בהצלחה!');
                     window.location.href = '/dashboard';
                 } else {
-                    alert('שגיאה בשמירה.');
+                    alert('שגיאה בשמירה');
                 }
             } catch (e) {
-                alert('שגיאת תקשורת.');
+                alert('שגיאת תקשורת');
             } finally {
-                btn.innerText = originalText;
+                btn.innerHTML = originalText;
                 btn.disabled = false;
             }
         };
