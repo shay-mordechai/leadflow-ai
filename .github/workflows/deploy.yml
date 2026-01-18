@@ -1,10 +1,17 @@
-name: LeadFlow Professional Deploy
+name: LeadFlow Production Deploy
 
 on:
   push:
     branches: [ main ]
 
+env:
+  # GitHub Container Registry Configuration
+  REGISTRY: ghcr.io
+  # TODO: Ensure this matches your GitHub username/repo (lowercase)
+  IMAGE_NAME: shay-mordechai/leadflow-ai 
+
 jobs:
+  # JOB 1: Build Docker Image & Push to Registry
   build-and-push:
     runs-on: ubuntu-latest
     permissions:
@@ -14,20 +21,21 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@v3
 
-      - name: Login to GitHub Container Registry
+      - name: Log in to the Container registry
         uses: docker/login-action@v2
         with:
-          registry: ghcr.io
+          registry: ${{ env.REGISTRY }}
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: Build and Push Image
+      - name: Build and push Docker image
         uses: docker/build-push-action@v4
         with:
           context: .
           push: true
-          tags: ghcr.io/${{ github.repository }}:latest
+          tags: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:latest
 
+  # JOB 2: Connect to EC2 & Restart Services
   deploy:
     needs: build-and-push
     runs-on: ubuntu-latest
@@ -37,44 +45,27 @@ jobs:
         uses: appleboy/ssh-action@v1.0.3
         with:
           host: ${{ secrets.EC2_HOST }}
-          username: ${{ secrets.EC2_USERNAME }}
+          username: ec2-user
           key: ${{ secrets.EC2_SSH_KEY }}
           script: |
-            # 1. Login to Registry
-            echo ${{ secrets.GITHUB_TOKEN }} | podman login ghcr.io -u ${{ github.actor }} --password-stdin
+            # 1. Login to GitHub Registry on the server
+            # This allows the server to pull private images
+            echo ${{ secrets.GITHUB_TOKEN }} | sudo docker login ghcr.io -u ${{ github.actor }} --password-stdin
 
-            # 2. Pull the NEW image
-            podman pull ghcr.io/${{ github.repository }}:latest
+            # 2. Navigate to project directory
+            cd leadflow-ai
 
-            # -------------------------------------------
-            # 3. Stop OLD Containers
-            # -------------------------------------------
-            podman stop leadflow_app leadflow_worker || true
-            podman rm leadflow_app leadflow_worker || true
+            # 3. Pull latest git changes (to update docker-compose.yaml if needed)
+            git pull origin main
 
-            # -------------------------------------------
-            # 4. Run APP (Web Server)
-            # -------------------------------------------
-            podman run --name leadflow_app \
-              --pod leadflow-pod \
-              --dns 8.8.8.8 \
-              --env-file ~/leadflow-ai/.env \
-              -v ~/leadflow-ai/storage:/app/storage:Z \
-              -d ghcr.io/${{ github.repository }}:latest \
-              gunicorn src.main:app --workers 2 --worker-class uvicorn.workers.UvicornWorker --bind 0.0.0.0:8000 --timeout 120
+            # 4. Pull the NEW Docker image we just built
+            sudo docker-compose pull
 
-            # -------------------------------------------
-            # 5. Run WORKER (Transcriber) - SAME Image, DIFFERENT Command
-            # -------------------------------------------
-            podman run --name leadflow_worker \
-              --pod leadflow-pod \
-              --dns 8.8.8.8 \
-              --env-file ~/leadflow-ai/.env \
-              -v ~/leadflow-ai/storage:/app/storage:Z \
-              -d ghcr.io/${{ github.repository }}:latest \
-              python src/worker.py
+            # 5. Restart containers using the new image
+            # 'up -d' recreates containers only if the image changed
+            sudo docker-compose up -d
 
-            # 6. Cleanup
-            podman image prune -f
-
-            echo "🚀 LeadFlow (App + Worker) deployed successfully!"
+            # 6. Cleanup: Remove unused images to save disk space
+            sudo docker system prune -f
+            
+            echo "✅ Deployment Successful! System is live."
