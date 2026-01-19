@@ -5,18 +5,17 @@ on:
     branches: [ main ]
 
 env:
-  # GitHub Container Registry Configuration
   REGISTRY: ghcr.io
-  # Ensure this matches your GitHub username/repo (lowercase)
   IMAGE_NAME: shay-mordechai/leadflow-ai 
 
 jobs:
-  # JOB 1: Build Docker Image & Push to Registry
   build-and-push:
     runs-on: ubuntu-latest
     permissions:
       contents: read
       packages: write
+    outputs:
+      image_tag: ${{ github.sha }}
     steps:
       - name: Checkout code
         uses: actions/checkout@v3
@@ -33,13 +32,14 @@ jobs:
         with:
           context: .
           push: true
-          tags: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:latest
+          # Tagging with both :latest and the unique commit SHA for rollback capability
+          tags: |
+            ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:latest
+            ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ github.sha }}
 
-  # JOB 2: Connect to EC2 & Restart Services (Podman Version)
   deploy:
     needs: build-and-push
     runs-on: ubuntu-latest
-    if: success()
     steps:
       - name: Deploy to EC2 via SSH
         uses: appleboy/ssh-action@v1.0.3
@@ -48,51 +48,61 @@ jobs:
           username: ec2-user
           key: ${{ secrets.EC2_SSH_KEY }}
           script: |
-            # 1. Login to GitHub Registry on the server
+            # 1. Login to Registry
             echo ${{ secrets.GITHUB_TOKEN }} | podman login ghcr.io -u ${{ github.actor }} --password-stdin
-
-            # 2. Navigate to project directory
             cd ~/leadflow-ai
-
-            # 3. Pull latest git changes (to ensure scripts are up to date)
-            git pull origin main
-
-            # 4. Pull the NEW Docker image
-            podman pull ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:latest
-
-            # 5. Restart APP (Website)
-            # --replace automatically removes the old container if it exists
-            podman run --name leadflow_app \
-              --replace \
-              --pod leadflow-pod \
-              --env-file .env \
-              -v ./storage:/app/storage:Z \
-              -d ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:latest \
-              gunicorn src.main:app --workers 2 --worker-class uvicorn.workers.UvicornWorker --bind 0.0.0.0:8000
-
-            # 6. Restart WORKER (Transcription & AI)
-            # We add PYTHONPATH=/app to ensure Python finds the 'src' module correctly
-            podman run --name leadflow_worker \
-              --replace \
-              --pod leadflow-pod \
-              --env-file .env \
-              -e PYTHONPATH=/app \
-              --workdir /app \
-              -v ./storage:/app/storage:Z \
-              -d ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:latest \
-              python -m src.worker
-
-            # 7. Ensure Cloudflared is running
-            # We source .env to get the CLOUDFLARE_TOKEN variable
-            source .env
-            podman run --name cloudflared \
-              --replace \
-              --pod leadflow-pod \
-              --env-file .env \
-              -d docker.io/cloudflare/cloudflared:latest \
-              tunnel --no-autoupdate run --token $CLOUDFLARE_TOKEN
-
-            # 8. Cleanup: Remove unused images to save disk space
-            podman image prune -f
             
-            echo "✅ Deployment Successful! System is live."
+            # 2. Identify current image for potential rollback
+            PREVIOUS_IMAGE=$(podman inspect leadflow_app --format '{{.Config.Image}}' || echo "")
+            NEW_IMAGE="${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ github.sha }}"
+
+            # 3. Deployment & Health Check Function
+            deploy_and_check() {
+              local img=$1
+              echo "Attempting to deploy image: $img"
+              
+              # Pull and replace app container
+              podman pull $img
+              podman run --name leadflow_app \
+                --replace --pod leadflow-pod --env-file .env \
+                -v ./storage:/app/storage:Z -d $img \
+                gunicorn src.main:app --workers 2 --worker-class uvicorn.workers.UvicornWorker --bind 0.0.0.0:8000
+
+              # Wait 15 seconds to ensure the app doesn't crash on startup
+              sleep 15
+              STATUS=$(podman inspect leadflow_app --format '{{.State.Status}}')
+              
+              if [ "$STATUS" != "running" ]; then
+                echo "❌ Container failed to stay running (Status: $STATUS)"
+                return 1
+              fi
+              return 0
+            }
+
+            # 4. Main Deployment Logic
+            if deploy_and_check $NEW_IMAGE; then
+              echo "✅ New version is stable. Updating Worker and Tunnel..."
+              
+              # Update Worker with the SAME image tag
+              podman run --name leadflow_worker --replace --pod leadflow-pod --env-file .env \
+                -e PYTHONPATH=/app --workdir /app -v ./storage:/app/storage:Z -d $NEW_IMAGE \
+                python -m src.worker
+                
+              # Ensure Cloudflared is connected to the pod network
+              source .env
+              podman run --name cloudflared --replace --pod leadflow-pod --env-file .env \
+                -d docker.io/cloudflare/cloudflared:latest \
+                tunnel --no-autoupdate run --token $CLOUDFLARE_TOKEN
+                
+              podman image prune -f
+              echo "🚀 Deployment successful!"
+            else
+              echo "⚠️ HEALTH CHECK FAILED! STARTING ROLLBACK..."
+              if [ ! -z "$PREVIOUS_IMAGE" ] && [ "$PREVIOUS_IMAGE" != "$NEW_IMAGE" ]; then
+                deploy_and_check $PREVIOUS_IMAGE
+                echo "⏪ Successfully rolled back to $PREVIOUS_IMAGE"
+              else
+                echo "❌ Rollback failed: No previous stable image found."
+              fi
+              exit 1 # Fail the action so developer is notified
+            fi
