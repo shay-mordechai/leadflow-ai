@@ -47,9 +47,39 @@ jobs:
           curl -L --output cloudflared.deb https://github.com/cloudflare/cloudflared/releases/latest/download/cloudflared-linux-amd64.deb
           sudo dpkg -i cloudflared.deb
 
-      # 2. Configure SSH Client
+      # 2. DEBUG STEP: Test Cloudflare Access Token
+      # This step verifies if the Service Token is valid and accepted by the Cloudflare Policy.
+      # It attempts a direct HTTPS connection.
+      # Result 403 = Token rejected (Policy/Secret issue).
+      # Result 200/404/530 = Token accepted (Auth works, issue might be SSH-specific).
+      - name: Debug Cloudflare Connectivity
+        run: |
+          echo "Testing connectivity to: https://${{ secrets.CF_SSH_HOSTNAME }}"
+          
+          # We use curl to send the Service Token headers.
+          # -s: Silent mode | -o /dev/null: Discard output | -w "%{http_code}": Print status code
+          HTTP_CODE=$(curl -s -o /dev/null -w "%{http_code}" \
+            -H "CF-Access-Client-Id: ${{ secrets.CF_SERVICE_ID }}" \
+            -H "CF-Access-Client-Secret: ${{ secrets.CF_SERVICE_SECRET }}" \
+            "https://${{ secrets.CF_SSH_HOSTNAME }}")
+            
+          echo "Cloudflare HTTP Response Code: $HTTP_CODE"
+          
+          if [ "$HTTP_CODE" == "403" ]; then
+            echo "❌ CRITICAL ERROR: 403 Forbidden."
+            echo "This means Cloudflare Access REJECTED your Service Token."
+            echo "Please check: 1. GitHub Secrets (spaces?) 2. Cloudflare Access Policy (set to Service Auth?)"
+            exit 1
+          elif [ "$HTTP_CODE" == "000" ]; then
+             echo "❌ Error: Could not resolve hostname. Check CF_SSH_HOSTNAME."
+             exit 1
+          else
+            echo "✅ Success: Cloudflare accepted the token (Code $HTTP_CODE). Proceeding to SSH..."
+          fi
+
+      # 3. Configure SSH Client
       # We create the SSH directory, save the private key, and configure ~/.ssh/config.
-      # CRITICAL FIX: The ProxyCommand now includes --id and --secret to authenticate the tunnel.
+      # The ProxyCommand uses the installed cloudflared to tunnel traffic.
       - name: Configure SSH & Tunnel
         run: |
           mkdir -p ~/.ssh/
@@ -69,7 +99,7 @@ jobs:
             ProxyCommand cloudflared access ssh --hostname %h --id ${{ secrets.CF_SERVICE_ID }} --secret ${{ secrets.CF_SERVICE_SECRET }}
           EOF
 
-      # 3. Execute Remote Deployment
+      # 4. Execute Remote Deployment
       # Connects to 'production' alias defined above and runs the update script
       - name: Execute Remote Deployment
         run: |
