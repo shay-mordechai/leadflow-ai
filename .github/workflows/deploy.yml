@@ -41,15 +41,15 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       # 1. Install Cloudflared on the GitHub Runner
-      # This is required to establish the tunnel connection using the ProxyCommand
+      # Required to establish the tunnel connection via ProxyCommand
       - name: Install Cloudflared
         run: |
           curl -L --output cloudflared.deb https://github.com/cloudflare/cloudflared/releases/latest/download/cloudflared-linux-amd64.deb
           sudo dpkg -i cloudflared.deb
 
       # 2. Configure SSH Client
-      # We create the SSH directory, save the private key, and configure the ~/.ssh/config file
-      # to use 'cloudflared' as a ProxyCommand. This bypasses the need for an open port 22.
+      # We create the SSH directory, save the private key, and configure ~/.ssh/config.
+      # CRITICAL FIX: The ProxyCommand now includes --id and --secret to authenticate the tunnel.
       - name: Configure SSH & Tunnel
         run: |
           mkdir -p ~/.ssh/
@@ -59,8 +59,8 @@ jobs:
           chmod 600 ~/.ssh/id_rsa
           
           # Create the SSH Config file
-          # We define a host alias 'production' that uses the Cloudflare Service Token for auth
-          cat >> ~/.ssh/config <<EOF
+          # The ProxyCommand bypasses port 22 and tunnels traffic via Cloudflare
+          cat > ~/.ssh/config <<EOF
           Host production
             HostName ${{ secrets.CF_SSH_HOSTNAME }}
             User ec2-user
@@ -70,13 +70,13 @@ jobs:
           EOF
 
       # 3. Execute Remote Deployment
-      # We connect to 'production' (defined above) and run the deployment commands
+      # Connects to 'production' alias defined above and runs the update script
       - name: Execute Remote Deployment
         run: |
           ssh production "
             set -e
             
-            # Login to GHCR so we can pull the private image
+            # Login to GHCR to pull the private image
             echo ${{ secrets.GITHUB_TOKEN }} | podman login ghcr.io -u ${{ github.actor }} --password-stdin
             
             # Navigate to project directory
