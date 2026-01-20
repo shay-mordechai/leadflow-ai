@@ -1,117 +1,103 @@
 # LeadFlowAI 🚀
 
-**Next-Gen SaaS CRM for Service Providers.**
-LeadFlowAI is a secure, containerized SaaS platform designed to automate lead intake via WhatsApp, process audio using AI, and manage customer relationships with strict data isolation.
+**Next-Gen SaaS CRM with Enterprise-Grade Security & AI Integration.**
 
-![Python](https://img.shields.io/badge/Python-3.11+-blue.svg)
-![FastAPI](https://img.shields.io/badge/FastAPI-0.109-009688.svg)
-![PostgreSQL](https://img.shields.io/badge/PostgreSQL-15-336791.svg)
-![Podman](https://img.shields.io/badge/Podman-Ready-892CA0.svg)
-![License](https://img.shields.io/badge/License-MIT-green.svg)
+LeadFlowAI is a secure, containerized SaaS platform designed to automate lead intake via WhatsApp, process audio using AI, and manage customer relationships. It features a **Zero-Trust architecture** and fully automated CI/CD pipelines.
 
-## ✨ Key Features
+## 🏗️ System Architecture
 
-* **🏢 True SaaS Architecture:** Built from the ground up with **User-Based Multi-Tenancy**. Each user sees only their own data.
-* **🔐 Secure Authentication:** Complete Registration & Login flows using JWT tokens and password hashing (Argon2/BCrypt).
-* **🎙️ AI Audio Pipeline:** (In Progress) Ingests WhatsApp voice notes, transcribes via **Whisper**, and summarizes via LLMs.
-* **🛡️ Hardened Security:**
-    * Dependency Injection based Security Gates (`dependencies.py`).
-    * Strict Context Variable isolation for user requests.
-    * Encryption-at-Rest for sensitive PII data.
-* **🐳 Cloud Native:** Fully containerized with Podman/Docker, ready for CI/CD deployment via GitHub Actions.
+The platform runs on a hardened production environment using a **Zero Trust** model. No ports (22/80/443) are open to the public internet. All ingress traffic is routed through Cloudflare Tunnels.
 
-## 🛠️ Tech Stack
-
-* **Backend:** FastAPI (Python), SQLAlchemy (Sync/Async), Pydantic.
-* **Database:** PostgreSQL 15.
-* **Environment Management:** Miniforge / Mamba.
-* **Containerization:** Podman & Docker Compose.
-* **Frontend:** Server-Side Rendering (Jinja2) + TailwindCSS.
-* **DevOps:** GitHub Actions (Build & Push to GHCR).
-
-## 🚀 Getting Started
-
-### Prerequisites
-* **Podman** (Recommended) or Docker.
-* **Python 3.11+** (if running locally without containers).
-
-### Installation
-
-1.  **Clone the repository:**
-    ```bash
-    git clone [https://github.com/shay-mordechai/leadflow-ai.git](https://github.com/shay-mordechai/leadflow-ai.git)
-    cd leadflow-ai
-    ```
-
-2.  **Environment Setup:**
-    Create a `.env` file in the root directory:
-    ```ini
-    # App Config
-    SECRET_KEY=your_super_secret_key_change_this
-    DEBUG=True
-
-    # Database
-    POSTGRES_USER=myuser
-    POSTGRES_PASSWORD=mypassword
-    POSTGRES_DB=leadflow
-    POSTGRES_HOST=127.0.0.1
-    # Internal Docker URL: postgresql://myuser:mypassword@db:5432/leadflow
-    ```
-
-3.  **Run with Podman/Docker:**
-    ```bash
-    # Build and start the App and DB
-    podman-compose up -d --build
-    ```
-
-4.  **Initialize Database (Nuclear Reset):**
-    ⚠️ *Note: This script wipes the public schema and creates the new SaaS tables (Users, Leads).*
-    ```bash
-    podman exec leadflow_app python src/scripts/reset_db_schema.py
-    ```
-
-5.  **Access the App:**
-    * **Landing Page:** `http://localhost:8000`
-    * **Login/Dashboard:** `http://localhost:8000/login`
-    * **Docs:** `http://localhost:8000/docs`
-
-## 📂 Project Structure
-
-```text
-├── src/
-│   ├── database/      
-│   │   ├── models.py      # User & Lead Models
-│   │   └── session.py     # DB Connection logic
-│   ├── routers/       
-│   │   ├── auth.py        # Login/Register endpoints
-│   │   ├── leads.py       # Protected Lead management
-│   │   └── ui.py          # Frontend views
-│   ├── security/      
-│   │   └── dependencies.py # Auth Gatekeeper (Context Vars)
-│   ├── scripts/
-│   │   └── reset_db_schema.py # Migration utility
-│   ├── templates/         # HTML (Jinja2) UI
-│   └── main.py            # App entry point
-├── docker-compose.yml
-└── requirements.txt
+```mermaid
+graph TD
+    User((User/Dev)) -->|HTTPS / SSH| CF[Cloudflare Edge]
+    CF -->|Secure Tunnel| Tunnel[Cloudflared Container]
+    
+    subgraph "Production Server (EC2 / Fedora)"
+        Tunnel -->|Traffic| Traefik[Internal Networking]
+        Traefik --> API[FastAPI App]
+        Traefik --> Worker[Background Worker]
+        API --> DB[(PostgreSQL)]
+        Worker --> DB
+    end
+    
+    API -.->|Fetch Secrets| AWS[AWS SSM Parameter Store]
 
 ```
 
-## 🔄 CI/CD Workflow
+## ✨ Key Features
 
-This project uses **GitHub Actions** for automated deployment:
+### 🔐 Security & Infrastructure (DevSecOps)
 
-1. **Push to Main:** Code is linted and built.
-2. **Build:** A container image is created and pushed to `ghcr.io`.
-3. **Deploy:** The EC2 server pulls the new image and restarts the service via SSH.
+* **Zero Trust Access:** Server is completely locked down (no open inbound ports). Access is managed via **Cloudflare Tunnels** with strict Identity Access Management (IAM).
+* **Bank-Grade Secret Management:** Removed all `.env` files from production. Secrets and API keys are fetched dynamically from **AWS Systems Manager (SSM) Parameter Store** at runtime.
+* **Secure Deployment:** SSH access for deployment is proxied through Cloudflare Access using Service Tokens, preventing direct network attacks.
+* **Container Security:** Running on **Podman** (daemonless) for enhanced security compared to standard Docker.
+
+### 💻 Application Capabilities
+
+* **Multi-Tenancy SaaS:** Logic-separated user data ensuring strict isolation between tenants.
+* **AI Audio Pipeline:** Asynchronous processing of voice notes using **Faster-Whisper** and LLMs for summarization.
+* **Modern Auth:** Robust authentication system using JWT, Argon2 hashing, and secure cookie handling.
+
+## 🛠️ Tech Stack
+
+| Category | Technologies |
+| --- | --- |
+| **Backend** | Python 3.11, FastAPI, SQLAlchemy (Async), Pydantic |
+| **Database** | PostgreSQL 15 (Relational Data), Alembic (Migrations) |
+| **DevOps** | GitHub Actions, GHCR (Container Registry), Podman |
+| **Cloud & Net** | AWS (SSM, SDK), Cloudflare Zero Trust (Tunnels, Access) |
+| **Server** | Fedora Linux (EC2) |
+
+## 🔄 Automated CI/CD Pipeline
+
+The project utilizes a sophisticated **GitHub Actions** workflow for "Click-to-Deploy" functionality:
+
+1. **Build & Test:** On `git push`, the code is linted and built into a Docker/OCI image.
+2. **Registry Push:** The image is tagged (SHA + Latest) and pushed to **GitHub Container Registry (GHCR)**.
+3. **Secure Tunneling:** The Action installs `cloudflared`, authenticates via a Service Token, and opens a secure SSH tunnel to the production server.
+4. **Zero-Config Deploy:** The server pulls the new image and restarts the containers. Secrets are injected directly from AWS during startup.
+
+## 🚀 Getting Started (Local Dev)
+
+### Prerequisites
+
+* **Podman** or Docker Desktop.
+* **Python 3.11+**.
+* **AWS CLI** (Optional, for SSM simulation).
+
+### Installation
+
+1. **Clone the repository:**
+```bash
+git clone https://github.com/shay-mordechai/leadflow-ai.git
+cd leadflow-ai
+
+```
+
+
+2. **Run with Compose:**
+```bash
+# This will spin up the DB and the Web App
+podman-compose up -d --build
+
+```
+
+
+3. **Access the App:**
+* Dashboard: `http://localhost:8000`
+* API Docs: `http://localhost:8000/docs`
+
+
 
 ## 👤 Author
 
 **Shay Mordechai**
 
-* Full-Stack Developer & Security Researcher.
-* Specializing in Secure SaaS Architecture & AI Automation.
+* **Full-Stack Developer & Cloud Architect.**
+* Specializing in building secure, scalable SaaS platforms combining modern Python web frameworks with enterprise-grade DevOps practices (AWS, Cloudflare, CI/CD).
 
 ---
 
-*Built with ❤️ and Python.*
+*Built with ❤️, Python, and a lot of coffee.*

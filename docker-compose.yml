@@ -3,22 +3,25 @@ version: '3.8'
 services:
   db:
     image: postgres:15
-    container_name: leadflow_db
+    container_name: leadflow_db_dev
     environment:
-      POSTGRES_USER: ${DB_USER}
-      POSTGRES_PASSWORD: ${DB_PASSWORD}
-      POSTGRES_DB: ${DB_NAME}
+      POSTGRES_USER: ${POSTGRES_USER}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      POSTGRES_DB: ${POSTGRES_DB}
     volumes:
-      - postgres_data:/var/lib/postgresql/data
+      - postgres_data_dev:/var/lib/postgresql/data
     ports:
       - "5432:5432"
     restart: always
 
   app:
-    image: ghcr.io/shay-mordechai/leadflow-ai:latest
-    container_name: leadflow_app
-    command: gunicorn src.main:app --workers 2 --worker-class uvicorn.workers.UvicornWorker --bind 0.0.0.0:8000
+    # Development: Build from local source instead of pulling from registry
+    build: .
+    container_name: leadflow_app_dev
+    # Uses --reload for immediate feedback on code changes
+    command: uvicorn src.main:app --host 0.0.0.0 --port 8000 --reload
     volumes:
+      - ./src:/app/src  # Hot Reload: Syncs local changes to container immediately
       - ./storage:/app/storage
     env_file: .env
     ports:
@@ -28,28 +31,28 @@ services:
     restart: always
 
   worker:
-    image: ghcr.io/shay-mordechai/leadflow-ai:latest
-    container_name: leadflow_worker
-    # --- CRITICAL CONFIGURATION ---
-    # Running as a module (-m) fixes relative import issues
+    build: .
+    container_name: leadflow_worker_dev
     command: python -m src.worker
     working_dir: /app
     environment:
-      # Ensures Python recognizes /app as the root package directory
       - PYTHONPATH=/app
     volumes:
+      - ./src:/app/src  # Syncs code for the worker too
       - ./storage:/app/storage
     env_file: .env
     depends_on:
       - db
     restart: always
 
-  cloudflared:
-    image: cloudflare/cloudflared:latest
-    container_name: cloudflared
-    command: tunnel --no-autoupdate run --token ${CLOUDFLARE_TOKEN}
-    restart: always
-    env_file: .env
+  # ⚠️ WARNING: Do not run the production tunnel locally!
+  # It will conflict with the active production server and cause downtime.
+  # cloudflared:
+  #   image: cloudflare/cloudflared:latest
+  #   container_name: cloudflared_dev
+  #   command: tunnel --no-autoupdate run --token ${CLOUDFLARE_TOKEN}
+  #   restart: always
+  #   env_file: .env
 
 volumes:
-  postgres_data:
+  postgres_data_dev:

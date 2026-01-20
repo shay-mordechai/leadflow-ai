@@ -6,7 +6,7 @@ on:
 
 env:
   REGISTRY: ghcr.io
-  IMAGE_NAME: shay-mordechai/leadflow-ai 
+  IMAGE_NAME: shay-mordechai/leadflow-ai
 
 jobs:
   build-and-push:
@@ -32,7 +32,6 @@ jobs:
         with:
           context: .
           push: true
-          # Tagging with both :latest and the unique commit SHA for rollback capability
           tags: |
             ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:latest
             ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ github.sha }}
@@ -41,68 +40,27 @@ jobs:
     needs: build-and-push
     runs-on: ubuntu-latest
     steps:
-      - name: Deploy to EC2 via SSH
+      # 1. Install Cloudflared on GitHub Runner (Client Side)
+      - name: Install Cloudflared
+        run: |
+          curl -L --output cloudflared.deb https://github.com/cloudflare/cloudflared/releases/latest/download/cloudflared-linux-amd64.deb
+          sudo dpkg -i cloudflared.deb
+
+      # 2. Connect via Tunnel and Execute Script
+      - name: Execute Remote Deployment
         uses: appleboy/ssh-action@v1.0.3
         with:
-          host: ${{ secrets.EC2_HOST }}
+          host: ${{ secrets.CF_SSH_HOSTNAME }}
           username: ec2-user
           key: ${{ secrets.EC2_SSH_KEY }}
+          # This connects using the Service Token headers
+          proxy_command: cloudflared access ssh --hostname %h --id ${{ secrets.CF_SERVICE_ID }} --secret ${{ secrets.CF_SERVICE_SECRET }}
+          command_timeout: 15m
           script: |
-            # 1. Login to Registry
+            # Login first so the script can pull the private image
             echo ${{ secrets.GITHUB_TOKEN }} | podman login ghcr.io -u ${{ github.actor }} --password-stdin
-            cd ~/leadflow-ai
             
-            # 2. Identify current image for potential rollback
-            PREVIOUS_IMAGE=$(podman inspect leadflow_app --format '{{.Config.Image}}' || echo "")
-            NEW_IMAGE="${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ github.sha }}"
-
-            # 3. Deployment & Health Check Function
-            deploy_and_check() {
-              local img=$1
-              echo "Attempting to deploy image: $img"
-              
-              # Pull and replace app container
-              podman pull $img
-              podman run --name leadflow_app \
-                --replace --pod leadflow-pod --env-file .env \
-                -v ./storage:/app/storage:Z -d $img \
-                gunicorn src.main:app --workers 2 --worker-class uvicorn.workers.UvicornWorker --bind 0.0.0.0:8000
-
-              # Wait 15 seconds to ensure the app doesn't crash on startup
-              sleep 15
-              STATUS=$(podman inspect leadflow_app --format '{{.State.Status}}')
-              
-              if [ "$STATUS" != "running" ]; then
-                echo "❌ Container failed to stay running (Status: $STATUS)"
-                return 1
-              fi
-              return 0
-            }
-
-            # 4. Main Deployment Logic
-            if deploy_and_check $NEW_IMAGE; then
-              echo "✅ New version is stable. Updating Worker and Tunnel..."
-              
-              # Update Worker with the SAME image tag
-              podman run --name leadflow_worker --replace --pod leadflow-pod --env-file .env \
-                -e PYTHONPATH=/app --workdir /app -v ./storage:/app/storage:Z -d $NEW_IMAGE \
-                python -m src.worker
-                
-              # Ensure Cloudflared is connected to the pod network
-              source .env
-              podman run --name cloudflared --replace --pod leadflow-pod --env-file .env \
-                -d docker.io/cloudflare/cloudflared:latest \
-                tunnel --no-autoupdate run --token $CLOUDFLARE_TOKEN
-                
-              podman image prune -f
-              echo "🚀 Deployment successful!"
-            else
-              echo "⚠️ HEALTH CHECK FAILED! STARTING ROLLBACK..."
-              if [ ! -z "$PREVIOUS_IMAGE" ] && [ "$PREVIOUS_IMAGE" != "$NEW_IMAGE" ]; then
-                deploy_and_check $PREVIOUS_IMAGE
-                echo "⏪ Successfully rolled back to $PREVIOUS_IMAGE"
-              else
-                echo "❌ Rollback failed: No previous stable image found."
-              fi
-              exit 1 # Fail the action so developer is notified
-            fi
+            # Navigate and Run
+            cd ~/leadflow-ai
+            chmod +x deploy.sh
+            ./deploy.sh
