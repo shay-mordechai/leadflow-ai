@@ -39,3 +39,4 @@ telnyx
 vonage
 
 alembic
+boto3
