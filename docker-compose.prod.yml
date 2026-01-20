@@ -1,0 +1,24 @@
+version: '3.8'
+
+services:
+  app:
+    # Production Image: Pulled from GitHub Container Registry
+    image: ghcr.io/shay-mordechai/leadflow-ai:latest
+    container_name: leadflow-ai
+    
+    # Restart Policy: Ensures app recovers after crashes or reboots
+    restart: always
+    
+    # Network: Host mode allows direct communication with the Tunnel (running on host)
+    network_mode: "host"
+    
+    # Environment Variables: Loaded from the server's .env file
+    env_file:
+      - .env
+    
+    # Storage: Persistent storage for audio files/logs
+    volumes:
+      - ./storage:/app/storage
+
+  # Note: The Cloudflare Tunnel is NOT defined here.
+  # It is managed by systemd on the server to ensure high availability.

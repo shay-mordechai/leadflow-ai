@@ -9,13 +9,12 @@ env:
   IMAGE_NAME: shay-mordechai/leadflow-ai
 
 jobs:
+  # --- JOB 1: BUILD ---
   build-and-push:
     runs-on: ubuntu-latest
     permissions:
       contents: read
       packages: write
-    outputs:
-      image_tag: ${{ github.sha }}
     steps:
       - name: Checkout code
         uses: actions/checkout@v3
@@ -32,64 +31,34 @@ jobs:
         with:
           context: .
           push: true
+          # Tags the image with 'latest' and the specific commit SHA
           tags: |
             ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:latest
             ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ github.sha }}
 
+  # --- JOB 2: DEPLOY ---
   deploy:
     needs: build-and-push
     runs-on: ubuntu-latest
     steps:
-      # 1. Install Cloudflared on the GitHub Runner
-      # Required to establish the tunnel connection via ProxyCommand
+      - name: Checkout code
+        uses: actions/checkout@v3
+        # We need the code checkout to access 'docker-compose.prod.yml'
+
+      # 1. Install Cloudflared (Required for ProxyCommand)
       - name: Install Cloudflared
         run: |
           curl -L --output cloudflared.deb https://github.com/cloudflare/cloudflared/releases/latest/download/cloudflared-linux-amd64.deb
           sudo dpkg -i cloudflared.deb
 
-      # 2. DEBUG STEP: Test Cloudflare Access Token
-      # This step verifies if the Service Token is valid and accepted by the Cloudflare Policy.
-      # It attempts a direct HTTPS connection.
-      # Result 403 = Token rejected (Policy/Secret issue).
-      # Result 200/404/530 = Token accepted (Auth works, issue might be SSH-specific).
-      - name: Debug Cloudflare Connectivity
-        run: |
-          echo "Testing connectivity to: https://${{ secrets.CF_SSH_HOSTNAME }}"
-          
-          # We use curl to send the Service Token headers.
-          # -s: Silent mode | -o /dev/null: Discard output | -w "%{http_code}": Print status code
-          HTTP_CODE=$(curl -s -o /dev/null -w "%{http_code}" \
-            -H "CF-Access-Client-Id: ${{ secrets.CF_SERVICE_ID }}" \
-            -H "CF-Access-Client-Secret: ${{ secrets.CF_SERVICE_SECRET }}" \
-            "https://${{ secrets.CF_SSH_HOSTNAME }}")
-            
-          echo "Cloudflare HTTP Response Code: $HTTP_CODE"
-          
-          if [ "$HTTP_CODE" == "403" ]; then
-            echo "❌ CRITICAL ERROR: 403 Forbidden."
-            echo "This means Cloudflare Access REJECTED your Service Token."
-            echo "Please check: 1. GitHub Secrets (spaces?) 2. Cloudflare Access Policy (set to Service Auth?)"
-            exit 1
-          elif [ "$HTTP_CODE" == "000" ]; then
-             echo "❌ Error: Could not resolve hostname. Check CF_SSH_HOSTNAME."
-             exit 1
-          else
-            echo "✅ Success: Cloudflare accepted the token (Code $HTTP_CODE). Proceeding to SSH..."
-          fi
-
-      # 3. Configure SSH Client
-      # We create the SSH directory, save the private key, and configure ~/.ssh/config.
-      # The ProxyCommand uses the installed cloudflared to tunnel traffic.
+      # 2. Configure SSH Config using Secrets
       - name: Configure SSH & Tunnel
         run: |
           mkdir -p ~/.ssh/
-          
-          # Write the private key to a file and secure it
           echo "${{ secrets.EC2_SSH_KEY }}" > ~/.ssh/id_rsa
           chmod 600 ~/.ssh/id_rsa
           
-          # Create the SSH Config file
-          # The ProxyCommand bypasses port 22 and tunnels traffic via Cloudflare
+          # Create SSH config to route traffic via Cloudflare
           cat > ~/.ssh/config <<EOF
           Host production
             HostName ${{ secrets.CF_SSH_HOSTNAME }}
@@ -99,20 +68,27 @@ jobs:
             ProxyCommand cloudflared access ssh --hostname %h --id ${{ secrets.CF_SERVICE_ID }} --secret ${{ secrets.CF_SERVICE_SECRET }}
           EOF
 
-      # 4. Execute Remote Deployment
-      # Connects to 'production' alias defined above and runs the update script
-      - name: Execute Remote Deployment
+      # 3. Deploy using Docker Compose
+      - name: Deploy with Compose
         run: |
+          # A. Copy the production compose file to the server
+          scp docker-compose.prod.yml production:~/leadflow-ai/docker-compose.yml
+
+          # B. Execute remote commands
           ssh production "
+            # Stop execution on any error
             set -e
-            
-            # Login to GHCR to pull the private image
-            echo ${{ secrets.GITHUB_TOKEN }} | podman login ghcr.io -u ${{ github.actor }} --password-stdin
             
             # Navigate to project directory
             cd ~/leadflow-ai
             
-            # Ensure the deployment script is executable and run it
-            chmod +x deploy.sh
-            ./deploy.sh
+            # Login to GHCR (required to pull private image)
+            echo ${{ secrets.GITHUB_TOKEN }} | podman login ghcr.io -u ${{ github.actor }} --password-stdin
+            
+            # Pull the latest image defined in the compose file
+            podman-compose pull
+            
+            # Recreate containers (Down + Up ensures a fresh state)
+            # The tunnel is untouched because it is not in the compose file
+            podman-compose up -d --force-recreate
           "
