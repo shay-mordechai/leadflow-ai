@@ -9,6 +9,8 @@ SQLAlchemy
 psycopg2-binary
 pydantic
 pydantic-settings
+boto3
+alembic
 python-dotenv
 bcrypt==4.0.1
 
@@ -37,6 +39,3 @@ slowapi
 twilio
 telnyx
 vonage
-
-alembic
-boto3

@@ -1,3 +1,4 @@
+# src/config.py
 import os
 import logging
 import requests
@@ -53,7 +54,6 @@ def load_aws_configurations():
         ssm = boto3.client('ssm', region_name=region)
         
         # Configuration Path in SSM (Namespace)
-        # Suggestion: Use /application_name/environment/
         ssm_path = "/leadflow/prod/" 
 
         # Step 4: Fetch Parameters (Handling Pagination)

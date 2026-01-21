@@ -1,3 +1,4 @@
+# docker-compose.prod.yml
 version: '3.8'
 
 services:
@@ -12,9 +13,8 @@ services:
     # Network: Host mode allows direct communication with the Tunnel (running on host)
     network_mode: "host"
     
-    # Environment Variables: Loaded from the server's .env file
-    env_file:
-      - .env
+    # Note: 'env_file' is removed.
+    # The application fetches secrets directly from AWS SSM using the EC2 IAM Role.
     
     # Storage: Persistent storage for audio files/logs
     volumes:

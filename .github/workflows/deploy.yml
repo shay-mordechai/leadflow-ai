@@ -1,3 +1,4 @@
+# .github/workflows/deploy.yml
 name: LeadFlow Production Deploy
 
 on:
@@ -71,10 +72,13 @@ jobs:
       # 3. Deploy using Docker Compose
       - name: Deploy with Compose
         run: |
-          # A. Copy the production compose file to the server
+          # A. Ensure directory exists (Fixes SCP error)
+          ssh production "mkdir -p ~/leadflow-ai"
+
+          # B. Copy the production compose file to the server
           scp docker-compose.prod.yml production:~/leadflow-ai/docker-compose.yml
 
-          # B. Execute remote commands
+          # C. Execute remote commands
           ssh production "
             # Stop execution on any error
             set -e
@@ -88,7 +92,6 @@ jobs:
             # Pull the latest image defined in the compose file
             podman-compose pull
             
-            # Recreate containers (Down + Up ensures a fresh state)
-            # The tunnel is untouched because it is not in the compose file
+            # Recreate containers (Force recreate ensures config changes apply)
             podman-compose up -d --force-recreate
           "

@@ -1,3 +1,4 @@
+# docker-compose.yml
 version: '3.8'
 
 services:
@@ -44,15 +45,6 @@ services:
     depends_on:
       - db
     restart: always
-
-  # ⚠️ WARNING: Do not run the production tunnel locally!
-  # It will conflict with the active production server and cause downtime.
-  # cloudflared:
-  #   image: cloudflare/cloudflared:latest
-  #   container_name: cloudflared_dev
-  #   command: tunnel --no-autoupdate run --token ${CLOUDFLARE_TOKEN}
-  #   restart: always
-  #   env_file: .env
 
 volumes:
   postgres_data_dev:
