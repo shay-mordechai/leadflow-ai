@@ -16,6 +16,9 @@ services:
     # Note: 'env_file' is removed.
     # The application fetches secrets directly from AWS SSM using the EC2 IAM Role.
     
+    # Note: 'command' instruction is intentionally OMITTED.
+    # We rely on the CMD defined in the Dockerfile to ensure correct shell-form syntax.
+    
     # Storage: Persistent storage for audio files/logs
     volumes:
       - ./storage:/app/storage
