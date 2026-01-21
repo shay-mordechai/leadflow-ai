@@ -30,5 +30,6 @@ RUN mkdir -p storage/audio
 EXPOSE 8000
 
 # The actual command will be provided in docker-compose or AWS Task definition
-#CMD ["uvicorn", "src.main:app", "--host", "0.0.0.0", "--port", "8000"]
-CMD ["gunicorn", "src.main:app", "--workers", "2", "--worker-class", "uvicorn.workers.UvicornWorker", "--bind", "0.0.0.0:8000", "--timeout", "120"] # used 2 workers for 2 cores on t3.micro
+# Note: Using Shell Form (no brackets) to prevent syntax errors on startup.
+# Optimized for t3.micro (2 vCPUs -> 2 Workers)
+CMD gunicorn src.main:app --workers 2 --worker-class uvicorn.workers.UvicornWorker --bind 0.0.0.0:8000 --timeout 120
