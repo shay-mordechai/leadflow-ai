@@ -10,8 +10,7 @@
 # - Do NOT change 'podman' commands back to 'docker'.
 # - Do NOT change 'podman-compose' back to 'docker compose'.
 #
-# The EC2 server does not have the Docker daemon installed by default.
-# It uses Podman which is daemonless and rootless by design.
+# The EC2 server uses Podman which is daemonless and rootless by design.
 # ==============================================================================
 
 name: LeadFlow Production Deploy
@@ -25,7 +24,7 @@ env:
   IMAGE_NAME: shay-mordechai/leadflow-ai
 
 jobs:
-  # --- JOB 1: BUILD (GitHub Runners use Docker, this is fine) ---
+  # --- JOB 1: BUILD (GitHub Runners use Docker, which is compatible for building) ---
   build-and-push:
     runs-on: ubuntu-latest
     permissions:
@@ -51,7 +50,7 @@ jobs:
             ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:latest
             ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ github.sha }}
 
-  # --- JOB 2: DEPLOY (Using PODMAN on Server) ---
+  # --- JOB 2: DEPLOY (Executing Podman commands on EC2) ---
   deploy:
     needs: build-and-push
     runs-on: ubuntu-latest
@@ -78,7 +77,7 @@ jobs:
             ProxyCommand cloudflared access ssh --hostname %h --id ${{ secrets.CF_SERVICE_ID }} --secret ${{ secrets.CF_SERVICE_SECRET }}
           EOF
 
-      # --- Generate Podman Script ---
+      # --- Deployment Logic Script ---
       - name: Create Podman Deployment Script
         run: |
           cat <<EOF > deploy_script.sh
@@ -90,26 +89,22 @@ jobs:
           cd ~/leadflow-ai
           
           # 1. Login to Registry using Podman
-          # Note: Podman stores auth differently, but this standard command works
           echo "${{ secrets.GITHUB_TOKEN }}" | podman login ghcr.io -u ${{ github.actor }} --password-stdin
           
-          echo '--- 1. Pulling and Deploying New Version ---'
-          # Explicitly pull the latest image to ensure we aren't using cached one
+          echo '--- 1. Pulling New Version ---'
           podman pull ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:latest
           
           # 2. Restart with Podman Compose
-          # We use '|| true' on down because if it's not running, it might fail
           podman-compose down || true
           podman-compose up -d
           
           echo '--- 3. Health & Log Analysis (Waiting 15s) ---'
           sleep 15
           
-          # Initialize flags
+          # Initialize validation flag
           ROLLBACK_NEEDED=false
           
-          # A. Check if container is running (using Podman syntax)
-          # We search for a container name containing 'leadflow' because podman-compose might name it variously
+          # A. Check if any leadflow container is running
           CONTAINER_ID=\$(podman ps -q --filter "name=leadflow" | head -n 1)
           
           if [ -z "\$CONTAINER_ID" ]; then
@@ -118,25 +113,25 @@ jobs:
           else
              echo "✅ Found container ID: \$CONTAINER_ID"
              
-             # B. Check logs
+             # B. Scan logs for startup errors
              RECENT_LOGS=\$(podman logs --tail 100 \$CONTAINER_ID 2>&1)
              
              if echo "\$RECENT_LOGS" | grep -iqE 'exception|traceback|critical error|fatal'; then
-                  echo '❌ CRITICAL: Found keywords in logs.'
+                  echo '❌ CRITICAL: Error keywords detected in logs.'
                   echo "\$RECENT_LOGS" | grep -iE 'exception|traceback|critical error|fatal'
                   ROLLBACK_NEEDED=true
              else
-                  echo '✅ Deployment Successful.'
+                  echo '✅ Deployment Successful. Server is stable.'
              fi
           fi
 
           if [ "\$ROLLBACK_NEEDED" = "true" ]; then
-              echo '⚠️ Deploy failed. Check logs via SSH.'
+              echo '⚠️ Deployment health check failed. Please inspect logs manually.'
               exit 1
           fi
           
           # --- 4. Cleanup ---
-          echo '--- 🧹 Cleaning up disk space ---'
+          echo '--- 🧹 Cleaning up unused images ---'
           podman image prune -f
           EOF
 

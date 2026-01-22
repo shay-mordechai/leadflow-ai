@@ -19,22 +19,21 @@ def load_aws_configurations():
     Attempts to load configuration and secrets from AWS SSM Parameter Store.
     
     Mechanism:
-    1. Tries to connect to AWS IMDSv2 (Instance Metadata Service) to get a session token.
+    1. Tries to connect to AWS IMDSv2 to get a session token.
     2. If successful, identifies the current AWS Region.
     3. Connects to SSM Parameter Store in that region.
     4. Fetches all parameters under '/leadflow/prod/' (recursive) with decryption.
-    5. Injects them into os.environ so Pydantic can read them.
+    5. Injects them into os.environ for Pydantic to pick up.
     
     Fallback:
     If not running on EC2 or if AWS calls fail, it defaults gracefully to local environment variables.
     """
     try:
         # Step 1: Request IMDSv2 Token (Validity: 6 hours)
-        # This acts as a check: if this times out/fails, we are likely local.
         token_url = "http://169.254.169.254/latest/api/token"
         headers = {"X-aws-ec2-metadata-token-ttl-seconds": "21600"}
         
-        # Short timeout because we want to fail fast locally
+        # Fast timeout to fail quickly if running locally
         token_response = requests.put(token_url, headers=headers, timeout=1)
         
         if token_response.status_code != 200:
@@ -71,47 +70,46 @@ def load_aws_configurations():
                 key = param['Name'].split("/")[-1]
                 value = param['Value']
                 
-                # Set into environment for Pydantic to pick up
+                # Injected into environment for Pydantic Settings to pick up
                 os.environ[key] = value
                 params_loaded += 1
         
-        logger.info(f"🔐 Successfully loaded {params_loaded} secrets from AWS SSM Parameter Store.")
+        logger.info(f"🔐 Successfully loaded {params_loaded} secrets from AWS SSM.")
 
     except requests.exceptions.RequestException:
-        # Network error implies likely not on EC2 or metadata service blocked
+        # Likely local environment or metadata service unreachable
         pass
     except Exception as e:
-        # Log warning but don't crash, allowing local fallback
         logger.warning(f"⚠️ AWS SSM Load Failed: {e}. Falling back to local env.")
 
-# 1. Load Local .env (Development Override)
+# 1. Load Local .env (Development/Local)
 load_dotenv()
 
 # 2. Load AWS Secrets (Production Override)
-# AWS secrets will overwrite .env values if they exist in both, 
-# ensuring production configuration takes precedence on the server.
 load_aws_configurations()
 
 class Settings(BaseSettings):
     """
     Application Configuration Class.
-    Fully integrated with Pydantic for production safety.
-    Validates environment variables on startup.
+    Integrated with Pydantic Settings for type safety and validation.
+    Priority: AWS SSM (if on EC2) > Local .env > Defaults.
     """
 
     # --- General App Settings ---
     APP_NAME: str = "LeadFlowAI Secure Platform"
     DEBUG: bool = False
-    
-    # Critical Webhook URL
     BASE_URL: str = "http://localhost:8000"
 
     # --- Infrastructure Connections ---
-    DATABASE_URL: str = Field(..., description="PostgreSQL Connection String")
+    DATABASE_URL: str = Field(..., description="Database connection string (SQLite/Postgres)")
 
     # --- Security Secrets ---
     SECRET_KEY: str = Field(..., min_length=32, description="JWT Signing Key")
     ENCRYPTION_KEY: str = Field(..., description="Fernet Key for PII Encryption")
+    
+    # --- Third Party Integration Tokens ---
+    CLOUDFLARE_TOKEN: str | None = Field(default=None, description="Cloudflare API/Tunnel Token")
+    GIT_TOKEN: str | None = Field(default=None, description="GitHub Token for CI/CD operations")
 
     # --- AI Vendor Keys ---
     OPENAI_API_KEY: str = Field(default="")
@@ -135,7 +133,7 @@ class Settings(BaseSettings):
     VONAGE_API_KEY: str | None = None
     VONAGE_API_SECRET: str | None = None
     VONAGE_APP_ID: str | None = None
-    VONAGE_PRIVATE_KEY_PATH: str | None = None
+    VONAGE_PRIVATE_KEY_PATH: str | None = None 
 
     # --- Network Security Policy ---
     ALLOWED_HOSTS: Any = ["*"] 
