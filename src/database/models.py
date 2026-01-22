@@ -10,16 +10,14 @@ from sqlalchemy.types import TypeDecorator, CHAR
 from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import declarative_base, relationship
 
-# Ensure encryption is imported
+# Ensure encryption is imported for securing PII and OTP codes
 from src.security.encryption import protector 
 
 Base = declarative_base()
 
 # --- HELPER FOR CROSS-DB UUID SUPPORT ---
 class GUID(TypeDecorator):
-    """Platform-independent GUID type.
-    Uses PostgreSQL's UUID type, otherwise uses CHAR(32), storing as string without hyphens.
-    """
+    """Platform-independent GUID type."""
     impl = CHAR
     cache_ok = True
 
@@ -107,6 +105,12 @@ class User(Base):
     last_known_city = Column(String, nullable=True)
     last_known_country = Column(String, nullable=True)
 
+    # --- MFA / OTP SECURITY FIELDS ---
+    # We encrypt the OTP so even DB admins cannot see the codes
+    _otp_encrypted = Column("otp_code", String, nullable=True)
+    otp_expires_at = Column(DateTime, nullable=True)
+    # ---------------------------------
+
     # Business Info
     business_type = Column(String, nullable=True) 
     assigned_phone_number = Column(String, unique=True, index=True, nullable=True)
@@ -120,6 +124,15 @@ class User(Base):
     media_files = relationship("MediaInteraction", back_populates="user", cascade="all, delete-orphan")
     integrations = relationship("Integration", back_populates="user", cascade="all, delete-orphan")
     business_profile = relationship("BusinessProfile", uselist=False, back_populates="user", cascade="all, delete-orphan")
+
+    # Property getter/setter for OTP Encryption
+    @property
+    def otp_code(self):
+        return protector.decrypt(self._otp_encrypted) if self._otp_encrypted else None
+    
+    @otp_code.setter
+    def otp_code(self, value):
+        self._otp_encrypted = protector.encrypt(value) if value else None
 
 class BusinessProfile(Base):
     __tablename__ = "business_profiles"
