@@ -5,13 +5,48 @@ from datetime import datetime
 from sqlalchemy import (
     Column, String, DateTime, Boolean, Text, ForeignKey, Enum, Integer, func
 )
+# We use GUID as a helper to handle UUIDs across both SQLite and Postgres
+from sqlalchemy.types import TypeDecorator, CHAR
 from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import declarative_base, relationship
 
-# Ensure you have this module, otherwise comment out encryption lines
+# Ensure encryption is imported
 from src.security.encryption import protector 
 
 Base = declarative_base()
+
+# --- HELPER FOR CROSS-DB UUID SUPPORT ---
+class GUID(TypeDecorator):
+    """Platform-independent GUID type.
+    Uses PostgreSQL's UUID type, otherwise uses CHAR(32), storing as string without hyphens.
+    """
+    impl = CHAR
+    cache_ok = True
+
+    def load_dialect_impl(self, dialect):
+        if dialect.name == 'postgresql':
+            return dialect.type_descriptor(UUID())
+        else:
+            return dialect.type_descriptor(CHAR(32))
+
+    def process_bind_param(self, value, dialect):
+        if value is None:
+            return value
+        elif dialect.name == 'postgresql':
+            return str(value)
+        else:
+            if not isinstance(value, uuid.UUID):
+                return "%.32x" % uuid.UUID(value).int
+            else:
+                return "%.32x" % value.int
+
+    def process_result_value(self, value, dialect):
+        if value is None:
+            return value
+        else:
+            if not isinstance(value, uuid.UUID):
+                value = uuid.UUID(value)
+            return value
 
 # --- ENUMS ---
 class PlanTier(str, enum.Enum):
@@ -54,7 +89,8 @@ class ProcessingStatus(str, enum.Enum):
 class User(Base):
     __tablename__ = "users"
     
-    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    # Using GUID for cross-DB compatibility
+    id = Column(GUID(), primary_key=True, default=uuid.uuid4)
     name = Column(String, nullable=False)
     email = Column(String, unique=True, index=True, nullable=False)
     hashed_password = Column(String, nullable=False)
@@ -67,8 +103,7 @@ class User(Base):
     created_at = Column(DateTime(timezone=True), server_default=func.now())
     last_login_ip = Column(String, nullable=True)
 
-    # --- SECURITY & LOCATION TRACKING (Added) ---
-    # Used to detect Impossible Travel (e.g., login from Tel Aviv then London in 5 mins)
+    # Security & Location Tracking
     last_known_city = Column(String, nullable=True)
     last_known_country = Column(String, nullable=True)
 
@@ -89,8 +124,8 @@ class User(Base):
 class BusinessProfile(Base):
     __tablename__ = "business_profiles"
     
-    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
-    user_id = Column(UUID(as_uuid=True), ForeignKey("users.id", ondelete="CASCADE"), unique=True, nullable=False)
+    id = Column(GUID(), primary_key=True, default=uuid.uuid4)
+    user_id = Column(GUID(), ForeignKey("users.id", ondelete="CASCADE"), unique=True, nullable=False)
     
     business_name = Column(String, nullable=False, default="My Business")
     business_type = Column(String, default="General")
@@ -106,10 +141,10 @@ class BusinessProfile(Base):
 class Lead(Base):
     __tablename__ = "leads"
     
-    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
-    user_id = Column(UUID(as_uuid=True), ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True)
+    id = Column(GUID(), primary_key=True, default=uuid.uuid4)
+    user_id = Column(GUID(), ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True)
     
-    # Encrypted Fields
+    # Internal Encrypted Fields
     _name_encrypted = Column("name", String, nullable=True)
     _phone_encrypted = Column("phone_number", String, nullable=True)
     
@@ -131,7 +166,7 @@ class Lead(Base):
     user = relationship("User", back_populates="leads")
     media_files = relationship("MediaInteraction", back_populates="lead")
 
-    # Property getters/setters for encryption
+    # Property getters/setters handle seamless encryption
     @property
     def name(self):
         return protector.decrypt(self._name_encrypted) if self._name_encrypted else None
@@ -149,15 +184,14 @@ class Lead(Base):
 class MediaInteraction(Base):
     __tablename__ = "media_interactions"
     
-    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
-    user_id = Column(UUID(as_uuid=True), ForeignKey("users.id", ondelete="CASCADE"), nullable=False)
-    lead_id = Column(UUID(as_uuid=True), ForeignKey("leads.id", ondelete="SET NULL"), nullable=True)
+    id = Column(GUID(), primary_key=True, default=uuid.uuid4)
+    user_id = Column(GUID(), ForeignKey("users.id", ondelete="CASCADE"), nullable=False)
+    lead_id = Column(GUID(), ForeignKey("leads.id", ondelete="SET NULL"), nullable=True)
     
     file_path = Column(String, nullable=False)
     message_text = Column(Text, nullable=True) 
     media_type = Column(Enum(MediaType), default=MediaType.AUDIO, nullable=False)
     
-    # Worker Logic Fields
     processed = Column(Boolean, default=False) 
     status = Column(Enum(ProcessingStatus), default=ProcessingStatus.PENDING, index=True)
     transcription_text = Column(Text, nullable=True)
@@ -172,8 +206,8 @@ class MediaInteraction(Base):
 class Integration(Base):
     __tablename__ = "integrations"
     
-    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
-    user_id = Column(UUID(as_uuid=True), ForeignKey("users.id", ondelete="CASCADE"), nullable=False)
+    id = Column(GUID(), primary_key=True, default=uuid.uuid4)
+    user_id = Column(GUID(), ForeignKey("users.id", ondelete="CASCADE"), nullable=False)
     
     platform_name = Column(String, nullable=False)
     access_token = Column(String, nullable=False)

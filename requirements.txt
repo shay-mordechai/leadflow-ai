@@ -4,7 +4,7 @@ uvicorn[standard]
 gunicorn
 prettytable
 
-# --- Database ---
+# --- Database & Models ---
 SQLAlchemy
 psycopg2-binary
 pydantic
@@ -12,7 +12,6 @@ pydantic-settings
 boto3
 alembic
 python-dotenv
-bcrypt==4.0.1
 
 # --- UI & Utilities ---
 jinja2
@@ -25,6 +24,7 @@ httpx
 requests
 
 # --- AI & Processing ---
+# Note: faster-whisper is heavy, ensure your EC2 has enough RAM (min 2GB)
 faster-whisper
 openai
 google-generativeai
@@ -32,6 +32,8 @@ google-generativeai
 # --- Security & Auth ---
 bleach
 cryptography
+# Specific versioning to prevent "Invalid salt" errors on Amazon Linux
+bcrypt==4.0.1
 passlib[bcrypt]
 python-jose[cryptography]
 slowapi

@@ -5,7 +5,10 @@
 
 from cryptography.fernet import Fernet
 from typing import Optional
+import logging
 from src.config import settings
+
+logger = logging.getLogger("Security")
 
 class PIIProtector:
     """
@@ -14,11 +17,25 @@ class PIIProtector:
     """
 
     def __init__(self):
-        # Validate that the encryption key exists in the environment settings
-        if not settings.ENCRYPTION_KEY:
-            raise ValueError("CRITICAL: ENCRYPTION_KEY is missing from configuration. PII cannot be secured.")
+        self._cipher = None
 
-        self._cipher = Fernet(settings.ENCRYPTION_KEY)
+    def _get_cipher(self) -> Fernet:
+        """
+        Lazy-loads the cipher instance. This ensures that AWS SSM secrets 
+        are fully loaded before the encryption engine attempts to initialize.
+        """
+        if self._cipher is None:
+            if not settings.ENCRYPTION_KEY:
+                logger.critical("ENCRYPTION_KEY is missing from configuration. System cannot secure PII.")
+                raise ValueError("CRITICAL: ENCRYPTION_KEY is required for PII security.")
+            
+            try:
+                self._cipher = Fernet(settings.ENCRYPTION_KEY)
+            except Exception as e:
+                logger.error(f"Failed to initialize Fernet cipher: {e}")
+                raise ValueError("INVALID_ENCRYPTION_KEY: Key must be a 32-byte url-safe base64-encoded string.")
+        
+        return self._cipher
 
     def encrypt(self, plaintext: str) -> Optional[str]:
         """
@@ -27,22 +44,34 @@ class PIIProtector:
         """
         if plaintext is None:
             return None
-        # Fernet requires bytes input
-        return self._cipher.encrypt(plaintext.encode("utf-8")).decode("utf-8")
+        
+        try:
+            cipher = self._get_cipher()
+            # Fernet requires bytes input
+            return cipher.encrypt(plaintext.encode("utf-8")).decode("utf-8")
+        except Exception as e:
+            logger.error(f"Encryption failed: {e}")
+            return None
 
     def decrypt(self, ciphertext: str) -> Optional[str]:
         """
         Decrypts a ciphertext string.
-        Returns the original plaintext.
+        Returns the original plaintext or a placeholder on failure.
         """
         if ciphertext is None:
             return None
+            
         try:
-            return self._cipher.decrypt(ciphertext.encode("utf-8")).decode("utf-8")
-        except Exception:
-            # In a production environment, this should log a high-severity security audit event.
-            # Returning a placeholder prevents the application from crashing on UI rendering.
+            cipher = self._get_cipher()
+            return cipher.decrypt(ciphertext.encode("utf-8")).decode("utf-8")
+        except Exception as e:
+            # Professional English Comment:
+            # In a production environment, decryption failure should be treated as a 
+            # security audit event. We return a placeholder to avoid crashing the UI 
+            # while signaling data integrity issues.
+            logger.error(f"Decryption failed for ciphertext. Key might be rotated or invalid: {e}")
             return "[DECRYPTION_FAILED]"
 
-# Global instance to be used by SQLAlchemy TypeDecorators in models.py
+# Global instance to be used by SQLAlchemy models and services.
+# The internal cipher is initialized only upon first usage.
 protector = PIIProtector()
