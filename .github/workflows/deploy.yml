@@ -1,4 +1,19 @@
 # .github/workflows/deploy.yml
+# ==============================================================================
+# ⚠️  CRITICAL CONFIGURATION WARNING - READ BEFORE EDITING  ⚠️
+# ==============================================================================
+# Target Server OS: Amazon Linux 2023
+# Container Runtime: PODMAN (Not Docker!)
+#
+# IMPORTANT:
+# This workflow is specifically tuned for PODMAN.
+# - Do NOT change 'podman' commands back to 'docker'.
+# - Do NOT change 'podman-compose' back to 'docker compose'.
+#
+# The EC2 server does not have the Docker daemon installed by default.
+# It uses Podman which is daemonless and rootless by design.
+# ==============================================================================
+
 name: LeadFlow Production Deploy
 
 on:
@@ -10,7 +25,7 @@ env:
   IMAGE_NAME: shay-mordechai/leadflow-ai
 
 jobs:
-  # --- JOB 1: BUILD ---
+  # --- JOB 1: BUILD (GitHub Runners use Docker, this is fine) ---
   build-and-push:
     runs-on: ubuntu-latest
     permissions:
@@ -36,7 +51,7 @@ jobs:
             ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:latest
             ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ github.sha }}
 
-  # --- JOB 2: DEPLOY WITH SMART ROLLBACK & CLEANUP ---
+  # --- JOB 2: DEPLOY (Using PODMAN on Server) ---
   deploy:
     needs: build-and-push
     runs-on: ubuntu-latest
@@ -49,7 +64,6 @@ jobs:
           curl -L --output cloudflared.deb https://github.com/cloudflare/cloudflared/releases/latest/download/cloudflared-linux-amd64.deb
           sudo dpkg -i cloudflared.deb
 
-      # Note: Make sure the secret names match exactly what you have in GitHub Settings
       - name: Configure SSH & Tunnel
         run: |
           mkdir -p ~/.ssh/
@@ -64,31 +78,29 @@ jobs:
             ProxyCommand cloudflared access ssh --hostname %h --id ${{ secrets.CF_SERVICE_ID }} --secret ${{ secrets.CF_SERVICE_SECRET }}
           EOF
 
-      # --- CRITICAL FIX: Generate Script Locally ---
-      # Instead of passing a long string to SSH (which breaks quotes),
-      # we write the logic to a file first.
-      - name: Create Deployment Script
+      # --- Generate Podman Script ---
+      - name: Create Podman Deployment Script
         run: |
           cat <<EOF > deploy_script.sh
           #!/bin/bash
           set -e
           
           # Navigate to project directory
+          mkdir -p ~/leadflow-ai
           cd ~/leadflow-ai
           
-          # 1. Login to Registry
-          echo "${{ secrets.GITHUB_TOKEN }}" | docker login ghcr.io -u ${{ github.actor }} --password-stdin
+          # 1. Login to Registry using Podman
+          # Note: Podman stores auth differently, but this standard command works
+          echo "${{ secrets.GITHUB_TOKEN }}" | podman login ghcr.io -u ${{ github.actor }} --password-stdin
           
-          echo '--- 1. Creating Backup of Current Stable Version ---'
-          # Tag the current working image as 'rollback'. '|| true' allows first deploy to fail tagging.
-          docker tag ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:latest leadflow:rollback || true
+          echo '--- 1. Pulling and Deploying New Version ---'
+          # Explicitly pull the latest image to ensure we aren't using cached one
+          podman pull ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:latest
           
-          echo '--- 2. Pulling and Deploying New Version ---'
-          docker compose pull
-          
-          # Clean restart
-          docker compose down
-          docker compose up -d
+          # 2. Restart with Podman Compose
+          # We use '|| true' on down because if it's not running, it might fail
+          podman-compose down || true
+          podman-compose up -d
           
           echo '--- 3. Health & Log Analysis (Waiting 15s) ---'
           sleep 15
@@ -96,58 +108,41 @@ jobs:
           # Initialize flags
           ROLLBACK_NEEDED=false
           
-          # A. Check if container is physically running
-          # Note: We use 'leadflow-ai-app-1' or just grep the name. Adjust container name if needed.
-          IS_RUNNING=\$(docker inspect -f '{{.State.Running}}' leadflow-ai-app-1 2>/dev/null || echo 'false')
+          # A. Check if container is running (using Podman syntax)
+          # We search for a container name containing 'leadflow' because podman-compose might name it variously
+          CONTAINER_ID=\$(podman ps -q --filter "name=leadflow" | head -n 1)
           
-          # B. Scan recent logs for critical keywords (Case Insensitive)
-          RECENT_LOGS=\$(docker logs --tail 100 leadflow-ai-app-1 2>&1)
-          
-          if [ "\$IS_RUNNING" != "true" ]; then
-              echo '❌ CRITICAL: Container is NOT running (Crashed).'
-              ROLLBACK_NEEDED=true
-              
-          # Check for specific python/app errors
-          elif echo "\$RECENT_LOGS" | grep -iqE 'exception|traceback|critical error|fatal'; then
-              echo '❌ CRITICAL: Found keywords in logs (Exception/Traceback/Fatal).'
-              echo '--- SUSPICIOUS LOGS ---'
-              echo "\$RECENT_LOGS" | grep -iE 'exception|traceback|critical error|fatal'
-              echo '-----------------------'
-              ROLLBACK_NEEDED=true
+          if [ -z "\$CONTAINER_ID" ]; then
+             echo '❌ CRITICAL: No container found running!'
+             ROLLBACK_NEEDED=true
           else
-              echo '✅ Deployment Successful: Container is UP and Logs are CLEAN.'
+             echo "✅ Found container ID: \$CONTAINER_ID"
+             
+             # B. Check logs
+             RECENT_LOGS=\$(podman logs --tail 100 \$CONTAINER_ID 2>&1)
+             
+             if echo "\$RECENT_LOGS" | grep -iqE 'exception|traceback|critical error|fatal'; then
+                  echo '❌ CRITICAL: Found keywords in logs.'
+                  echo "\$RECENT_LOGS" | grep -iE 'exception|traceback|critical error|fatal'
+                  ROLLBACK_NEEDED=true
+             else
+                  echo '✅ Deployment Successful.'
+             fi
           fi
 
-          # --- 4. Rollback Execution (If needed) ---
           if [ "\$ROLLBACK_NEEDED" = "true" ]; then
-              echo '🔄 INITIATING AUTOMATIC ROLLBACK...'
-              
-              # Stop the broken container
-              docker compose down
-              
-              # Restore the 'rollback' tag to 'latest' inside the local registry cache
-              docker tag leadflow:rollback ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:latest
-              
-              # Restart using the stable backup
-              docker compose up -d
-              
-              echo '✅ Rollback complete. System restored to previous stable version.'
-              exit 1 # Fail the action to notify user
+              echo '⚠️ Deploy failed. Check logs via SSH.'
+              exit 1
           fi
           
-          # --- 5. Disk Cleanup ---
+          # --- 4. Cleanup ---
           echo '--- 🧹 Cleaning up disk space ---'
-          docker system prune -f
+          podman image prune -f
           EOF
 
       - name: Execute Deployment on Server
         run: |
-          # 1. Ensure directory exists
           ssh production "mkdir -p ~/leadflow-ai"
-          
-          # 2. Copy docker-compose and the new script
           scp docker-compose.prod.yml production:~/leadflow-ai/docker-compose.yml
           scp deploy_script.sh production:~/leadflow-ai/deploy.sh
-          
-          # 3. Execute the script remotely
           ssh production "chmod +x ~/leadflow-ai/deploy.sh && ~/leadflow-ai/deploy.sh"
