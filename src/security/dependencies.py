@@ -5,10 +5,11 @@ from fastapi import Depends, HTTPException, status, Request, Header
 from fastapi.security import OAuth2PasswordBearer
 from sqlalchemy.orm import Session
 from jose import jwt, JWTError
+
+# --- CRITICAL FIX: Import settings from config, NOT from auth ---
+from src.config import settings
 from src.database.session import get_db
 from src.database.models import User
-# Importing security config from your auth router
-from src.routers.auth import SECRET_KEY, ALGORITHM 
 
 # 1. Context Variable
 # Holds the current User ID for the duration of the request.
@@ -60,8 +61,12 @@ async def get_current_user(
 
     # --- REAL JWT VALIDATION ---
     try:
-        # Decode the token using our secret key and algorithm
-        payload = jwt.decode(actual_token, SECRET_KEY, algorithms=[ALGORITHM])
+        # Decode the token using our secret key and algorithm from SETTINGS
+        payload = jwt.decode(
+            actual_token, 
+            settings.SECRET_KEY, 
+            algorithms=[settings.ALGORITHM]
+        )
         email: str = payload.get("sub")
         if email is None:
             raise HTTPException(status_code=401, detail="Invalid token payload")
@@ -82,7 +87,6 @@ async def get_current_user(
         )
 
     # --- LOCATION SECURITY CHECK (IMPOSSIBLE TRAVEL) ---
-    # [Image of Cloudflare geolocation headers flow]
     # Logic: If the user has a stored 'last_known_city' in the DB, 
     # and the current request comes from a DIFFERENT city, we block access.
     

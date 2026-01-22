@@ -1,5 +1,4 @@
 # src/routers/leads.py
-
 import logging
 from datetime import datetime
 from fastapi import APIRouter, HTTPException, status, Depends, Query
