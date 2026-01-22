@@ -95,6 +95,7 @@ jobs:
           podman pull ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:latest
           
           # 2. Restart with Podman Compose
+          # Use '|| true' to prevent failure if containers are already down
           podman-compose down || true
           podman-compose up -d
           
@@ -114,6 +115,7 @@ jobs:
              echo "✅ Found container ID: \$CONTAINER_ID"
              
              # B. Scan logs for startup errors
+             # Note: Log scanning now works because Dockerfile redirects output to stdout
              RECENT_LOGS=\$(podman logs --tail 100 \$CONTAINER_ID 2>&1)
              
              if echo "\$RECENT_LOGS" | grep -iqE 'exception|traceback|critical error|fatal'; then
@@ -138,6 +140,7 @@ jobs:
       - name: Execute Deployment on Server
         run: |
           ssh production "mkdir -p ~/leadflow-ai"
-          scp docker-compose.prod.yml production:~/leadflow-ai/docker-compose.yml
+          # Professional Comment: using docker-compose.yml as source based on project tree
+          scp docker-compose.yml production:~/leadflow-ai/docker-compose.yml
           scp deploy_script.sh production:~/leadflow-ai/deploy.sh
           ssh production "chmod +x ~/leadflow-ai/deploy.sh && ~/leadflow-ai/deploy.sh"

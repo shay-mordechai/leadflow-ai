@@ -1,3 +1,4 @@
+# Dockerfile
 # Professional English Comment:
 # Multi-stage Dockerfile optimized for FastAPI and Celery.
 # This image handles both the API and the Worker depending on the startup command.
@@ -29,7 +30,14 @@ RUN mkdir -p storage/audio
 # Expose the port for FastAPI
 EXPOSE 8000
 
-# The actual command will be provided in docker-compose or AWS Task definition
-# Note: Using Shell Form (no brackets) to prevent syntax errors on startup.
-# Optimized for t3.micro (2 vCPUs -> 2 Workers)
-CMD gunicorn src.main:app --workers 2 --worker-class uvicorn.workers.UvicornWorker --bind 0.0.0.0:8000 --timeout 120
+# Professional English Comment:
+# Command updated to pipe logs to stdout/stderr using '-'.
+# This allows Podman/Docker to capture logs via 'podman logs'.
+CMD gunicorn src.main:app \
+    --workers 2 \
+    --worker-class uvicorn.workers.UvicornWorker \
+    --bind 0.0.0.0:8000 \
+    --timeout 120 \
+    --access-logfile - \
+    --error-logfile - \
+    --log-level info
