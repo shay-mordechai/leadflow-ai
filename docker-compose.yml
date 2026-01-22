@@ -16,15 +16,20 @@ services:
     restart: always
 
   app:
-    # Development: Build from local source instead of pulling from registry
+    # Development: Build from local source (Hot Reload enabled)
     build: .
     container_name: leadflow_app_dev
-    # Uses --reload for immediate feedback on code changes
+    
+    # Command: Uses uvicorn directly with --reload for fast feedback loop
     command: uvicorn src.main:app --host 0.0.0.0 --port 8000 --reload
+    
     volumes:
-      - ./src:/app/src  # Hot Reload: Syncs local changes to container immediately
+      - ./src:/app/src  # Syncs local code changes to container immediately
       - ./storage:/app/storage
+    
+    # Development uses local .env file (Production uses AWS SSM)
     env_file: .env
+    
     ports:
       - "8000:8000"
     depends_on:
@@ -32,6 +37,8 @@ services:
     restart: always
 
   worker:
+    # Optional: Only needed if you run background tasks via Celery in Dev.
+    # In Prod, currently running as Monolith within the main app container.
     build: .
     container_name: leadflow_worker_dev
     command: python -m src.worker
@@ -39,7 +46,7 @@ services:
     environment:
       - PYTHONPATH=/app
     volumes:
-      - ./src:/app/src  # Syncs code for the worker too
+      - ./src:/app/src
       - ./storage:/app/storage
     env_file: .env
     depends_on:
