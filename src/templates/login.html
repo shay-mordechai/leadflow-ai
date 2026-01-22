@@ -9,6 +9,9 @@
     <style>
         body { font-family: 'Heebo', sans-serif; }
         .glass-card { background: rgba(255, 255, 255, 0.95); backdrop-filter: blur(20px); }
+        /* Custom Checkbox Style */
+        .checkbox-wrapper input:checked + div { background-color: #0f172a; border-color: #0f172a; }
+        .checkbox-wrapper input:checked + div svg { display: block; }
     </style>
 </head>
 <body class="bg-slate-900 min-h-screen flex items-center justify-center p-4 relative overflow-hidden">
@@ -37,6 +40,17 @@
                 <input type="password" name="password" required class="w-full px-4 py-3 rounded-xl bg-slate-50 border border-slate-200 outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-200 transition placeholder-slate-300" placeholder="••••••••">
             </div>
 
+            <div class="flex items-center justify-between">
+                <label class="flex items-center cursor-pointer checkbox-wrapper group">
+                    <input type="checkbox" name="remember_me" class="hidden">
+                    <div class="w-5 h-5 border-2 border-slate-300 rounded-md flex items-center justify-center transition-colors mr-2 group-hover:border-blue-400">
+                        <svg class="w-3 h-3 text-white hidden pointer-events-none" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="3" d="M5 13l4 4L19 7"></path></svg>
+                    </div>
+                    <span class="text-sm text-slate-600 select-none mr-2">השאר אותי מחובר</span>
+                </label>
+                <a href="#" class="text-xs font-bold text-blue-600 hover:text-blue-800">שכחתי סיסמה?</a>
+            </div>
+
             <button type="submit" class="w-full bg-slate-900 hover:bg-slate-800 text-white font-bold py-4 rounded-xl shadow-lg transition transform active:scale-[0.98]">
                 כניסה למערכת
             </button>
@@ -50,15 +64,19 @@
     document.getElementById('loginForm').onsubmit = async (e) => {
         e.preventDefault();
         const btn = e.target.querySelector('button');
-        btn.innerHTML = 'Connecting...'; // Update UI state
+        const originalText = btn.innerHTML;
+        btn.innerHTML = 'מתחבר...'; 
         btn.disabled = true;
 
         const formData = new FormData(e.target);
-        const emailValue = formData.get('phone'); // Mapping the phone input to email field
+        const emailValue = formData.get('phone'); 
+        const rememberMe = formData.get('remember_me') === 'on'; // Check if user checked the box
 
         const data = {
             email: emailValue,
-            password: formData.get('password')
+            password: formData.get('password'),
+            // We can send remember_me to server if we implement Refresh Tokens later
+            remember_me: rememberMe 
         };
 
         try {
@@ -69,38 +87,48 @@
                 body: JSON.stringify(data)
             });
 
-            // Parse response once
             const result = await response.json();
 
             if (response.ok) {
-                console.log('Login successful, processing token...');
+                console.log('Login successful');
 
                 if (result.access_token) {
-                    // 1. Save to LocalStorage for Frontend access
+                    // 1. Save to LocalStorage (Optional, mostly for API calls)
                     localStorage.setItem('token', result.access_token);
                     
-                    // 2. Save to Cookie for Backend/Dashboard authentication (24h expiry)
+                    // 2. COOKIE LOGIC (Long expiry vs Short expiry)
                     const now = new Date();
-                    now.setTime(now.getTime() + (24 * 60 * 60 * 1000));
-                    document.cookie = `access_token=${result.access_token}; expires=${now.toUTCString()}; path=/; SameSite=Lax`;
+                    let expiryTime;
+
+                    if (rememberMe) {
+                        // 30 Days if "Remember Me" is checked
+                        expiryTime = 30 * 24 * 60 * 60 * 1000;
+                    } else {
+                        // 24 Hours if NOT checked
+                        expiryTime = 24 * 60 * 60 * 1000;
+                    }
+
+                    now.setTime(now.getTime() + expiryTime);
                     
-                    console.log('Authentication cookie stored');
+                    // Set the cookie with the calculated expiry
+                    document.cookie = `access_token=${result.access_token}; expires=${now.toUTCString()}; path=/; SameSite=Lax; Secure`;
+                    
+                    console.log(`Cookie set. Remember Me: ${rememberMe}. Expires in: ${expiryTime/1000/60/60} hours.`);
                 }
                 
-                // Redirect to secured dashboard
                 window.location.href = '/dashboard';
             } else {
+                // If location check failed (401), this block will run
                 console.error('Login failed:', result);
-                // Handle 422 Validation errors or 401 Unauthorized
-                const errorMsg = result.detail?.[0]?.msg || result.detail || 'Invalid credentials';
-                alert('Server Error: ' + errorMsg);
-                btn.innerHTML = 'כניסה למערכת';
+                const errorMsg = result.detail?.[0]?.msg || result.detail || 'פרטי התחברות שגויים';
+                alert('שגיאה: ' + errorMsg);
+                btn.innerHTML = originalText;
                 btn.disabled = false;
             }
         } catch (error) {
-            console.error('Network/Communication Error:', error);
-            alert('Connection error: Please ensure you entered a valid email format');
-            btn.innerHTML = 'כניסה למערכת';
+            console.error('Network Error:', error);
+            alert('שגיאת תקשורת. נא לבדוק את החיבור.');
+            btn.innerHTML = originalText;
             btn.disabled = false;
         }
     };

@@ -1,11 +1,11 @@
 # src/routers/auth.py
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, status, Header
 from sqlalchemy.orm import Session
 from pydantic import BaseModel, EmailStr, Field
 from typing import Optional
 from passlib.context import CryptContext
 from datetime import datetime, timedelta
-from jose import jwt # New import for JWT
+from jose import jwt 
 import secrets
 import string
 
@@ -37,6 +37,8 @@ class RegisterSchema(BaseModel):
 class LoginSchema(BaseModel):
     email: EmailStr
     password: str
+    # Added to match the frontend 'Remember Me' checkbox
+    remember_me: bool = False 
 
 # --- Helper Functions ---
 def create_access_token(data: dict):
@@ -87,13 +89,36 @@ async def register_user(data: RegisterSchema, db: Session = Depends(get_db)):
         raise HTTPException(status_code=500, detail="Internal server error")
 
 @router.post("/login")
-async def login_user(data: LoginSchema, db: Session = Depends(get_db)):
-    """Authenticates user and returns a real JWT."""
+async def login_user(
+    data: LoginSchema, 
+    db: Session = Depends(get_db),
+    # Extract Cloudflare Headers to establish "Trusted Location"
+    cf_ipcity: Optional[str] = Header(None, alias="cf-ipcity"),
+    cf_ipcountry: Optional[str] = Header(None, alias="cf-ipcountry")
+):
+    """
+    Authenticates user, returns JWT, and updates security location.
+    """
     user = db.query(User).filter(User.email == data.email).first()
     if not user or not pwd_context.verify(data.password, user.hashed_password):
         raise HTTPException(status_code=401, detail="Invalid credentials")
     
+    # --- SECURITY UPDATE ---
+    # Since the user successfully entered their password, we trust this location.
+    # We update the DB so subsequent requests (checked in dependencies.py)
+    # know that this city is the current valid location.
+    if cf_ipcity:
+        user.last_known_city = cf_ipcity
+        # If your User model has a country field, update it too:
+        # user.last_known_country = cf_ipcountry 
+        db.commit()
+        print(f"DEBUG: User {user.email} logged in from {cf_ipcity}. Location updated.")
+
     # Generate real token using the user's email as the subject (sub)
     access_token = create_access_token(data={"sub": user.email})
     
-    return {"access_token": access_token, "token_type": "bearer"}
+    return {
+        "access_token": access_token, 
+        "token_type": "bearer",
+        "login_location": cf_ipcity or "Unknown"
+    }
