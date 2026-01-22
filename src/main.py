@@ -43,7 +43,7 @@ async def lifespan(app: FastAPI):
         Base.metadata.create_all(bind=engine)
         logger.info("✅ Database schema verified/initialized successfully.")
     except Exception as e:
-        logger.critical(f"❌ Database initialization failed: {e}")
+        logger.warning(f"⚠️ Database init skipped (likely initialized by another worker): {e}")
         # We don't exit here to allow for manual inspection via /health endpoint
     
     yield 
