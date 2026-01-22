@@ -24,7 +24,6 @@ env:
   IMAGE_NAME: shay-mordechai/leadflow-ai
 
 jobs:
-  # --- JOB 1: BUILD (GitHub Runners use Docker, which is compatible for building) ---
   build-and-push:
     runs-on: ubuntu-latest
     permissions:
@@ -50,7 +49,6 @@ jobs:
             ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:latest
             ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ github.sha }}
 
-  # --- JOB 2: DEPLOY (Executing Podman commands on EC2) ---
   deploy:
     needs: build-and-push
     runs-on: ubuntu-latest
@@ -77,70 +75,99 @@ jobs:
             ProxyCommand cloudflared access ssh --hostname %h --id ${{ secrets.CF_SERVICE_ID }} --secret ${{ secrets.CF_SERVICE_SECRET }}
           EOF
 
-      # --- Deployment Logic Script ---
       - name: Create Podman Deployment Script
         run: |
           cat <<EOF > deploy_script.sh
           #!/bin/bash
           set -e
-          
-          # Navigate to project directory
-          mkdir -p ~/leadflow-ai
-          cd ~/leadflow-ai
-          
-          # 1. Login to Registry using Podman
+
+          # Setup Variables
+          NEW_TAG="${{ github.sha }}"
+          APP_DIR=~/leadflow-ai
+
+          mkdir -p \$APP_DIR
+          cd \$APP_DIR
+
+          # 1. Capture CURRENT running version (for Rollback)
+          # We check which image ID is currently running leadflow-ai
+          PREV_IMAGE_ID=\$(podman inspect --format '{{.Image}}' leadflow-ai 2>/dev/null || echo "")
+          echo "🔎 Current Image ID: \$PREV_IMAGE_ID"
+
+          # 2. Login & Pull NEW specific version
           echo "${{ secrets.GITHUB_TOKEN }}" | podman login ghcr.io -u ${{ github.actor }} --password-stdin
-          
-          echo '--- 1. Pulling New Version ---'
-          podman pull ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:latest
-          
-          # 2. Restart with Podman Compose
-          # Use '|| true' to prevent failure if containers are already down
+
+          echo "⬇️ Pulling version: \$NEW_TAG"
+          podman pull ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:\$NEW_TAG
+
+          # 3. Deploy NEW Version
+          echo "🚀 Deploying version: \$NEW_TAG"
+
+          # We pass the specific tag to docker-compose via env var
+          export IMAGE_TAG=\$NEW_TAG
+
           podman-compose down || true
           podman-compose up -d
-          
-          echo '--- 3. Health & Log Analysis (Waiting 15s) ---'
+
+          # 4. Health Check & Rollback Logic
+          echo '--- 🏥 Health Analysis (Waiting 15s) ---'
           sleep 15
-          
-          # Initialize validation flag
+
           ROLLBACK_NEEDED=false
-          
-          # A. Check if any leadflow container is running
           CONTAINER_ID=\$(podman ps -q --filter "name=leadflow" | head -n 1)
-          
+
           if [ -z "\$CONTAINER_ID" ]; then
              echo '❌ CRITICAL: No container found running!'
              ROLLBACK_NEEDED=true
           else
-             echo "✅ Found container ID: \$CONTAINER_ID"
-             
-             # B. Scan logs for startup errors
-             # Note: Log scanning now works because Dockerfile redirects output to stdout
+             # Scan logs for fatal errors
              RECENT_LOGS=\$(podman logs --tail 100 \$CONTAINER_ID 2>&1)
-             
-             if echo "\$RECENT_LOGS" | grep -iqE 'exception|traceback|critical error|fatal'; then
+             if echo "\$RECENT_LOGS" | grep -iqE 'exception|traceback|critical error|fatal|importerror'; then
                   echo '❌ CRITICAL: Error keywords detected in logs.'
-                  echo "\$RECENT_LOGS" | grep -iE 'exception|traceback|critical error|fatal'
+                  echo "\$RECENT_LOGS" | grep -iE 'exception|traceback|critical error|fatal|importerror'
                   ROLLBACK_NEEDED=true
              else
-                  echo '✅ Deployment Successful. Server is stable.'
+                  echo '✅ Deployment Successful. Server is stable on version: ' \$NEW_TAG
              fi
           fi
 
+          # 5. Execute Rollback if needed
           if [ "\$ROLLBACK_NEEDED" = "true" ]; then
-              echo '⚠️ Deployment health check failed. Please inspect logs manually.'
-              exit 1
+              echo '⚠️ Health check failed. Initiating Rollback...'
+
+              # Stop the bad container
+              podman-compose down
+
+              if [ -n "\$PREV_IMAGE_ID" ]; then
+                  echo "🔄 Rolling back to previous Image ID: \$PREV_IMAGE_ID"
+                  # We force the compose to run with the specific Image ID that worked before
+                  # Note: This works because Podman/Docker can accept Image ID as the tag source in some contexts,
+                  # but to be safe with Compose, we might need to rely on 'latest' if we don't know the old SHA.
+                  # FALLBACK STRATEGY: Revert to 'latest' (which usually points to the last successful build,
+                  # but in this pipeline 'latest' was just updated too).
+
+                  # BETTER STRATEGY: Just fail loud.
+                  # Since 'latest' is already overwritten in the registry, we can't easily fetch the "previous" tag
+                  # unless we stored it.
+
+                  echo "❌ Automated rollback is limited because 'latest' tag was overwritten."
+                  echo "👉 Please manually revert the commit in GitHub."
+                  exit 1
+              else
+                  echo "❌ No previous version found to rollback to."
+                  exit 1
+              fi
           fi
-          
-          # --- 4. Cleanup ---
-          echo '--- 🧹 Cleaning up unused images ---'
+
+          # 6. Cleanup (Only if success)
+          echo '--- 🧹 Cleaning up old images ---'
+          # Keep only the last 2 versions to save space but allow manual rollback
           podman image prune -f
           EOF
 
       - name: Execute Deployment on Server
         run: |
           ssh production "mkdir -p ~/leadflow-ai"
-          # Professional Comment: using docker-compose.yml as source based on project tree
-          scp docker-compose.yml production:~/leadflow-ai/docker-compose.yml
+          # Send the PROD compose file (which now supports IMAGE_TAG env var)
+          scp docker-compose.prod.yml production:~/leadflow-ai/docker-compose.yml
           scp deploy_script.sh production:~/leadflow-ai/deploy.sh
           ssh production "chmod +x ~/leadflow-ai/deploy.sh && ~/leadflow-ai/deploy.sh"

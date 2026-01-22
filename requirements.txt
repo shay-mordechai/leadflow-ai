@@ -1,3 +1,5 @@
+# requirements.txt
+
 # --- Core Framework & Server ---
 fastapi
 uvicorn[standard]
@@ -24,18 +26,27 @@ httpx
 requests
 
 # --- AI & Processing ---
-# Note: faster-whisper is heavy, ensure your EC2 has enough RAM (min 2GB)
+# Note: faster-whisper is memory intensive (requires min 2GB RAM on EC2)
 faster-whisper
 openai
 google-generativeai
 
 # --- Security & Auth ---
-bleach
+# Bleach: Required for HTML sanitization in input validation
+bleach==6.1.0
+
+# Cryptography: Core library for encryption operations
 cryptography
-# Specific versioning to prevent "Invalid salt" errors on Amazon Linux
+
+# Password Hashing:
+# Locked to 4.0.1 to prevent 'Invalid salt'/C-extension errors on Amazon Linux
 bcrypt==4.0.1
 passlib[bcrypt]
+
+# JWT Tokens:
 python-jose[cryptography]
+
+# Rate Limiting:
 slowapi
 
 # --- Telephony Providers ---

@@ -1,7 +1,37 @@
+# src/security/validation.py
 import re
 import bleach
 from typing import Tuple, Optional
+from datetime import datetime, timedelta
+from jose import jwt
+from src.config import settings
 
+# --- JWT TOKEN GENERATION ---
+def create_access_token(data: dict, expires_delta: Optional[timedelta] = None) -> str:
+    """
+    Generates a JWT Token signed with the server's SECRET_KEY.
+    Used for user authentication after OTP verification.
+    """
+    to_encode = data.copy()
+    
+    if expires_delta:
+        expire = datetime.utcnow() + expires_delta
+    else:
+        # Default expiration set in config (usually 24 hours)
+        expire = datetime.utcnow() + timedelta(minutes=settings.ACCESS_TOKEN_EXPIRE_MINUTES)
+    
+    # Standard JWT claims
+    to_encode.update({"exp": expire})
+    
+    encoded_jwt = jwt.encode(
+        to_encode, 
+        settings.SECRET_KEY, 
+        algorithm=settings.ALGORITHM
+    )
+    
+    return encoded_jwt
+
+# --- INPUT SANITIZATION ---
 class SecurityValidator:
     """
     OWASP Input Validation & Sanitization Utility.

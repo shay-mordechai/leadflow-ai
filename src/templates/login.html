@@ -31,10 +31,16 @@
 
         <form id="loginForm" class="p-8 space-y-5">
             <div>
-                <label class="block text-xs font-bold text-slate-500 uppercase tracking-wider mb-1.5">מספר וואטסאפ</label>
-                <input type="tel" name="phone" required dir="ltr" class="w-full px-4 py-3 rounded-xl bg-slate-50 border border-slate-200 outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-200 transition text-right placeholder-slate-300 font-bold text-slate-800" placeholder="050-XXXXXXX">
+                <label class="block text-xs font-bold text-slate-500 uppercase tracking-wider mb-1.5">כתובת אימייל</label>
+                <input 
+                    type="email" 
+                    name="username" 
+                    required 
+                    dir="ltr" 
+                    class="w-full px-4 py-3 rounded-xl bg-slate-50 border border-slate-200 outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-200 transition text-left placeholder-slate-300 font-bold text-slate-800" 
+                    placeholder="you@example.com"
+                >
             </div>
-
             <div>
                 <label class="block text-xs font-bold text-slate-500 uppercase tracking-wider mb-1.5">סיסמה</label>
                 <input type="password" name="password" required class="w-full px-4 py-3 rounded-xl bg-slate-50 border border-slate-200 outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-200 transition placeholder-slate-300" placeholder="••••••••">

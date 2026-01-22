@@ -3,38 +3,24 @@ version: '3.8'
 
 services:
   app:
-    # Production Image: Pulled from GitHub Container Registry
-    image: ghcr.io/shay-mordechai/leadflow-ai:latest
+    # ⬇️ CHANGE IS HERE: Use dynamic tag with fallback to 'latest'
+    image: ghcr.io/shay-mordechai/leadflow-ai:${IMAGE_TAG:-latest}
     container_name: leadflow-ai
-    
-    # Restart Policy: Ensures app recovers after crashes or reboots
     restart: always
-    
-    # Port Mapping: Expose port 8000 to the host.
     ports:
       - "8000:8000"
-    
-    # Note: 'env_file' is removed. Secrets are fetched from AWS SSM.
-    
-    # Storage Persistence & Security:
-    # The ':Z' flag is CRITICAL for Podman on Amazon Linux (SELinux).
-    # It tells the OS to label these files so the container has write permissions.
+
     volumes:
       - ./storage:/app/storage:Z
       - ./leads.db:/app/leads.db:Z
       - ./private.key:/app/private.key:Z
 
-    # Command Override:
-    # Explicitly sets Gunicorn parameters to ensure logs are piped to stdout/stderr (-).
-    # This guarantees 'podman logs' works correctly for debugging.
     command: >
-      gunicorn src.main:app 
-      --workers 2 
-      --worker-class uvicorn.workers.UvicornWorker 
-      --bind 0.0.0.0:8000 
+      gunicorn src.main:app
+      --workers 2
+      --worker-class uvicorn.workers.UvicornWorker
+      --bind 0.0.0.0:8000
       --timeout 120
-      --access-logfile - 
-      --error-logfile - 
+      --access-logfile -
+      --error-logfile -
       --log-level info
-
-  # Note: The Cloudflare Tunnel is managed by systemd on the host, not here.

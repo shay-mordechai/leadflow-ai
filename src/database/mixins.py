@@ -1,31 +1,35 @@
 # Professional English Comment:
-# Multi-tenancy mixin with deferred import to prevent circular dependencies.
-# Ensures data isolation by filtering queries based on the current context.
+# Multi-tenancy mixin with cross-database support.
+# Uses a custom GUID type to ensure compatibility between SQLite and PostgreSQL.
 
 from sqlalchemy import Column, ForeignKey
-from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import declared_attr, Session
+# Import the GUID helper from your models to ensure consistent ID handling
+from src.database.models import GUID
 
 class TenantAwareMixin:
     """
-    Mixin to ensure every model belongs to a tenant and
-    queries are automatically filtered by the current tenant context.
+    Mixin to ensure data isolation across the platform. 
+    Every model inheriting from this mixin will be tied to a specific tenant.
     """
 
     @declared_attr
     def tenant_id(cls):
-        # All tables using this mixin must have a tenant_id linked to tenants table
-        return Column(UUID(as_uuid=True), ForeignKey("tenants.id"), nullable=False, index=True)
+        """
+        Database-agnostic tenant identifier.
+        Linked to the 'tenants' table via a foreign key.
+        """
+        return Column(GUID(), ForeignKey("tenants.id", ondelete="CASCADE"), nullable=False, index=True)
 
     @classmethod
     def get_query(cls, session: Session):
         """
-        Returns a query object pre-filtered by the current tenant.
-        This prevents accidental data leaks between tenants.
+        Automatic query filtering based on the active tenant context.
+        This serves as a security layer to prevent cross-tenant data leakage.
         """
         # Professional English Comment:
-        # Deferred import inside the method breaks the circular loop between 
-        # models -> mixins -> security -> models.
+        # Deferred import is used here to resolve circular dependency issues 
+        # between the security layer and the database models.
         from src.security.tenant import get_tenant_id
         
         current_tenant = get_tenant_id()
