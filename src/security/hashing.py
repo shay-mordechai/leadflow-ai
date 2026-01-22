@@ -1,5 +1,4 @@
 # src/security/hashing.py
-
 from passlib.context import CryptContext
 import hashlib
 
@@ -40,3 +39,7 @@ def verify_hash(plain_secret: str, hashed_secret: str) -> bool:
 
     safe_secret = _pre_hash(plain_secret)
     return pwd_context.verify(safe_secret, hashed_secret)
+
+# --- ALIAS FOR COMPATIBILITY ---
+# This ensures that routers calling 'verify_password' still work correctly
+verify_password = verify_hash
