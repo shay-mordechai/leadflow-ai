@@ -41,7 +41,7 @@ class MediaType(str, enum.Enum):
     AUDIO = "AUDIO"
     IMAGE = "IMAGE"
     VIDEO = "VIDEO"
-    TEXT = "TEXT" # Added TEXT to prevent crashes with text messages
+    TEXT = "TEXT" 
 
 class ProcessingStatus(str, enum.Enum):
     PENDING = "PENDING"
@@ -67,10 +67,15 @@ class User(Base):
     created_at = Column(DateTime(timezone=True), server_default=func.now())
     last_login_ip = Column(String, nullable=True)
 
+    # --- SECURITY & LOCATION TRACKING (Added) ---
+    # Used to detect Impossible Travel (e.g., login from Tel Aviv then London in 5 mins)
+    last_known_city = Column(String, nullable=True)
+    last_known_country = Column(String, nullable=True)
+
     # Business Info
-    business_type = Column(String, nullable=True) # Added based on registration form
+    business_type = Column(String, nullable=True) 
     assigned_phone_number = Column(String, unique=True, index=True, nullable=True)
-    personal_whatsapp = Column(String, nullable=True) # Added based on registration form
+    personal_whatsapp = Column(String, nullable=True) 
     
     # AI Settings
     openai_api_key = Column(String, nullable=True)
@@ -149,15 +154,15 @@ class MediaInteraction(Base):
     lead_id = Column(UUID(as_uuid=True), ForeignKey("leads.id", ondelete="SET NULL"), nullable=True)
     
     file_path = Column(String, nullable=False)
-    message_text = Column(Text, nullable=True) # For text messages
+    message_text = Column(Text, nullable=True) 
     media_type = Column(Enum(MediaType), default=MediaType.AUDIO, nullable=False)
     
     # Worker Logic Fields
     processed = Column(Boolean, default=False) 
     status = Column(Enum(ProcessingStatus), default=ProcessingStatus.PENDING, index=True)
     transcription_text = Column(Text, nullable=True)
-    ai_summary = Column(Text, nullable=True)       # Added for worker compatibility
-    suggested_reply = Column(Text, nullable=True)  # Added for worker compatibility
+    ai_summary = Column(Text, nullable=True)
+    suggested_reply = Column(Text, nullable=True)
     
     created_at = Column(DateTime(timezone=True), server_default=func.now(), index=True)
     

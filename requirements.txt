@@ -33,6 +33,7 @@ google-generativeai
 bleach
 cryptography
 passlib[bcrypt]
+python-jose[cryptography]
 slowapi
 
 # --- Telephony Providers ---
