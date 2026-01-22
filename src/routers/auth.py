@@ -14,7 +14,8 @@ from src.database.models import User, PlanTier
 from src.security.hashing import verify_password, get_hash
 from src.security.validation import create_access_token
 from src.config import settings
-from src.schemas.user import RegisterSchema, UserCreate, VerifyOTP # Use the updated schemas
+# --- FIX IS HERE: Removed 'RegisterSchema', kept only valid schemas ---
+from src.schemas.user import UserCreate, VerifyOTP 
 
 router = APIRouter()
 logger = logging.getLogger("AuthSecurity")
@@ -63,7 +64,6 @@ async def login_step_1(
 ):
     """
     Step 1: Validate credentials & Trigger MFA.
-    Does NOT return a JWT token. Returns a message to check email.
     """
     user = db.query(User).filter(User.email == form_data.username).first()
     
@@ -78,10 +78,9 @@ async def login_step_1(
     user.otp_expires_at = datetime.utcnow() + timedelta(minutes=5)
     db.commit()
     
-    # TODO: Integration with AWS SES for real email sending.
-    # For now, we Log it securely (In Prod logs, this allows you to test).
+    # Log OTP for testing (In Prod: Send Email)
     logger.info(f"🔑 MFA CODE for {user.email}: {otp}") 
-    print(f"🔑 MFA CODE for {user.email}: {otp}") # Ensure it prints to Podman logs
+    print(f"🔑 MFA CODE for {user.email}: {otp}") 
 
     return {
         "message": "OTP sent to email", 
