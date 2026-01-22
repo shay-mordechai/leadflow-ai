@@ -10,18 +10,33 @@ services:
     # Restart Policy: Ensures app recovers after crashes or reboots
     restart: always
     
-    # Network: Host mode allows direct communication with the Tunnel (running on host)
-    network_mode: "host"
+    # Port Mapping: Expose port 8000 to the host so Cloudflared can reach it.
+    # Note: Using standard port mapping is more stable than 'network_mode: host' for rootless Podman.
+    ports:
+      - "8000:8000"
     
     # Note: 'env_file' is removed.
     # The application fetches secrets directly from AWS SSM using the EC2 IAM Role.
     
-    # Note: 'command' instruction is intentionally OMITTED.
-    # We rely on the CMD defined in the Dockerfile to ensure correct shell-form syntax.
-    
-    # Storage: Persistent storage for audio files/logs
+    # Storage Persistence:
+    # 1. storage: For audio files.
+    # 2. leads.db: CRITICAL for SQLite! Maps the DB file to the host to prevent data loss on deploy.
     volumes:
       - ./storage:/app/storage
+      - ./leads.db:/app/leads.db
+
+    # Command Override:
+    # Explicitly sets Gunicorn parameters to ensure logs are piped to stdout/stderr.
+    # This guarantees 'podman logs' works correctly.
+    command: >
+      gunicorn src.main:app 
+      --workers 2 
+      --worker-class uvicorn.workers.UvicornWorker 
+      --bind 0.0.0.0:8000 
+      --timeout 120
+      --access-logfile - 
+      --error-logfile - 
+      --log-level info
 
   # Note: The Cloudflare Tunnel is NOT defined here.
   # It is managed by systemd on the server to ensure high availability.
