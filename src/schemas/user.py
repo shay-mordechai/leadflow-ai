@@ -10,6 +10,9 @@ SAFE_TEXT_REGEX = r"^[a-zA-Zא-ת0-9\s\-\.]+$"
 
 # --- Base Schema (Shared Fields) ---
 class UserBase(BaseModel):
+    # --- THE FIX: Added plan_tier here so UserCreate inherits it ---
+    plan_tier: Optional[str] = "starter" 
+    
     email: EmailStr
     full_name: str = Field(..., min_length=2, max_length=50, description="User full name")
     
@@ -91,7 +94,7 @@ class VerifyOTP(BaseModel):
 class UserRead(UserBase):
     id: str # Changed to str because we use UUID/GUID
     is_active: bool
-    plan_tier: str = "Starter"
-
+    # plan_tier is already in UserBase, so it's inherited here automatically
+    
     class Config:
         from_attributes = True
