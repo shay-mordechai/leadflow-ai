@@ -1,16 +1,16 @@
 # .github/workflows/deploy.yml
 # ==============================================================================
-# ⚠️  CRITICAL CONFIGURATION WARNING - READ BEFORE EDITING  ⚠️
+# ⚠️  CRITICAL CONFIGURATION WARNING ⚠️
 # ==============================================================================
 # Target Server OS: Amazon Linux 2023
-# Container Runtime: PODMAN (Not Docker!)
+# Container Runtime: PODMAN
+# Architecture: Zero Trust (Cloudflare Tunnel)
 #
-# IMPORTANT:
-# This workflow is specifically tuned for PODMAN.
-# - Do NOT change 'podman' commands back to 'docker'.
-# - Do NOT change 'podman-compose' back to 'docker compose'.
-#
-# The EC2 server uses Podman which is daemonless and rootless by design.
+# CRITICAL NOTE ON DEPLOYMENT LOGIC:
+# Since SSH access is routed THROUGH the Cloudflare Tunnel container,
+# we must NEVER run 'podman-compose down' on the entire stack.
+# Doing so would kill the tunnel, sever the SSH connection, and fail the job.
+# We only restart the 'app' service, keeping 'tunnel' alive.
 # ==============================================================================
 
 name: LeadFlow Production Deploy
@@ -84,14 +84,17 @@ jobs:
           # Setup Variables
           NEW_TAG="${{ github.sha }}"
           APP_DIR=~/leadflow-ai
+          
+          # Ensure User Persistence (Linger) is enabled so services run after SSH disconnect
+          sudo loginctl enable-linger ec2-user
 
           mkdir -p \$APP_DIR
           cd \$APP_DIR
 
-          # 1. Capture CURRENT running version (for Rollback)
-          # We check which image ID is currently running leadflow-ai
-          PREV_IMAGE_ID=\$(podman inspect --format '{{.Image}}' leadflow-ai 2>/dev/null || echo "")
-          echo "🔎 Current Image ID: \$PREV_IMAGE_ID"
+          # 1. Fetch Secrets (Tunnel Token) from AWS SSM
+          # This ensures that if the tunnel DOES crash, it has the token to restart
+          echo "🔑 Fetching Cloudflare Token from AWS..."
+          export CF_TOKEN=\$(aws ssm get-parameter --name "/leadflow/prod/CLOUDFLARE_TOKEN" --with-decryption --query "Parameter.Value" --output text)
 
           # 2. Login & Pull NEW specific version
           echo "${{ secrets.GITHUB_TOKEN }}" | podman login ghcr.io -u ${{ github.actor }} --password-stdin
@@ -99,16 +102,40 @@ jobs:
           echo "⬇️ Pulling version: \$NEW_TAG"
           podman pull ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:\$NEW_TAG
 
-          # 3. Deploy NEW Version
+          # 3. Deploy NEW Version (SURGICAL UPDATE)
           echo "🚀 Deploying version: \$NEW_TAG"
-
-          # We pass the specific tag to docker-compose via env var
           export IMAGE_TAG=\$NEW_TAG
 
-          podman-compose down || true
+          # ⚠️ CRITICAL: DO NOT RUN 'podman-compose down'
+          # We manually stop/remove ONLY the app container.
+          # The 'tunnel' container stays alive to keep our SSH connection open.
+          
+          echo "🔄 Updating App Container..."
+          podman stop leadflow-ai || true
+          podman rm leadflow-ai || true
+          
+          # This brings up the app (recreating it) and ensures tunnel is running if it died
           podman-compose up -d
 
-          # 4. Health Check & Rollback Logic
+          # 4. Ensure Systemd Persistence (Boot Safety)
+          # We regenerate the systemd files to match the current containers
+          echo "🛡️ Configuring Auto-Start on Boot..."
+          mkdir -p ~/.config/systemd/user/
+          cd ~/.config/systemd/user/
+          
+          # Generate service files for both containers
+          podman generate systemd --new --files --name leadflow-ai
+          podman generate systemd --new --files --name cloudflared_tunnel
+          
+          # Reload and Enable
+          systemctl --user daemon-reload
+          systemctl --user enable container-leadflow-ai.service
+          systemctl --user enable container-cloudflared_tunnel.service
+          
+          # Go back to app dir for verification
+          cd \$APP_DIR
+
+          # 5. Health Check
           echo '--- 🏥 Health Analysis (Waiting 15s) ---'
           sleep 15
 
@@ -126,48 +153,26 @@ jobs:
                   echo "\$RECENT_LOGS" | grep -iE 'exception|traceback|critical error|fatal|importerror'
                   ROLLBACK_NEEDED=true
              else
-                  echo '✅ Deployment Successful. Server is stable on version: ' \$NEW_TAG
+                  echo '✅ Deployment Successful. Server is stable.'
              fi
           fi
 
-          # 5. Execute Rollback if needed
           if [ "\$ROLLBACK_NEEDED" = "true" ]; then
-              echo '⚠️ Health check failed. Initiating Rollback...'
-
-              # Stop the bad container
-              podman-compose down
-
-              if [ -n "\$PREV_IMAGE_ID" ]; then
-                  echo "🔄 Rolling back to previous Image ID: \$PREV_IMAGE_ID"
-                  # We force the compose to run with the specific Image ID that worked before
-                  # Note: This works because Podman/Docker can accept Image ID as the tag source in some contexts,
-                  # but to be safe with Compose, we might need to rely on 'latest' if we don't know the old SHA.
-                  # FALLBACK STRATEGY: Revert to 'latest' (which usually points to the last successful build,
-                  # but in this pipeline 'latest' was just updated too).
-
-                  # BETTER STRATEGY: Just fail loud.
-                  # Since 'latest' is already overwritten in the registry, we can't easily fetch the "previous" tag
-                  # unless we stored it.
-
-                  echo "❌ Automated rollback is limited because 'latest' tag was overwritten."
-                  echo "👉 Please manually revert the commit in GitHub."
-                  exit 1
-              else
-                  echo "❌ No previous version found to rollback to."
-                  exit 1
-              fi
+              echo '⚠️ Health check failed.'
+              # NOTE: We cannot easily rollback automatically without risking the tunnel.
+              # We fail loud so you can fix it.
+              exit 1
           fi
 
-          # 6. Cleanup (Only if success)
+          # 6. Cleanup
           echo '--- 🧹 Cleaning up old images ---'
-          # Keep only the last 2 versions to save space but allow manual rollback
           podman image prune -f
           EOF
 
       - name: Execute Deployment on Server
         run: |
           ssh production "mkdir -p ~/leadflow-ai"
-          # Send the PROD compose file (which now supports IMAGE_TAG env var)
+          # Send the PROD compose file
           scp docker-compose.prod.yml production:~/leadflow-ai/docker-compose.yml
           scp deploy_script.sh production:~/leadflow-ai/deploy.sh
           ssh production "chmod +x ~/leadflow-ai/deploy.sh && ~/leadflow-ai/deploy.sh"

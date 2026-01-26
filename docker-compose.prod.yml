@@ -2,18 +2,26 @@
 version: '3.8'
 
 services:
+  # --- Main Application Service ---
   app:
-    # ⬇️ CHANGE IS HERE: Use dynamic tag with fallback to 'latest'
+    # Uses dynamic tag from GitHub Actions, falls back to 'latest' if manual
     image: ghcr.io/shay-mordechai/leadflow-ai:${IMAGE_TAG:-latest}
     container_name: leadflow-ai
     restart: always
-    ports:
-      - "8000:8000"
-
+    
+    # SECURITY NOTE: 
+    # We removed 'ports' mapping. The app is NOT exposed to the public IP.
+    # It is only accessible internally by the 'tunnel' service.
+    
     volumes:
+      # The ':Z' flag is crucial for Podman/SELinux permissions
       - ./storage:/app/storage:Z
       - ./leads.db:/app/leads.db:Z
       - ./private.key:/app/private.key:Z
+    
+    # Load environment variables (AWS secrets, DB configs)
+    env_file:
+      - .env
 
     command: >
       gunicorn src.main:app
@@ -24,3 +32,22 @@ services:
       --access-logfile -
       --error-logfile -
       --log-level info
+
+  # --- Cloudflare Tunnel Sidecar ---
+  tunnel:
+    container_name: cloudflared_tunnel
+    image: cloudflare/cloudflared:latest
+    restart: always
+    command: tunnel --no-autoupdate run
+    
+    # Token must be set in the .env file (CF_TOKEN=ey...)
+    environment:
+      - TUNNEL_TOKEN=${CF_TOKEN}
+    
+    # CRITICAL: This allows the container to talk to the Host OS (for SSH)
+    # It maps 'host.docker.internal' to the Host's gateway IP.
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+      
+    depends_on:
+      - app

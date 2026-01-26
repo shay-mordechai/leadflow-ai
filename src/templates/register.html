@@ -6,7 +6,13 @@
     <title>הרשמה | My-Leads</title>
     <script src="https://cdn.tailwindcss.com"></script>
     <link href="https://fonts.googleapis.com/css2?family=Heebo:wght@300;400;500;700;900&display=swap" rel="stylesheet">
-    <style>body { font-family: 'Heebo', sans-serif; }</style>
+    <style>
+        body { font-family: 'Heebo', sans-serif; }
+        /* Custom scrollbar for form container */
+        .custom-scrollbar::-webkit-scrollbar { width: 6px; }
+        .custom-scrollbar::-webkit-scrollbar-track { background: transparent; }
+        .custom-scrollbar::-webkit-scrollbar-thumb { background-color: #cbd5e1; border-radius: 20px; }
+    </style>
 </head>
 <body class="bg-slate-900 min-h-screen flex items-center justify-center p-4 relative overflow-hidden py-10">
 
@@ -27,61 +33,72 @@
 
             <div>
                 <label class="block text-xs font-bold text-slate-500 mb-1.5 uppercase">שם מלא</label>
-                <input type="text" name="name" required class="w-full px-4 py-3 rounded-xl bg-slate-50 border border-slate-200 outline-none focus:ring-2 focus:ring-blue-500 transition font-medium text-slate-800" placeholder="ישראל ישראלי">
+                <input type="text" id="fullName" name="full_name" required 
+                       class="w-full px-4 py-3 rounded-xl bg-slate-50 border border-slate-200 outline-none focus:ring-2 focus:ring-blue-500 transition font-medium text-slate-800" 
+                       placeholder="ישראל ישראלי">
             </div>
 
             <div>
                 <label class="block text-xs font-bold text-slate-500 mb-1.5 uppercase">אימייל</label>
-                <input type="email" name="email" required dir="ltr" class="w-full px-4 py-3 rounded-xl bg-slate-50 border border-slate-200 outline-none focus:ring-2 focus:ring-blue-500 transition text-right" placeholder="you@company.com">
+                <input type="email" id="email" name="email" required dir="ltr" 
+                       class="w-full px-4 py-3 rounded-xl bg-slate-50 border border-slate-200 outline-none focus:ring-2 focus:ring-blue-500 transition text-right" 
+                       placeholder="you@company.com">
             </div>
 
             <div>
                 <label class="block text-xs font-bold text-slate-500 mb-1.5 uppercase">סיסמה</label>
-                <input type="password" name="password" required dir="ltr" minlength="6" class="w-full px-4 py-3 rounded-xl bg-slate-50 border border-slate-200 outline-none focus:ring-2 focus:ring-blue-500 transition text-right" placeholder="******">
+                <input type="password" id="password" name="password" required dir="ltr" minlength="6" 
+                       class="w-full px-4 py-3 rounded-xl bg-slate-50 border border-slate-200 outline-none focus:ring-2 focus:ring-blue-500 transition text-right" 
+                       placeholder="******">
             </div>
 
             <div class="relative">
                 <label class="block text-xs font-bold text-slate-500 mb-1.5 uppercase">
                     וואטסאפ אישי (לקבלת לידים)
                 </label>
-                <input type="tel" name="personal_whatsapp" required dir="ltr" class="w-full px-4 py-3 rounded-xl bg-slate-50 border border-slate-200 outline-none focus:ring-2 focus:ring-blue-500 transition text-right font-mono" placeholder="050-XXXXXXX">
-            </div>
-
-            <div class="bg-blue-50 p-4 rounded-xl border border-blue-100 transition-all duration-300" id="upsellBox">
-                <div class="flex items-center justify-between mb-2">
-                    <label class="text-xs font-bold text-blue-800 uppercase">מספר הבוט (עסקי)</label>
-                </div>
-
-                <div id="businessPhoneContainer" class="transition-opacity duration-200">
-                    <input type="tel" name="business_whatsapp" id="businessInput" dir="ltr" class="w-full px-4 py-3 rounded-xl bg-white border border-blue-200 outline-none focus:ring-2 focus:ring-blue-500 transition text-right font-mono text-sm" placeholder="054-XXXXXXX (המספר שיענה ללקוחות)">
-                </div>
-
-                <div class="mt-3 flex items-start gap-3">
-                    <input type="checkbox" id="needNumberCheck" name="needs_new_number" class="mt-1 w-4 h-4 text-blue-600 rounded border-gray-300 focus:ring-blue-500 cursor-pointer">
-                    <label for="needNumberCheck" class="text-xs text-slate-600 cursor-pointer select-none leading-relaxed">
-                        אין לי מספר נוסף?
-                        <span class="font-bold text-blue-700 block">אני רוצה מספר וירטואלי ב-49₪/חודש.</span>
-                    </label>
-                </div>
+                <input type="tel" id="whatsapp" name="personal_whatsapp" required dir="ltr" 
+                       class="w-full px-4 py-3 rounded-xl bg-slate-50 border border-slate-200 outline-none focus:ring-2 focus:ring-blue-500 transition text-right font-mono" 
+                       placeholder="050-XXXXXXX">
             </div>
 
             <div>
                 <label class="block text-xs font-bold text-slate-500 mb-1.5 uppercase">תחום עיסוק</label>
-                <select name="business_type" id="business_type" onchange="toggleOtherField()" class="w-full px-4 py-3 rounded-xl bg-slate-50 border border-slate-200 focus:ring-2 focus:ring-blue-500 outline-none text-slate-700 text-sm" required>
+                <select name="business_type" id="business_type" onchange="toggleOtherField()" 
+                        class="w-full px-4 py-3 rounded-xl bg-slate-50 border border-slate-200 focus:ring-2 focus:ring-blue-500 outline-none text-slate-700 text-sm" required>
                     <option value="" disabled selected>בחר מהרשימה...</option>
-                    <optgroup label="נפוץ">
-                        <option value="Real Estate Agent">תיווך נדל"ן</option>
-                        <option value="Mortgage Advisor">ייעוץ משכנתאות</option>
+                    
+                    <optgroup label="כושר, בריאות וסטודיו">
+                        <option value="Yoga Instructor">מורה ליוגה</option>
+                        <option value="Pilates Instructor">מדריכת פילאטיס</option>
+                        <option value="Fitness Trainer">מאמן/ת כושר אישי</option>
+                        <option value="Studio">בעלי סטודיו</option>
+                    </optgroup>
+
+                    <optgroup label="נדל״ן ופיננסים">
+                        <option value="Real Estate Agent">מתווך נדל"ן</option>
+                        <option value="Mortgage Advisor">יועץ משכנתאות</option>
                         <option value="Insurance Agent">סוכן ביטוח</option>
                     </optgroup>
-                    <optgroup label="לייף סטייל">
-                        <option value="Fitness Coach">מאמן כושר</option>
-                        <option value="Therapist">מטפל/פסיכולוג</option>
+
+                    <optgroup label="אימון וטיפול (Coaching)">
+                        <option value="Business Coach">מאמן עסקי / מנטור</option>
+                        <option value="Life Coach">מאמן אישי (Life Coach)</option>
+                        <option value="Therapist">מטפל / פסיכולוג</option>
                     </optgroup>
-                    <option value="Other">אחר...</option>
+
+                    <optgroup label="שירותי בית (Home Services)">
+                        <option value="Plumber">אינסטלטור</option>
+                        <option value="Electrician">חשמלאי</option>
+                        <option value="Handyman">הנדימן / שיפוצים</option>
+                        <option value="Locksmith">מנעולן</option>
+                    </optgroup>
+
+                    <option value="Other">אחר (נא לפרט...)</option>
                 </select>
                 
-                <input type="text" name="other_business_type" id="other_business_type" style="display:none;" placeholder="פרט את התחום..." class="mt-2 w-full px-4 py-3 rounded-xl bg-slate-50 border border-slate-200 outline-none focus:ring-2 focus:ring-blue-500 text-sm">
+                <input type="text" name="other_business_type" id="other_business_type" style="display:none;" 
+                       placeholder="הקלד את תחום העיסוק שלך..." 
+                       class="mt-2 w-full px-4 py-3 rounded-xl bg-slate-50 border border-slate-200 outline-none focus:ring-2 focus:ring-blue-500 text-sm">
             </div>
 
             <div class="flex items-start gap-3 pt-2">
@@ -105,13 +122,10 @@
         // --- 1. CAPTURE PLAN FROM URL ---
         window.onload = function() {
             const urlParams = new URLSearchParams(window.location.search);
-            // Default to 'start' if no plan is specified
             const selectedPlan = urlParams.get('plan') || 'start'; 
             
-            // Set the hidden input value
             document.getElementById('planInput').value = selectedPlan;
             
-            // Optional: Update UI to show selection
             const planDisplay = document.getElementById('planDisplay');
             if(selectedPlan === 'pro') {
                 planDisplay.innerText = 'בחירה מצוינת: חבילת Pro';
@@ -120,43 +134,41 @@
             }
         };
 
+        // --- 2. HANDLE 'OTHER' BUSINESS TYPE ---
         function toggleOtherField() {
             const isOther = document.getElementById('business_type').value === 'Other';
             const otherInput = document.getElementById('other_business_type');
             otherInput.style.display = isOther ? 'block' : 'none';
             otherInput.required = isOther;
+            if (isOther) {
+                otherInput.focus();
+            }
         }
 
-        const checkbox = document.getElementById('needNumberCheck');
-        const container = document.getElementById('businessPhoneContainer');
-        const businessInput = document.getElementById('businessInput');
-
-        checkbox.addEventListener('change', function() {
-            if (this.checked) {
-                container.style.opacity = '0.5';
-                container.style.pointerEvents = 'none';
-                businessInput.value = '';
-                businessInput.placeholder = "יוקצה אוטומטית לאחר התשלום";
-            } else {
-                container.style.opacity = '1';
-                container.style.pointerEvents = 'auto';
-                businessInput.placeholder = "054-XXXXXXX";
-            }
-        });
-
+        // --- 3. FORM SUBMISSION LOGIC ---
         document.getElementById('registerForm').onsubmit = async (e) => {
             e.preventDefault();
             const btn = e.target.querySelector('button');
             const originalText = btn.innerText;
+            
             btn.innerHTML = '⏳ יוצר חשבון...';
             btn.disabled = true;
 
             const formData = new FormData(e.target);
-            const payload = {};
-            formData.forEach((value, key) => payload[key] = value);
             
-            // Explicitly handle boolean for needs_new_number
-            payload.needs_new_number = checkbox.checked;
+            let finalBusinessType = formData.get('business_type');
+            if (finalBusinessType === 'Other') {
+                finalBusinessType = formData.get('other_business_type');
+            }
+
+            const payload = {
+                full_name: formData.get('full_name'),
+                email: formData.get('email'),
+                password: formData.get('password'),
+                personal_whatsapp: formData.get('personal_whatsapp'),
+                business_type: finalBusinessType,
+                plan_tier: formData.get('plan')
+            };
 
             try {
                 const response = await fetch('/api/v1/auth/register', {
@@ -169,10 +181,12 @@
                     window.location.href = '/login?registered=true';
                 } else {
                     const err = await response.json();
+                    console.error('Server Error:', err);
                     alert('שגיאה בהרשמה: ' + (err.detail || 'נסה שנית'));
                 }
             } catch (error) {
-                alert('שגיאת תקשורת');
+                console.error('Network Error:', error);
+                alert('שגיאת תקשורת. אנא בדוק את החיבור לאינטרנט.');
             } finally {
                 btn.innerHTML = originalText;
                 btn.disabled = false;
