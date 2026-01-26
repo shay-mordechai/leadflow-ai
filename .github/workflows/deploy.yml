@@ -92,7 +92,6 @@ jobs:
           cd \$APP_DIR
 
           # 1. Fetch Secrets (Tunnel Token) from AWS SSM
-          # This ensures that if the tunnel DOES crash, it has the token to restart
           echo "🔑 Fetching Cloudflare Token from AWS..."
           export CF_TOKEN=\$(aws ssm get-parameter --name "/leadflow/prod/CLOUDFLARE_TOKEN" --with-decryption --query "Parameter.Value" --output text)
 
@@ -107,9 +106,6 @@ jobs:
           export IMAGE_TAG=\$NEW_TAG
 
           # ⚠️ CRITICAL: DO NOT RUN 'podman-compose down'
-          # We manually stop/remove ONLY the app container.
-          # The 'tunnel' container stays alive to keep our SSH connection open.
-          
           echo "🔄 Updating App Container..."
           podman stop leadflow-ai || true
           podman rm leadflow-ai || true
@@ -117,22 +113,18 @@ jobs:
           # This brings up the app (recreating it) and ensures tunnel is running if it died
           podman-compose up -d
 
-          # 4. Ensure Systemd Persistence (Boot Safety)
-          # We regenerate the systemd files to match the current containers
+          # 4. Ensure Systemd Persistence
           echo "🛡️ Configuring Auto-Start on Boot..."
           mkdir -p ~/.config/systemd/user/
           cd ~/.config/systemd/user/
           
-          # Generate service files for both containers
           podman generate systemd --new --files --name leadflow-ai
           podman generate systemd --new --files --name cloudflared_tunnel
           
-          # Reload and Enable
           systemctl --user daemon-reload
           systemctl --user enable container-leadflow-ai.service
           systemctl --user enable container-cloudflared_tunnel.service
           
-          # Go back to app dir for verification
           cd \$APP_DIR
 
           # 5. Health Check
@@ -146,7 +138,6 @@ jobs:
              echo '❌ CRITICAL: No container found running!'
              ROLLBACK_NEEDED=true
           else
-             # Scan logs for fatal errors
              RECENT_LOGS=\$(podman logs --tail 100 \$CONTAINER_ID 2>&1)
              if echo "\$RECENT_LOGS" | grep -iqE 'exception|traceback|critical error|fatal|importerror'; then
                   echo '❌ CRITICAL: Error keywords detected in logs.'
@@ -159,8 +150,6 @@ jobs:
 
           if [ "\$ROLLBACK_NEEDED" = "true" ]; then
               echo '⚠️ Health check failed.'
-              # NOTE: We cannot easily rollback automatically without risking the tunnel.
-              # We fail loud so you can fix it.
               exit 1
           fi
 
@@ -169,10 +158,34 @@ jobs:
           podman image prune -f
           EOF
 
+      - name: 🔍 Debug Connection (The Truth Teller)
+        run: |
+          echo "Testing connection to Cloudflare..."
+          HTTP_CODE=$(curl -s -o /dev/null -w "%{http_code}" \
+            -H "CF-Access-Client-Id: ${{ secrets.CF_SERVICE_ID }}" \
+            -H "CF-Access-Client-Secret: ${{ secrets.CF_SERVICE_SECRET }}" \
+            https://ssh.my-leads.app)
+          
+          echo "⚠️ SERVER RESPONSE CODE: $HTTP_CODE"
+          
+          if [ "$HTTP_CODE" -eq 200 ]; then
+            echo "✅ Auth is GOOD. Service is UP."
+          elif [ "$HTTP_CODE" -eq 403 ]; then
+            echo "❌ CRITICAL: 403 Forbidden. Keys/Policy are WRONG."
+          elif [ "$HTTP_CODE" -eq 502 ]; then
+            echo "❌ CRITICAL: 502 Bad Gateway. Tunnel is alive, but cannot reach SSH port."
+          elif [ "$HTTP_CODE" -eq 530 ]; then
+            echo "❌ CRITICAL: 530 DNS Error. Tunnel is DOWN."
+          else
+            echo "❌ UNKNOWN ERROR: $HTTP_CODE"
+          fi
+
       - name: Execute Deployment on Server
         run: |
+          # Copy the compose file and script
           ssh production "mkdir -p ~/leadflow-ai"
-          # Send the PROD compose file
           scp docker-compose.prod.yml production:~/leadflow-ai/docker-compose.yml
           scp deploy_script.sh production:~/leadflow-ai/deploy.sh
+          
+          # Run the script
           ssh production "chmod +x ~/leadflow-ai/deploy.sh && ~/leadflow-ai/deploy.sh"
