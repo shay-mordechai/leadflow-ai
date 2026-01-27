@@ -61,7 +61,6 @@ jobs:
 
       - name: Configure SSH & Tunnel
         env:
-          # Pass secrets as env vars to avoid quoting issues in the ProxyCommand
           CF_ID: ${{ secrets.CF_SERVICE_ID }}
           CF_SECRET: ${{ secrets.CF_SERVICE_SECRET }}
         run: |
@@ -69,7 +68,7 @@ jobs:
           echo "${{ secrets.EC2_SSH_KEY }}" > ~/.ssh/id_rsa
           chmod 600 ~/.ssh/id_rsa
           
-          # Create config with explicit path and NO invalid flags
+          # FIX: Added Keep-Alive settings to prevent 'Broken pipe' during long pulls
           cat > ~/.ssh/config <<EOF
           Host production
             HostName ${{ secrets.CF_SSH_HOSTNAME }}
@@ -77,6 +76,9 @@ jobs:
             IdentityFile ~/.ssh/id_rsa
             StrictHostKeyChecking no
             UserKnownHostsFile /dev/null
+            ServerAliveInterval 30
+            ServerAliveCountMax 60
+            TCPKeepAlive yes
             ProxyCommand /usr/local/bin/cloudflared access ssh --hostname %h --id $CF_ID --secret $CF_SECRET --loglevel error
           EOF
 
@@ -105,47 +107,49 @@ jobs:
           NEW_TAG="${{ github.sha }}"
           APP_DIR=~/leadflow-ai
           
-          # Ensure User Persistence (Linger) is enabled so services run after SSH disconnect
+          # Ensure User Persistence (Linger) is enabled
           sudo loginctl enable-linger ec2-user
 
           mkdir -p \$APP_DIR
           cd \$APP_DIR
 
-          # 1. Login & Pull NEW specific version
+          # 1. Login to Registry
           echo "${{ secrets.GITHUB_TOKEN }}" | podman login ghcr.io -u ${{ github.actor }} --password-stdin
 
+          # 2. Cleanup BEFORE Pulling (Prevents Disk Full issues on t3.micro)
+          echo "🧹 Pre-cleaning old images to save space..."
+          podman image prune -a -f --filter "until=24h" || true
+
+          # 3. Pull NEW specific version
           echo "⬇️ Pulling version: \$NEW_TAG"
           podman pull ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:\$NEW_TAG
 
-          # 2. Deploy NEW Version (SURGICAL UPDATE)
+          # 4. Deploy NEW Version
           echo "🚀 Deploying version: \$NEW_TAG"
           export IMAGE_TAG=\$NEW_TAG
 
-          # ⚠️ CRITICAL: We update ONLY the app. The Tunnel is a system service and stays untouched.
+          # ⚠️ CRITICAL: Stop and Remove OLD container explicitly before Compose up
           echo "🔄 Updating App Container..."
           podman stop leadflow-ai || true
           podman rm leadflow-ai || true
           
-          # This brings up the app (recreating it)
+          # Bring up the app (using the compose file copied below)
+          # Note: The image now contains the fixed code (HS256, etc.)
           podman-compose up -d
 
-          # 3. Ensure Systemd Persistence for the APP
+          # 5. Ensure Systemd Persistence for the APP
           echo "🛡️ Configuring Auto-Start for App..."
           mkdir -p ~/.config/systemd/user/
           cd ~/.config/systemd/user/
           
-          # Generate service file ONLY for the app
           podman generate systemd --new --files --name leadflow-ai
           
-          # Reload and Enable
           systemctl --user daemon-reload
           systemctl --user enable container-leadflow-ai.service
           
-          # Note: We do NOT touch container-cloudflared_host (it is managed by root/system)
-          
           cd \$APP_DIR
 
-          # 4. Health Check
+          # 6. Health Check
           echo '--- 🏥 Health Analysis (Waiting 15s) ---'
           sleep 15
 
@@ -166,8 +170,8 @@ jobs:
              fi
           fi
 
-          # 5. Cleanup
-          echo '--- 🧹 Cleaning up old images ---'
+          # 7. Final Cleanup
+          echo '--- 🧹 Post-Cleaning ---'
           podman image prune -f
           EOF
 
@@ -177,5 +181,5 @@ jobs:
           scp -v docker-compose.prod.yml production:~/leadflow-ai/docker-compose.yml
           scp deploy_script.sh production:~/leadflow-ai/deploy.sh
           
-          # Run the script
+          # Run the script via SSH
           ssh production "chmod +x ~/leadflow-ai/deploy.sh && ~/leadflow-ai/deploy.sh"
