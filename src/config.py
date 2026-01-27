@@ -106,6 +106,7 @@ class Settings(BaseSettings):
     # --- Security Secrets ---
     SECRET_KEY: str = Field(..., min_length=32, description="JWT Signing Key")
     ENCRYPTION_KEY: str = Field(..., description="Fernet Key for PII Encryption")
+    ACCESS_TOKEN_EXPIRE_MINUTES: int = 1440  # <--- FIXED: Added missing attribute
     
     # --- Third Party Integration Tokens ---
     CLOUDFLARE_TOKEN: str | None = Field(default=None, description="Cloudflare API/Tunnel Token")
