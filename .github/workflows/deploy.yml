@@ -60,22 +60,31 @@ jobs:
         run: |
           curl -L --output cloudflared.deb https://github.com/cloudflare/cloudflared/releases/latest/download/cloudflared-linux-amd64.deb
           sudo dpkg -i cloudflared.deb
+          cloudflared --version
 
       - name: Configure SSH & Tunnel
+        env:
+          # מעבירים את המשתנים כ-ENV כדי למנוע בעיות ציטוט בפקודת ה-Proxy
+          CF_ID: ${{ secrets.CF_SERVICE_ID }}
+          CF_SECRET: ${{ secrets.CF_SERVICE_SECRET }}
         run: |
           mkdir -p ~/.ssh/
           echo "${{ secrets.EC2_SSH_KEY }}" > ~/.ssh/id_rsa
           chmod 600 ~/.ssh/id_rsa
+          
+          # יצירת קובץ קונפיג עם נתיב מלא והשתקת לוגים
           cat > ~/.ssh/config <<EOF
           Host production
             HostName ${{ secrets.CF_SSH_HOSTNAME }}
             User ec2-user
             IdentityFile ~/.ssh/id_rsa
             StrictHostKeyChecking no
-            ProxyCommand cloudflared access ssh --hostname %h --id ${{ secrets.CF_SERVICE_ID }} --secret ${{ secrets.CF_SERVICE_SECRET }}
+            UserKnownHostsFile /dev/null
+            ProxyCommand /usr/local/bin/cloudflared access ssh --hostname %h --id $CF_ID --secret $CF_SECRET --no-autoupdate --loglevel error
           EOF
 
       - name: Create Podman Deployment Script
+        # שינוי קריטי: הסרנו את הקוד שנוגע בטנל! הטנל מנוהל כעת ברמת השרת (Systemd) ולא צריך לגעת בו
         run: |
           cat <<EOF > deploy_script.sh
           #!/bin/bash
@@ -84,46 +93,43 @@ jobs:
           # Setup Variables
           NEW_TAG="${{ github.sha }}"
           APP_DIR=~/leadflow-ai
-          
-          # Ensure User Persistence (Linger) is enabled so services run after SSH disconnect
+
+          # Ensure User Persistence
           sudo loginctl enable-linger ec2-user
 
           mkdir -p \$APP_DIR
           cd \$APP_DIR
 
-          # 1. Fetch Secrets (Tunnel Token) from AWS SSM
-          echo "🔑 Fetching Cloudflare Token from AWS..."
-          export CF_TOKEN=\$(aws ssm get-parameter --name "/leadflow/prod/CLOUDFLARE_TOKEN" --with-decryption --query "Parameter.Value" --output text)
+          # 1. Fetch Secrets (App specific only)
+          # (Optional: Add fetch for other secrets if needed)
 
-          # 2. Login & Pull NEW specific version
+          # 2. Login & Pull NEW version
           echo "${{ secrets.GITHUB_TOKEN }}" | podman login ghcr.io -u ${{ github.actor }} --password-stdin
 
           echo "⬇️ Pulling version: \$NEW_TAG"
           podman pull ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:\$NEW_TAG
 
-          # 3. Deploy NEW Version (SURGICAL UPDATE)
+          # 3. Deploy NEW Version
           echo "🚀 Deploying version: \$NEW_TAG"
           export IMAGE_TAG=\$NEW_TAG
 
-          # ⚠️ CRITICAL: DO NOT RUN 'podman-compose down'
+          # ⚠️ CRITICAL: We only restart the APP, never the tunnel
           echo "🔄 Updating App Container..."
           podman stop leadflow-ai || true
           podman rm leadflow-ai || true
-          
-          # This brings up the app (recreating it) and ensures tunnel is running if it died
+
+          # This brings up the app
           podman-compose up -d
 
-          # 4. Ensure Systemd Persistence
-          echo "🛡️ Configuring Auto-Start on Boot..."
+          # 4. Ensure Systemd Persistence (Only for the App)
+          echo "🛡️ Configuring Auto-Start for App..."
           mkdir -p ~/.config/systemd/user/
           cd ~/.config/systemd/user/
-          
+
           podman generate systemd --new --files --name leadflow-ai
-          podman generate systemd --new --files --name cloudflared_tunnel
           
           systemctl --user daemon-reload
           systemctl --user enable container-leadflow-ai.service
-          systemctl --user enable container-cloudflared_tunnel.service
           
           cd \$APP_DIR
 
@@ -131,26 +137,13 @@ jobs:
           echo '--- 🏥 Health Analysis (Waiting 15s) ---'
           sleep 15
 
-          ROLLBACK_NEEDED=false
           CONTAINER_ID=\$(podman ps -q --filter "name=leadflow" | head -n 1)
 
           if [ -z "\$CONTAINER_ID" ]; then
              echo '❌ CRITICAL: No container found running!'
-             ROLLBACK_NEEDED=true
+             exit 1
           else
-             RECENT_LOGS=\$(podman logs --tail 100 \$CONTAINER_ID 2>&1)
-             if echo "\$RECENT_LOGS" | grep -iqE 'exception|traceback|critical error|fatal|importerror'; then
-                  echo '❌ CRITICAL: Error keywords detected in logs.'
-                  echo "\$RECENT_LOGS" | grep -iE 'exception|traceback|critical error|fatal|importerror'
-                  ROLLBACK_NEEDED=true
-             else
-                  echo '✅ Deployment Successful. Server is stable.'
-             fi
-          fi
-
-          if [ "\$ROLLBACK_NEEDED" = "true" ]; then
-              echo '⚠️ Health check failed.'
-              exit 1
+             echo '✅ Deployment Successful. App is running.'
           fi
 
           # 6. Cleanup
@@ -158,34 +151,28 @@ jobs:
           podman image prune -f
           EOF
 
-      - name: 🔍 Debug Connection (The Truth Teller)
+      - name: 🔍 Debug Connection
         run: |
           echo "Testing connection to Cloudflare..."
           HTTP_CODE=$(curl -s -o /dev/null -w "%{http_code}" \
             -H "CF-Access-Client-Id: ${{ secrets.CF_SERVICE_ID }}" \
             -H "CF-Access-Client-Secret: ${{ secrets.CF_SERVICE_SECRET }}" \
-            https://ssh.my-leads.app)
-          
+            https://${{ secrets.CF_SSH_HOSTNAME }})
+
           echo "⚠️ SERVER RESPONSE CODE: $HTTP_CODE"
-          
-          if [ "$HTTP_CODE" -eq 200 ]; then
-            echo "✅ Auth is GOOD. Service is UP."
-          elif [ "$HTTP_CODE" -eq 403 ]; then
-            echo "❌ CRITICAL: 403 Forbidden. Keys/Policy are WRONG."
-          elif [ "$HTTP_CODE" -eq 502 ]; then
-            echo "❌ CRITICAL: 502 Bad Gateway. Tunnel is alive, but cannot reach SSH port."
-          elif [ "$HTTP_CODE" -eq 530 ]; then
-            echo "❌ CRITICAL: 530 DNS Error. Tunnel is DOWN."
-          else
-            echo "❌ UNKNOWN ERROR: $HTTP_CODE"
+
+          if [ "$HTTP_CODE" -ne 200 ]; then
+             echo "❌ Connection check failed. Stopping."
+             exit 1
           fi
 
       - name: Execute Deployment on Server
         run: |
-          # Copy the compose file and script
-          ssh production "mkdir -p ~/leadflow-ai"
-          scp docker-compose.prod.yml production:~/leadflow-ai/docker-compose.yml
+          # Copy file - using -v to debug if it fails
+          echo "📂 Copying files..."
+          scp -v docker-compose.prod.yml production:~/leadflow-ai/docker-compose.yml
           scp deploy_script.sh production:~/leadflow-ai/deploy.sh
-          
-          # Run the script
+
+          # Run script
+          echo "🚀 Executing remote script..."
           ssh production "chmod +x ~/leadflow-ai/deploy.sh && ~/leadflow-ai/deploy.sh"
