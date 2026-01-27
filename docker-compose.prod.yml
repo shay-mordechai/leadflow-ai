@@ -9,9 +9,12 @@ services:
     container_name: leadflow-ai
     restart: always
     
-    # SECURITY NOTE: 
-    # We removed 'ports' mapping. The app is NOT exposed to the public IP.
-    # It is only accessible internally by the 'tunnel' service.
+    # NETWORK CONFIGURATION:
+    # We expose port 8000 to the Host OS.
+    # This allows the System-Level Cloudflare Tunnel (running on host network)
+    # to proxy traffic to 'http://localhost:8000'.
+    ports:
+      - "8000:8000"
     
     volumes:
       # The ':Z' flag is crucial for Podman/SELinux permissions
@@ -33,21 +36,6 @@ services:
       --error-logfile -
       --log-level info
 
-  # --- Cloudflare Tunnel Sidecar ---
-  tunnel:
-    container_name: cloudflared_tunnel
-    image: cloudflare/cloudflared:latest
-    restart: always
-    command: tunnel --no-autoupdate run
-    
-    # Token must be set in the .env file (CF_TOKEN=ey...)
-    environment:
-      - TUNNEL_TOKEN=${CF_TOKEN}
-    
-    # CRITICAL: This allows the container to talk to the Host OS (for SSH)
-    # It maps 'host.docker.internal' to the Host's gateway IP.
-    extra_hosts:
-      - "host.docker.internal:host-gateway"
-      
-    depends_on:
-      - app
+  # --- SIDE NOTE ---
+  # The 'tunnel' service has been removed.
+  # We are now using the Host's systemd-managed tunnel for both SSH and HTTP.
