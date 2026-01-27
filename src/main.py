@@ -17,9 +17,7 @@ from src.database.session import engine, get_db
 from src.database.models import Base
 
 # Import Routers
-from src.routers import leads, auth, webhooks, settings as settings_router
-from src.routers import ui 
-from src.routers import payments
+from src.routers import leads, auth, webhooks, ui, payments, phones, settings as settings_router
 
 # Professional English Comment:
 # Configure Root Logger for centralized logging.
@@ -109,12 +107,20 @@ app.mount("/static", StaticFiles(directory="src/static"), name="static")
 
 # --- Router Registration ---
 
-# 1. API v1 Core Routes
+# API v1 Core Routes
 app.include_router(auth.router, prefix="/api/v1/auth", tags=["Authentication"])
 app.include_router(leads.router, prefix="/api/v1/leads", tags=["Leads Management"])
 app.include_router(settings_router.router, prefix="/api/v1/settings", tags=["AI Configuration"])
 app.include_router(webhooks.router, prefix="/webhooks", tags=["Webhooks Integration"])
 app.include_router(payments.router, prefix="/api/v1/payments", tags=["Billing & Subscriptions"])
+
+# 1. Phone System Router (Conditional Load) ---
+if settings.ENABLE_REAL_PHONE_PURCHASE:
+    # Professional English Comment:
+    # Only register phone routes if the feature is explicitly enabled in config.
+    app.include_router(phones.router, prefix="/api/v1/phones", tags=["Phone System"])
+    logger.info("📞 Phone Purchase Module Loaded Successfully.")
+
 
 # 2. Frontend / UI Routes
 app.include_router(ui.router, tags=["User Interface"])
