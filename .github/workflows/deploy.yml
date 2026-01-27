@@ -58,111 +58,26 @@ jobs:
         run: |
           curl -L --output cloudflared.deb https://github.com/cloudflare/cloudflared/releases/latest/download/cloudflared-linux-amd64.deb
           sudo dpkg -i cloudflared.deb
-          cloudflared --version
 
       - name: Configure SSH & Tunnel
+        env:
+          # Pass secrets as env vars to avoid quoting issues in the ProxyCommand
+          CF_ID: ${{ secrets.CF_SERVICE_ID }}
+          CF_SECRET: ${{ secrets.CF_SERVICE_SECRET }}
         run: |
           mkdir -p ~/.ssh/
           echo "${{ secrets.EC2_SSH_KEY }}" > ~/.ssh/id_rsa
           chmod 600 ~/.ssh/id_rsa
+          
+          # Create config with explicit path and NO invalid flags
           cat > ~/.ssh/config <<EOF
           Host production
             HostName ${{ secrets.CF_SSH_HOSTNAME }}
             User ec2-user
             IdentityFile ~/.ssh/id_rsa
             StrictHostKeyChecking no
-            ProxyCommand cloudflared access ssh --hostname %h --id ${{ secrets.CF_SERVICE_ID }} --secret ${{ secrets.CF_SERVICE_SECRET }}
-          EOF
-
-      - name: Create Podman Deployment Script
-        # שינוי קריטי: הסרנו את הקוד שנוגע בטנל! הטנל מנוהל כעת ברמת השרת (Systemd) ולא צריך לגעת בו
-        run: |
-          cat <<EOF > deploy_script.sh
-          #!/bin/bash
-          set -e
-
-          # Setup Variables
-          NEW_TAG="${{ github.sha }}"
-          APP_DIR=~/leadflow-ai
-
-          # Ensure User Persistence
-          sudo loginctl enable-linger ec2-user
-
-          mkdir -p \$APP_DIR
-          cd \$APP_DIR
-
-          # 1. Fetch Secrets (Tunnel Token) from AWS SSM
-          # This ensures that if the tunnel DOES crash, it has the token to restart
-          echo "🔑 Fetching Cloudflare Token from AWS..."
-          export CF_TOKEN=\$(aws ssm get-parameter --name "/leadflow/prod/CLOUDFLARE_TOKEN" --with-decryption --query "Parameter.Value" --output text)
-
-          # 2. Login & Pull NEW specific version
-          echo "${{ secrets.GITHUB_TOKEN }}" | podman login ghcr.io -u ${{ github.actor }} --password-stdin
-
-          echo "⬇️ Pulling version: \$NEW_TAG"
-          podman pull ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:\$NEW_TAG
-
-          # 3. Deploy NEW Version (SURGICAL UPDATE)
-          echo "🚀 Deploying version: \$NEW_TAG"
-          export IMAGE_TAG=\$NEW_TAG
-
-          # ⚠️ CRITICAL: DO NOT RUN 'podman-compose down'
-          # We manually stop/remove ONLY the app container.
-          # The 'tunnel' container stays alive to keep our SSH connection open.
-          
-          echo "🔄 Updating App Container..."
-          podman stop leadflow-ai || true
-          podman rm leadflow-ai || true
-          
-          # This brings up the app (recreating it) and ensures tunnel is running if it died
-          podman-compose up -d
-
-          # 4. Ensure Systemd Persistence (Boot Safety)
-          # We regenerate the systemd files to match the current containers
-          echo "🛡️ Configuring Auto-Start on Boot..."
-          mkdir -p ~/.config/systemd/user/
-          cd ~/.config/systemd/user/
-          
-          # Generate service files for both containers
-          podman generate systemd --new --files --name leadflow-ai
-          
-          systemctl --user daemon-reload
-          systemctl --user enable container-leadflow-ai.service
-          systemctl --user enable container-cloudflared_tunnel.service
-          
-          cd \$APP_DIR
-
-          # 4. Health Check
-          echo '--- 🏥 Health Analysis (Waiting 15s) ---'
-          sleep 15
-
-          CONTAINER_ID=\$(podman ps -q --filter "name=leadflow" | head -n 1)
-
-          if [ -z "\$CONTAINER_ID" ]; then
-             echo '❌ CRITICAL: No container found running!'
-             ROLLBACK_NEEDED=true
-          else
-             # Scan logs for fatal errors
-             RECENT_LOGS=\$(podman logs --tail 100 \$CONTAINER_ID 2>&1)
-             if echo "\$RECENT_LOGS" | grep -iqE 'exception|traceback|critical error|fatal|importerror'; then
-                  echo '❌ CRITICAL: Error keywords detected in logs.'
-                  echo "\$RECENT_LOGS" | grep -iE 'exception|traceback|critical error|fatal|importerror'
-                  ROLLBACK_NEEDED=true
-             else
-                  echo '✅ Deployment Successful. Server is stable.'
-             fi
-          fi
-
-          if [ "\$ROLLBACK_NEEDED" = "true" ]; then
-              echo '⚠️ Health check failed.'
-              # NOTE: We cannot easily rollback automatically without risking the tunnel.
-              # We fail loud so you can fix it.
-              exit 1
-          fi
-
-          # 5. Cleanup
-          echo '--- 🧹 Cleaning up old images ---'
-          podman image prune -f
+            UserKnownHostsFile /dev/null
+            ProxyCommand /usr/local/bin/cloudflared access ssh --hostname %h --id $CF_ID --secret $CF_SECRET --loglevel error
           EOF
 
       - name: 🔍 Debug Connection
@@ -180,10 +95,87 @@ jobs:
              exit 1
           fi
 
+      - name: Create Podman Deployment Script
+        run: |
+          cat <<EOF > deploy_script.sh
+          #!/bin/bash
+          set -e
+
+          # Setup Variables
+          NEW_TAG="${{ github.sha }}"
+          APP_DIR=~/leadflow-ai
+          
+          # Ensure User Persistence (Linger) is enabled so services run after SSH disconnect
+          sudo loginctl enable-linger ec2-user
+
+          mkdir -p \$APP_DIR
+          cd \$APP_DIR
+
+          # 1. Login & Pull NEW specific version
+          echo "${{ secrets.GITHUB_TOKEN }}" | podman login ghcr.io -u ${{ github.actor }} --password-stdin
+
+          echo "⬇️ Pulling version: \$NEW_TAG"
+          podman pull ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:\$NEW_TAG
+
+          # 2. Deploy NEW Version (SURGICAL UPDATE)
+          echo "🚀 Deploying version: \$NEW_TAG"
+          export IMAGE_TAG=\$NEW_TAG
+
+          # ⚠️ CRITICAL: We update ONLY the app. The Tunnel is a system service and stays untouched.
+          echo "🔄 Updating App Container..."
+          podman stop leadflow-ai || true
+          podman rm leadflow-ai || true
+          
+          # This brings up the app (recreating it)
+          podman-compose up -d
+
+          # 3. Ensure Systemd Persistence for the APP
+          echo "🛡️ Configuring Auto-Start for App..."
+          mkdir -p ~/.config/systemd/user/
+          cd ~/.config/systemd/user/
+          
+          # Generate service file ONLY for the app
+          podman generate systemd --new --files --name leadflow-ai
+          
+          # Reload and Enable
+          systemctl --user daemon-reload
+          systemctl --user enable container-leadflow-ai.service
+          
+          # Note: We do NOT touch container-cloudflared_host (it is managed by root/system)
+          
+          cd \$APP_DIR
+
+          # 4. Health Check
+          echo '--- 🏥 Health Analysis (Waiting 15s) ---'
+          sleep 15
+
+          CONTAINER_ID=\$(podman ps -q --filter "name=leadflow" | head -n 1)
+
+          if [ -z "\$CONTAINER_ID" ]; then
+             echo '❌ CRITICAL: No container found running!'
+             exit 1
+          else
+             # Scan logs for fatal errors
+             RECENT_LOGS=\$(podman logs --tail 100 \$CONTAINER_ID 2>&1)
+             if echo "\$RECENT_LOGS" | grep -iqE 'exception|traceback|critical error|fatal|importerror'; then
+                  echo '❌ CRITICAL: Error keywords detected in logs.'
+                  echo "\$RECENT_LOGS" | grep -iE 'exception|traceback|critical error|fatal|importerror'
+                  exit 1
+             else
+                  echo '✅ Deployment Successful. App is running.'
+             fi
+          fi
+
+          # 5. Cleanup
+          echo '--- 🧹 Cleaning up old images ---'
+          podman image prune -f
+          EOF
+
       - name: Execute Deployment on Server
         run: |
-          ssh production "mkdir -p ~/leadflow-ai"
-          # Send the PROD compose file
-          scp docker-compose.prod.yml production:~/leadflow-ai/docker-compose.yml
+          # Copy files - using -v to debug if connection fails
+          scp -v docker-compose.prod.yml production:~/leadflow-ai/docker-compose.yml
           scp deploy_script.sh production:~/leadflow-ai/deploy.sh
+          
+          # Run the script
           ssh production "chmod +x ~/leadflow-ai/deploy.sh && ~/leadflow-ai/deploy.sh"
