@@ -11,24 +11,33 @@ services:
     
     # NETWORK CONFIGURATION:
     # We expose port 8000 to the Host OS.
-    # This allows the System-Level Cloudflare Tunnel (running on host network)
-    # to proxy traffic to 'http://localhost:8000'.
+    # The system-level Cloudflare Tunnel connects to localhost:8000.
     ports:
       - "8000:8000"
     
+    # --- CRITICAL ENVIRONMENT OVERRIDES ---
+    # These settings enforce the fixes we discovered during debugging.
+    environment:
+      - WEB_CONCURRENCY=1               # Limit to 1 worker to save RAM on t3.micro
+      - ENABLE_REAL_PHONE_PURCHASE=true # Forces the phone module to load
+      - ACCESS_TOKEN_EXPIRE_MINUTES=1440
+      - ALGORITHM=HS256                 # Required for JWT encoding
+      - APP_ENV=production
+
     volumes:
       # The ':Z' flag is crucial for Podman/SELinux permissions
       - ./storage:/app/storage:Z
       - ./leads.db:/app/leads.db:Z
       - ./private.key:/app/private.key:Z
     
-    # Load environment variables (AWS secrets, DB configs)
+    # Load additional secrets (AWS keys, etc.) from .env file
     env_file:
       - .env
 
+    # Command updated to use 1 worker explicitly for stability
     command: >
       gunicorn src.main:app
-      --workers 2
+      --workers 1
       --worker-class uvicorn.workers.UvicornWorker
       --bind 0.0.0.0:8000
       --timeout 120
