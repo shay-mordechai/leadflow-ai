@@ -1,107 +1,85 @@
+# src/services/ai_engine.py
 import json
 import logging
+import os
+import httpx
 import google.generativeai as genai
-from typing import Dict, Optional
+from typing import Dict, Any
 from src.config import settings
-from src.config.prompts import get_business_config
 
-# Setup Logger
-logger = logging.getLogger(__name__)
+logger = logging.getLogger("AI_Brain")
 
-# Configure Gemini with the API key from settings
-genai.configure(api_key=settings.GOOGLE_API_KEY)
+# Configure Gemini
+if settings.GOOGLE_API_KEY:
+    genai.configure(api_key=settings.GOOGLE_API_KEY)
 
 class AIEngine:
     def __init__(self):
-        # Using gemini-1.5-flash as it is currently the most stable/cost-effective for this task.
-        model_name = "gemini-1.5-flash" 
-        
+        # Gemini 1.5 Flash is perfect: Fast, Cheap, and handles Audio natively!
+        self.model_name = "gemini-1.5-flash"
         self.model = genai.GenerativeModel(
-            model_name,
-            # CRITICAL: Enforce JSON output natively. This prevents parsing errors.
+            self.model_name,
             generation_config={"response_mime_type": "application/json"}
         )
 
-    def _build_analysis_prompt(self, business_type: str, business_name: str, city_coverage: Optional[str]) -> str:
+    async def analyze_interaction(self, text_input: str = None, audio_path: str = None, user_context: Dict = None) -> Dict[str, Any]:
         """
-        Constructs the system instructions by combining:
-        1. The specific Business Persona (from prompts.py)
-        2. The Technical Analysis Requirements (JSON extraction)
+        Analyzes Text OR Audio input to determine the Yoga Student's intent.
+        Implements the 'Conditional Cancellation' logic.
         """
-        cities = city_coverage if city_coverage else "General Service / Remote"
         
-        # Retrieve the specific persona configuration
-        # This gives us the 'system_role' (Tone/Rules)
-        persona_config = get_business_config(business_type, business_name)
-        business_persona = persona_config["system_role"]
+        # 1. The Yoga Instructor Persona & Policy
+        system_prompt = f"""
+        You are 'Lea', the AI manager for a Yoga Studio.
+        
+        Current User: {user_context.get('name', 'Student')}
+        Upcoming Class: {user_context.get('upcoming_class', 'Unknown')}
+        Time until class: {user_context.get('hours_until_class', 48)} hours.
 
-        return f"""
-        {business_persona}
-
-        **Your Task: Lead Analysis**
-        You are analyzing an incoming message to extract structured data and draft a reply.
-
-        **Business Context:**
-        - Industry: {business_type}
-        - Service Areas: {cities}
-
-        **Analysis Requirements:**
-        1. **Intent Score:** Rate the lead's intent from 1 (Spam/Irrelevant) to 10 (High Value/Urgent).
-        2. **Location:** Extract the city or region mentioned.
-        3. **Summary:** Write a concise summary of the request in Hebrew.
-        4. **Reply Draft:** Draft a reply in Hebrew based on your Persona rules above.
-           - **Crucial:** Match the tone defined in your persona (e.g., use emojis for Yoga, formal for Real Estate).
-           - Address the user by name if available.
-        5. **Follow-up:** Set 'needs_followup' to true if the user asks to be contacted later.
-
-        **Required Output Structure (JSON):**
+        **YOUR STRICT POLICY:**
+        1. **Cancellation > 24 Hours:** Allow immediately. Reply: "Canceled, no charge."
+        2. **Cancellation < 24 Hours:** Conditional! Reply: "It's late notice. I'll move you to the waiting list. If someone takes the spot, you won't be charged. Otherwise, the fee stands."
+        3. **Reschedule:** Treat as cancellation + new booking request.
+        
+        **TASK:**
+        Analyze the input and output JSON:
         {{
-            "lead_name": "string or null",
-            "lead_phone": "string or null (extract if present in body)",
-            "location": "string or null",
-            "intent_score": integer,
-            "summary": "Hebrew string",
-            "suggested_reply": "Hebrew string",
-            "needs_followup": boolean
+            "intent": "cancel_booking" | "reschedule" | "general_query" | "confirm_arrival",
+            "urgency_level": "high" (if < 24h) | "low",
+            "action_required": "mark_pending_resale" | "cancel_immediate" | "none",
+            "reply_text": "A friendly WhatsApp reply in Hebrew (Israeli style) based on the policy above."
         }}
         """
 
-    def analyze_lead_message(self, text: str, business_type: str, business_name: str = "My Business", city_coverage: str = None) -> Dict:
-        """
-        Sends the text to Gemini and returns a structured dictionary.
-        Accepts 'business_name' to allow personalized persona injection.
-        """
-        system_instructions = self._build_analysis_prompt(business_type, business_name, city_coverage)
-        full_prompt = f"{system_instructions}\n\n**Incoming Message to Analyze:**\n{text}"
-
         try:
-            logger.info(f"Sending request to Gemini for business: {business_type} ({business_name})")
+            content_parts = [system_prompt]
             
-            response = self.model.generate_content(full_prompt)
-            
-            # Since we enforced JSON mode, response.text should be valid JSON.
-            data = json.loads(response.text)
-            
-            return data
+            # 2. Add Audio or Text to the prompt
+            if audio_path and os.path.exists(audio_path):
+                logger.info(f"🎤 Uploading audio to Gemini: {audio_path}")
+                # Upload file to Gemini (Temporary storage)
+                audio_file = genai.upload_file(audio_path)
+                content_parts.append(audio_file)
+                content_parts.append("Analyze this voice note.")
+            elif text_input:
+                content_parts.append(f"Student Message: {text_input}")
+            else:
+                return {"error": "No input provided"}
 
-        except json.JSONDecodeError as e:
-            logger.error(f"JSON Parsing Error from AI response: {response.text}")
-            return self._get_error_fallback(f"Error parsing AI response: {str(e)}")
+            # 3. Generate Analysis
+            logger.info("🤖 Sending to Gemini...")
+            response = self.model.generate_content(content_parts)
             
+            # Parse JSON
+            result = json.loads(response.text)
+            logger.info(f"💡 AI Decision: {result['intent']}")
+            return result
+
         except Exception as e:
-            logger.error(f"AI Engine General Error: {str(e)}")
-            return self._get_error_fallback("System Error during AI analysis")
+            logger.error(f"AI Engine Failed: {e}")
+            return {
+                "intent": "error",
+                "reply_text": "סליחה, לא הצלחתי להבין. אני מעבירה את ההודעה למאמנת."
+            }
 
-    def _get_error_fallback(self, reason: str) -> Dict:
-        """Returns a safe default structure in case of failure."""
-        return {
-            "lead_name": None,
-            "intent_score": 0,
-            "summary": reason,
-            "suggested_reply": "היי, קיבלתי את ההודעה. אחזור אליך בהקדם.",
-            "needs_followup": True,
-            "location": "Unknown"
-        }
-
-# Singleton instance
 ai_engine = AIEngine()

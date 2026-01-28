@@ -1,178 +1,90 @@
 # src/routers/webhooks.py
-import os
 import logging
+import os
 import aiofiles
 import httpx
 from datetime import datetime
-from fastapi import APIRouter, Request, HTTPException, Depends, status, Response
-from sqlalchemy.orm import Session
+from fastapi import APIRouter, Form, Request, Depends
+from typing import Optional
 
-# Import project modules
-from src.database.session import get_db
-from src.database.models import User, Lead, MediaInteraction, ProcessingStatus, LeadSource
-from src.security.encryption import protector
+from src.services.ai_engine import ai_engine
+from src.config import settings
 
-# Setup Logger
-logger = logging.getLogger(__name__)
+logger = logging.getLogger("Webhooks")
+router = APIRouter()
 
-router = APIRouter(tags=["Webhooks"])
+# Directory for saving voice notes
+STORAGE_PATH = "/app/storage/voice_notes"
+os.makedirs(STORAGE_PATH, exist_ok=True)
 
-# Configuration
-VERIFY_TOKEN = os.getenv("WHATSAPP_VERIFY_TOKEN", "my_secret_token")
-META_ACCESS_TOKEN = os.getenv("META_ACCESS_TOKEN")
-SHARED_STORAGE_PATH = "/app/storage"  # Matches the Docker volume path
-
-@router.get("/whatsapp")
-async def verify_webhook(request: Request):
+@router.post("/whatsapp/twilio")
+async def whatsapp_webhook(
+    From: str = Form(...),       # Twilio sends Form Data, not JSON
+    Body: Optional[str] = Form(None),
+    MediaUrl0: Optional[str] = Form(None),
+    MediaContentType0: Optional[str] = Form(None),
+    NumMedia: int = Form(0)
+):
     """
-    Meta Verification Challenge.
-    Used by Facebook to verify that this server owns the callback URL.
+    Handles incoming WhatsApp messages from Twilio.
+    Supports Text and Voice Notes.
     """
-    params = request.query_params
-    mode = params.get("hub.mode")
-    token = params.get("hub.verify_token")
-    challenge = params.get("hub.challenge")
+    sender_phone = From.replace("whatsapp:", "")
+    logger.info(f"📩 Message from {sender_phone}")
 
-    if mode == "subscribe" and token == VERIFY_TOKEN:
-        logger.info("✅ Webhook verified successfully.")
-        return int(challenge)
-    
-    logger.warning("❌ Webhook verification failed: Invalid token.")
-    raise HTTPException(status_code=403, detail="Verification failed")
+    # 1. Mock Context (Later: Get from DB based on sender_phone)
+    # נניח שאנחנו יודעים שהיא רשומה לשיעור מחר
+    user_context = {
+        "name": "Dana Cohen",
+        "upcoming_class": "Pilates - Tomorrow 18:00",
+        "hours_until_class": 20  # <--- Less than 24h! Triggers the logic.
+    }
 
-@router.post("/whatsapp")
-async def receive_whatsapp_message(request: Request, db: Session = Depends(get_db)):
-    """
-    Ingests incoming messages from Meta/WhatsApp Cloud API.
-    Downloads audio files and queues them for the Worker.
-    """
-    try:
-        data = await request.json()
+    ai_response = {}
+
+    # 2. Handle Voice Note (Audio) 🎤
+    if int(NumMedia) > 0 and MediaUrl0:
+        logger.info(f"🎤 Voice Note Received: {MediaUrl0}")
         
-        # 1. Parse Meta's nested JSON structure
-        # Check if the payload actually contains messages
-        entry = data.get('entry', [])[0]
-        changes = entry.get('changes', [])[0]
-        value = changes.get('value', {})
+        # Download the file
+        filename = f"{sender_phone}_{int(datetime.now().timestamp())}.ogg"
+        file_path = os.path.join(STORAGE_PATH, filename)
         
-        if 'messages' not in value:
-            # This might be a status update (sent/delivered/read), we ignore it for now
-            return {"status": "ignored_status_update"}
-
-        message = value['messages'][0]
-        sender_phone = message['from']  # The Lead's raw phone number
-        message_type = message['type']
-        
-        # 2. Identify the User (Business Owner)
-        # In a multi-tenant system, we would map value['metadata']['phone_number_id'] to a User.
-        # For this MVP, we fetch the first user (assuming Single Tenant per container).
-        user = db.query(User).first() 
-        if not user:
-            logger.error("❌ No user found in DB to attach this lead to.")
-            return {"status": "error_no_user"}
-
-        # 3. Find or Create the Lead
-        # NOTE: Since phone numbers are encrypted in DB, we cannot simply query .filter(phone==sender_phone).
-        # We iterate and decrypt. (Optimization for later: Add a hashed_phone_index column).
-        lead = None
-        all_leads = db.query(Lead).filter(Lead.user_id == user.id).all()
-        
-        for l in all_leads:
-            try:
-                if protector.decrypt(l.phone_number) == sender_phone:
-                    lead = l
-                    break
-            except Exception:
-                continue # Skip corrupted/legacy data
-        
-        if not lead:
-            # Create new lead
-            lead_name = value.get('contacts', [{}])[0].get('profile', {}).get('name', 'Unknown')
-            lead = Lead(
-                user_id=user.id,
-                phone_number=protector.encrypt(sender_phone), # Encrypt before saving
-                name=lead_name,
-                source=LeadSource.WHATSAPP,
-                status="NEW"
-            )
-            db.add(lead)
-            db.commit()
-            db.refresh(lead)
-            logger.info(f"🆕 New Lead created: {lead.name}")
-
-        # 4. Handle Audio Messages
-        if message_type == 'audio':
-            audio_id = message['audio']['id']
-            
-            # Step A: Get the Media URL from Meta
-            async with httpx.AsyncClient() as client:
-                headers = {"Authorization": f"Bearer {META_ACCESS_TOKEN}"}
-                
-                # Meta API to get the download URL
-                url_resp = await client.get(
-                    f"https://graph.facebook.com/v17.0/{audio_id}",
-                    headers=headers
-                )
-                
-                if url_resp.status_code != 200:
-                    logger.error(f"Failed to get media URL: {url_resp.text}")
-                    return {"status": "error_meta_api"}
-                
-                media_url = url_resp.json().get("url")
-                
-                # Step B: Download the actual file binary
-                file_resp = await client.get(media_url, headers=headers)
-                
-                if file_resp.status_code != 200:
-                    logger.error("Failed to download media binary.")
-                    return {"status": "error_download"}
-
-                # Step C: Save to Shared Volume
-                # Naming format: leadID_timestamp.ogg
-                filename = f"lead_{lead.id}_{int(datetime.now().timestamp())}.ogg"
-                file_path = os.path.join(SHARED_STORAGE_PATH, filename)
-                
-                # Ensure directory exists
-                os.makedirs(SHARED_STORAGE_PATH, exist_ok=True)
-
+        async with httpx.AsyncClient() as client:
+            # Twilio media requires Basic Auth if configured, usually public with token
+            resp = await client.get(MediaUrl0)
+            if resp.status_code == 200:
                 async with aiofiles.open(file_path, 'wb') as f:
-                    await f.write(file_resp.content)
+                    await f.write(resp.content)
                 
-                logger.info(f"💾 Audio saved at: {file_path}")
+                # Send to Gemini (Audio Analysis)
+                ai_response = await ai_engine.analyze_interaction(
+                    audio_path=file_path, 
+                    user_context=user_context
+                )
+            else:
+                logger.error("Failed to download audio from Twilio")
+                ai_response = {"reply_text": "היתה בעיה עם ההקלטה שלך, אפשר לכתוב?"}
 
-            # 5. Create Job for the Worker
-            # This entry triggers the background Worker to run Whisper + Gemini
-            media_interaction = MediaInteraction(
-                user_id=user.id,
-                lead_id=lead.id,    # Link to the specific lead
-                sender_phone=sender_phone,
-                media_type="AUDIO", # Matches MediaType.AUDIO enum
-                file_path=file_path,
-                status=ProcessingStatus.PENDING # Worker looks for PENDING
-            )
-            db.add(media_interaction)
-            db.commit()
-            
-            logger.info(f"✅ Job Queued: {media_interaction.id}")
+    # 3. Handle Text Message 💬
+    elif Body:
+        logger.info(f"💬 Text Received: {Body}")
+        # Send to Gemini (Text Analysis)
+        ai_response = await ai_engine.analyze_interaction(
+            text_input=Body, 
+            user_context=user_context
+        )
 
-        # 6. Handle Text Messages (Optional, for direct AI replies to text)
-        elif message_type == 'text':
-             text_body = message['text']['body']
-             media_interaction = MediaInteraction(
-                user_id=user.id,
-                lead_id=lead.id,
-                sender_phone=sender_phone,
-                media_type="TEXT",
-                message_text=text_body,
-                status=ProcessingStatus.PENDING
-            )
-             db.add(media_interaction)
-             db.commit()
-             logger.info(f"✅ Text Job Queued: {media_interaction.id}")
+    # 4. Log the Result (In production: Send reply back via Twilio)
+    reply = ai_response.get("reply_text", "Error processing request")
+    action = ai_response.get("action_required", "none")
+    
+    logger.info(f"🤖 Action: {action} | Reply: {reply}")
 
-        return {"status": "success"}
-
-    except Exception as e:
-        logger.exception(f"⚠️ Critical Webhook Error: {e}")
-        # Always return 200 to Meta, otherwise they will retry indefinitely
-        return {"status": "error", "detail": str(e)}
+    # Twilio expects TwiML (XML) response to reply immediately
+    # This is the simplest way to reply without an extra API call
+    from twilio.twiml.messaging_response import MessagingResponse
+    resp = MessagingResponse()
+    resp.message(reply)
+    
+    return fastapi.Response(content=str(resp), media_type="application/xml")

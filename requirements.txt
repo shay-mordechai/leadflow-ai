@@ -28,7 +28,7 @@ requests
 # --- AI & Processing ---
 # Note: faster-whisper is memory intensive (requires min 2GB RAM on EC2)
 faster-whisper
-openai
+openai>=1.0.0
 google-generativeai
 
 # --- Security & Auth ---
@@ -50,6 +50,6 @@ python-jose[cryptography]
 slowapi
 
 # --- Telephony Providers ---
-twilio
-telnyx
+twilio>=8.0.0
+telnyx>=2.0.0
 vonage
