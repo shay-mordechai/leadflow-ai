@@ -5,7 +5,8 @@ import logging
 from datetime import timedelta, datetime
 from typing import Optional
 from fastapi import APIRouter, Depends, HTTPException, status, Header
-from fastapi.security import OAuth2PasswordRequestForm
+from fastapi.security import OAuth2PasswordRequestForm, OAuth2PasswordBearer
+from jose import JWTError, jwt
 from sqlalchemy.orm import Session
 
 # Internal Imports
@@ -14,15 +15,46 @@ from src.database.models import User, PlanTier
 from src.security.hashing import verify_password, get_hash
 from src.security.validation import create_access_token
 from src.config import settings
-# --- FIX IS HERE: Removed 'RegisterSchema', kept only valid schemas ---
 from src.schemas.user import UserCreate, VerifyOTP 
 
 router = APIRouter()
 logger = logging.getLogger("AuthSecurity")
 
+# --- FIX: Define the OAuth2 scheme so FastAPI knows where to look for the token ---
+oauth2_scheme = OAuth2PasswordBearer(tokenUrl="/api/v1/auth/login")
+
 def generate_otp(length=6) -> str:
     """Generates a secure numeric OTP."""
     return ''.join(random.choices(string.digits, k=length))
+
+# --- CRITICAL FIX: The Missing Function ---
+async def get_current_user(token: str = Depends(oauth2_scheme), db: Session = Depends(get_db)):
+    """
+    Validates the JWT token and retrieves the current user.
+    Used as a dependency in other routers (phones, leads, etc).
+    """
+    credentials_exception = HTTPException(
+        status_code=status.HTTP_401_UNAUTHORIZED,
+        detail="Could not validate credentials",
+        headers={"WWW-Authenticate": "Bearer"},
+    )
+    try:
+        # Decode the JWT
+        payload = jwt.decode(token, settings.SECRET_KEY, algorithms=[settings.ALGORITHM])
+        email: str = payload.get("sub")
+        if email is None:
+            raise credentials_exception
+    except JWTError:
+        raise credentials_exception
+    
+    user = db.query(User).filter(User.email == email).first()
+    if user is None:
+        raise credentials_exception
+        
+    # Return user as a dictionary (or ORM object) to be compatible with other modules
+    return {"user_id": str(user.id), "email": user.email, "tier": user.plan_tier}
+
+# ------------------------------------------
 
 @router.post("/register", status_code=status.HTTP_201_CREATED)
 async def register_user(data: UserCreate, db: Session = Depends(get_db)):
