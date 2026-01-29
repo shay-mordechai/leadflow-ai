@@ -15,7 +15,9 @@ router = APIRouter()
 templates = Jinja2Templates(directory="src/templates")
 
 # Configuration for contact details
-SUPPORT_EMAIL = "support@my-leads.app"
+# Professional English Comment: 
+# This email is injected into the templates (Privacy, Terms, Contact).
+SUPPORT_EMAIL = "support@my-leads.ai" 
 
 @router.get("/", response_class=HTMLResponse)
 async def read_root(request: Request):
@@ -102,7 +104,8 @@ async def dashboard_page(
     return templates.TemplateResponse("dashboard.html", {
         "request": request,
         "user": current_user,
-        "plan_name": current_user.plan_tier.value,
+        # Ensure plan_tier is an Enum or String. If it's a string in DB, remove .value
+        "plan_name": current_user.plan_tier.value if hasattr(current_user.plan_tier, 'value') else current_user.plan_tier,
         # Pass location to the HTML (e.g., to show "Login from: Tel Aviv")
         "location": {
             "city": cf_city or "Unknown",
