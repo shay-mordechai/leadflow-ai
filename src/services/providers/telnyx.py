@@ -1,57 +1,73 @@
-import logging
 import telnyx
+import logging
+from typing import List, Dict, Optional
 from src.config import settings
-from src.services.providers.base import PhoneProviderStrategy
 
 logger = logging.getLogger("TelnyxProvider")
 
-if settings.TELNYX_API_KEY:
-    telnyx.api_key = settings.TELNYX_API_KEY
+class TelnyxProvider:
+    def __init__(self):
+        self.api_key = settings.TELNYX_API_KEY
+        if self.api_key:
+            telnyx.api_key = self.api_key
+        else:
+            logger.warning("⚠️ TELNYX_API_KEY is missing!")
 
-class TelnyxProvider(PhoneProviderStrategy):
-    @property
-    def provider_name(self) -> str:
-        return "TELNYX"
-
-    @property
-    def is_configured(self) -> bool:
-        return bool(settings.TELNYX_API_KEY)
-
-    def search_and_buy_number(self, country_code: str, number_type: str, user_id: str) -> str | None:
-        if not self.is_configured:
-            return None
-
+    def search_numbers(self, country_code: str = "IL", type: str = "mobile") -> List[Dict]:
+        """
+        מחפש מספרים פנויים ב-Telnyx ומחזיר רשימה עם מחירים.
+        """
+        if not self.api_key: return []
+        
         try:
-            # Telnyx search filter
-            # Note: Telnyx treats number types differently, verification is key.
-            available = telnyx.AvailablePhoneNumber.list(
-                filter={
-                    "country_code": country_code,
-                    "features": ["sms"],
-                    "limit": 1,
-                    # Telnyx uses 'local' or 'mobile' in filter
-                    "number_type": number_type 
-                }
+            # Telnyx uses 2-letter country codes (IL, US)
+            logger.info(f"🔍 Searching Telnyx for {country_code} numbers...")
+            
+            # חיפוש מספרים
+            available_numbers = telnyx.AvailablePhoneNumber.list(
+                filter={"country_code": country_code, "features": ["sms", "voice"]},
+                page={"size": 5}
             )
 
-            if not available or not available.data:
-                logger.warning(f"[Telnyx] No numbers found for {country_code} ({number_type})")
-                return None
-
-            phone_number = available.data[0].phone_number
-            logger.info(f"[Telnyx] Found {phone_number}. Purchasing...")
-
-            # Execute Order
-            telnyx.NumberOrder.create(
-                phone_numbers=[{"phone_number": phone_number}],
-                customer_reference=f"User_{user_id}"
-            )
+            results = []
+            for num in available_numbers:
+                # המרה לפורמט אחיד שלנו
+                # Telnyx מחזיר עלות, למשל "1.00"
+                cost = num.cost_information.upfront_cost if hasattr(num, 'cost_information') else "N/A"
+                
+                results.append({
+                    "phone_number": num.phone_number,
+                    "friendly_name": num.phone_number, # Telnyx לא תמיד נותן פורמט יפה
+                    "locality": num.region_information.region_name if hasattr(num, 'region_information') else "",
+                    "price": cost,
+                    "currency": num.cost_information.currency if hasattr(num, 'cost_information') else "USD",
+                    "provider": "telnyx"
+                })
             
-            # NOTE: In production, you must also assign a Messaging Profile here
-            # to handle webhooks. For MVP, we assume a default profile is set on the account.
-            
-            return phone_number
+            return results
 
         except Exception as e:
-            logger.error(f"[Telnyx] Error: {e}")
-            return None
+            logger.error(f"❌ Telnyx Search Error: {e}")
+            return []
+
+    def buy_number(self, phone_number: str) -> Dict:
+        """
+        מבצע רכישה של מספר.
+        """
+        try:
+            logger.info(f"🛒 Buying {phone_number} from Telnyx...")
+            # ב-Telnyx צריך קודם להזמין (Order)
+            order = telnyx.NumberOrder.create(
+                phone_numbers=[{"phone_number": phone_number}],
+                customer_reference="LeadFlow_AI_Purchase"
+            )
+            
+            # בדיקה אם ההזמנה הצליחה
+            if order.status in ["pending", "success"]:
+                 return {"status": "success", "phone_number": phone_number, "provider": "telnyx", "order_id": order.id}
+            else:
+                 return {"status": "failed", "error": f"Order status: {order.status}"}
+
+        except Exception as e:
+            logger.error(f"❌ Telnyx Purchase Error: {e}")
+            return {"status": "error", "message": str(e)}
