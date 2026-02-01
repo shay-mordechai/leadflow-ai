@@ -1,93 +1,58 @@
 # src/routers/payments.py
 import logging
-from fastapi import APIRouter, Depends, Request, BackgroundTasks
-from fastapi.responses import RedirectResponse
-from sqlalchemy.orm import Session
-from src.database.session import get_db
-from src.database.models import User, PlanTier, SubscriptionStatus
-from src.services.payment_service import payment_service
-from src.services.phone_service import phone_service  # The new abstract service
-from src.routers.ui import get_current_user
+from typing import Dict
+from fastapi import APIRouter, Depends, HTTPException, Body
+from pydantic import BaseModel, Field
+
+from src.routers.auth import get_current_user
+# Placeholder for DB access or User Service.
+# In a real ORM scenario, we would import the User model and DB session here.
 
 router = APIRouter()
 logger = logging.getLogger("Payments")
 
-@router.get("/checkout/pro")
-async def checkout_pro(user: User = Depends(get_current_user)):
+# --- Coupon Definitions (Hardcoded for MVP) ---
+# Future Improvement: Move this to a 'coupons' table in the database.
+ACTIVE_COUPONS = {
+    "LAUNCH2026": {"plan": "premium", "days": 30, "desc": "Launch Special"},
+    "VIP_SHAY":   {"plan": "premium", "days": 365, "desc": "Admin Bypass"},
+    "YOGA10":     {"plan": "premium", "days": 14,  "desc": "Yoga Teachers Promo"}
+}
+
+class CouponRequest(BaseModel):
+    # Security: Added validation to prevent injection or long string attacks (SAST)
+    coupon_code: str = Field(..., min_length=3, max_length=20, pattern="^[A-Z0-9_]+$", description="Alphanumeric coupon code")
+
+@router.post("/redeem-coupon")
+async def redeem_coupon(
+    payload: CouponRequest,
+    user: Dict = Depends(get_current_user)
+):
     """
-    Initiates the payment flow. Redirects user to Meshulam payment page.
+    Upgrades the user to Premium status if the coupon code is valid.
     """
-    # Generate the payment link via Meshulam API
-    result = payment_service.generate_payment_link(
-        user_id=str(user.id),
-        user_name=user.name,
-        amount=99.00
-    )
+    # Input sanitization
+    code = payload.coupon_code.upper().strip()
+    user_id = user.get("user_id")
     
-    if result["status"] == "success":
-        return RedirectResponse(result["url"])
+    logger.info(f"User {user_id} attempting to redeem coupon: {code}")
+
+    # 1. Validate Coupon
+    if code not in ACTIVE_COUPONS:
+        # Security Note: In a high-security env, add a small sleep() here to mitigate timing attacks.
+        raise HTTPException(status_code=400, detail="Invalid or expired coupon code")
+
+    benefit = ACTIVE_COUPONS[code]
     
-    # If failed, redirect back to dashboard with error parameter
-    return RedirectResponse("/dashboard?error=payment_init_failed")
-
-@router.post("/webhook/meshulam")
-async def meshulam_webhook(request: Request, db: Session = Depends(get_db)):
-    """
-    Receives update from Meshulam after payment is completed.
-    This runs server-to-server.
-    """
-    try:
-        # Meshulam sends data as Form Data
-        form_data = await request.form()
-        data = dict(form_data)
-        
-        logger.info(f"💰 Webhook Received: {data}")
-
-        # Extract critical data
-        # 'status' = 1 means approved transaction
-        transaction_status = data.get("status")
-        # 'cField1' contains the User ID we sent during checkout initialization
-        user_id = data.get("cField1") 
-
-        # 1. Validate Transaction Status
-        if str(transaction_status) != '1':
-            logger.warning(f"⚠ Payment failed or canceled. UserID: {user_id}, Status: {transaction_status}")
-            return "Ignored"
-
-        # 2. Fetch User from Database
-        user = db.query(User).filter(User.id == user_id).first()
-        if not user:
-            logger.error(f"❌ User not found for ID: {user_id}")
-            return "User Not Found"
-
-        # 3. Update Subscription Status
-        logger.info(f"✅ Payment Approved for User {user.name}. Upgrading account...")
-        user.plan_tier = PlanTier.PRO
-        user.subscription_status = SubscriptionStatus.ACTIVE
-        
-        # 4. Provision Phone Number (Smart Waterfall Logic)
-        if user.assigned_phone_number is None:
-            logger.info(f"📞 Attempting to provision number for User {user.id}...")
-            
-            # Call the abstract phone service to find the best provider
-            new_number, provider = phone_service.provision_best_number(str(user.id))
-            
-            if new_number:
-                # Success: Save number and provider to DB
-                user.assigned_phone_number = new_number
-                user.phone_provider = provider 
-                logger.info(f"🎉 New Number Assigned: {new_number} via {provider}")
-            else:
-                # Failure: No numbers available in Israel (Regulatory or Stock issue)
-                # We mark it as 'PENDING_SETUP' so the UI can show a 'Processing' message
-                # instead of crashing or showing nothing.
-                logger.critical(f"🚨 ALERT: User {user.id} paid but NO NUMBER available (Israel Only Policy).")
-                user.assigned_phone_number = "PENDING_SETUP"
-
-        # 5. Commit Changes
-        db.commit()
-        return "OK"
-
-    except Exception as e:
-        logger.error(f"🔥 Webhook Critical Error: {e}")
-        return "Error"
+    # 2. Execute Upgrade (Simulation)
+    # TODO: Connect this to your actual DB repository to update 'users.plan_type'.
+    # Example: await user_repo.update_plan(user_id, benefit["plan"])
+    
+    logger.info(f"✅ COUPON VALID! Upgrading user {user_id} to {benefit['plan']}")
+    
+    return {
+        "status": "success",
+        "message": f"Coupon applied! You are now a {benefit['plan']} member.",
+        "plan": benefit["plan"],
+        "valid_for_days": benefit["days"]
+    }
