@@ -17,10 +17,8 @@ def load_aws_configurations():
     Loads secrets from AWS SSM Parameter Store.
     """
     ssm_path = "/leadflow/prod/"
-    # Default Region
     region = "eu-north-1" 
 
-    # 1. Try to get Region from EC2 Metadata (Production)
     try:
         token_url = "http://169.254.169.254/latest/api/token"
         headers = {"X-aws-ec2-metadata-token-ttl-seconds": "1"}
@@ -37,7 +35,6 @@ def load_aws_configurations():
     except (requests.exceptions.RequestException, requests.exceptions.Timeout):
         logger.info(f"💻 Running Locally. Defaulting to Region: {region}")
 
-    # 2. Connect to SSM
     try:
         ssm_client = boto3.client('ssm', region_name=region)
         paginator = ssm_client.get_paginator('get_parameters_by_path')
@@ -58,16 +55,16 @@ def load_aws_configurations():
     except Exception as e:
         logger.warning(f"⚠️ SSM Load Failed: {e}")
 
-# Load .env first, then SSM overrides
 load_dotenv()
 load_aws_configurations()
 
 class Settings(BaseSettings):
     APP_NAME: str = "LeadFlowAI Secure Platform"
-    
-    # --- 🔴 THIS WAS MISSING ---
     DEBUG: bool = False
-    # ---------------------------
+    
+    # --- 🔴 THIS WAS MISSING AND CAUSED THE CRASH ---
+    ENABLE_REAL_PHONE_PURCHASE: bool = True
+    # -----------------------------------------------
 
     BASE_URL: str = "https://my-leads.app"
 
@@ -81,15 +78,14 @@ class Settings(BaseSettings):
     OPENAI_API_KEY: Optional[str] = None
     GOOGLE_API_KEY: Optional[str] = None
     
-    # Providers
-    TWILIO_ACCOUNT_SID: Optional[str] = None
-    TWILIO_AUTH_TOKEN: Optional[str] = None
-
     # SignalWire Config
     SIGNALWIRE_PROJECT_ID: Optional[str] = None
     SIGNALWIRE_AUTH_TOKEN: Optional[str] = None
     SIGNALWIRE_SPACE_URL: Optional[str] = None
 
+    # Legacy Providers (Optional)
+    TWILIO_ACCOUNT_SID: Optional[str] = None
+    TWILIO_AUTH_TOKEN: Optional[str] = None
     VONAGE_API_KEY: Optional[str] = None
     VONAGE_API_SECRET: Optional[str] = None
     
