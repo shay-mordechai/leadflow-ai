@@ -1,8 +1,10 @@
 # LeadFlowAI 🛡️
 
-**Secure-by-Design SaaS Platform with AI-Driven Workflows.**
+**Secure-by-Design SaaS Platform with Multimodal AI Agents.**
 
-LeadFlowAI is a next-generation CRM platform engineered with a **Security-First mindset**. It demonstrates a robust DevSecOps pipeline, utilizing a **Zero Trust** network architecture to eliminate external attack surfaces while providing seamless, automated deployments.
+LeadFlowAI is a next-generation CRM & AI Agent platform engineered with a **Security-First mindset**. It demonstrates a robust DevSecOps pipeline, utilizing a **Zero Trust** network architecture to eliminate external attack surfaces while providing seamless, automated deployments.
+
+The system features an autonomous **WhatsApp AI Agent** capable of understanding both **Text and Voice Notes** (Hebrew/English) to manage bookings, cancellations, and customer inquiries in real-time.
 
 ## 🏗️ Security Architecture Overview
 
@@ -14,6 +16,7 @@ graph TD
     
     User((Authorized User)) -->|HTTPS / mTLS| CF[Cloudflare Edge (WAF + Access)]
     GitHub((GitHub Actions)) -->|Service Token Auth| CF
+    Twilio((Twilio Webhook)) -->|Signed Request| CF
     
     CF -->|Encrypted Tunnel (Argo)| Cloudflared[cloudflared Container]
     
@@ -23,7 +26,7 @@ graph TD
         
         subgraph "App Stack (Rootless Podman)"
             API[FastAPI Service]
-            Worker[Background Worker]
+            AI[AI Engine (Gemini)]
         end
         
         API -.->|Runtime Injection| SSM[AWS SSM Parameter Store]
@@ -36,39 +39,48 @@ graph TD
 ### 1. Zero Trust Network Access (ZTNA)
 
 * **Attack Surface Reduction:** SSH and HTTP ports (22, 80, 443) are blocked at the AWS Security Group level.
-* **Identity-Aware Proxy (IAP):** SSH access is proxied via `cloudflared`. Authentication requires passing Cloudflare Access policies (Email OTP for humans, Service Tokens for CI/CD bots).
-* **WAF & Bot Management:** Custom WAF rules configured to allow specific CI/CD pipeline traffic while mitigating automated threats and scanners (Bot Fight Mode integration).
+* **Identity-Aware Proxy (IAP):** SSH access is proxied via `cloudflared`. Authentication requires passing Cloudflare Access policies.
+* **WAF & Bot Management:** Custom WAF rules configured to allow specific CI/CD pipeline traffic while mitigating automated threats.
 
 ### 2. Hardened Container Runtime
 
-* **Daemonless & Rootless:** The platform runs on **Podman** instead of Docker. Containers run as non-root users to mitigate container breakout vulnerabilities.
-* **Systemd Integration:** Services are managed via `systemd` user units, ensuring persistence and auto-recovery without requiring root privileges.
+* **Daemonless & Rootless:** The platform runs on **Podman** instead of Docker to mitigate container breakout vulnerabilities.
+* **Systemd Integration:** Services are managed via `systemd` user units, ensuring persistence and auto-recovery.
 * **Immutable Infrastructure:** Containers are ephemeral; no state is stored inside the application container.
 
 ### 3. Secrets Management Strategy
 
-* **No .env Files:** Production secrets are never stored on the disk or committed to Git.
-* **Runtime Injection:** Sensitive data (DB credentials, API Keys) is fetched dynamically from **AWS Systems Manager (SSM) Parameter Store** during the container startup phase using AWS SDK.
-* **Least Privilege:** IAM roles and Cloudflare Tokens are scoped strictly to the minimum required permissions.
+* **No .env Files:** Production secrets are never stored on disk or committed to Git.
+* **Runtime Injection:** Sensitive data (DB credentials, API Keys) is fetched dynamically from **AWS Systems Manager (SSM) Parameter Store**.
+
+## 🧠 AI & Business Logic (New)
+
+The platform powers a **Yoga Studio Management Agent** ("Lea") that handles:
+
+* **Multimodal Input:** Native processing of **Voice Notes (Audio)** and Text via **Google Gemini 1.5 Flash**.
+* **Complex Reasoning:** Handles conditional logic (e.g., "Cancel class if > 24h, otherwise waitlist").
+* **WhatsApp Integration:** Full bi-directional integration via Twilio API.
+* **Crash-Resilient Parsing:** Robust JSON handling to ensure 24/7 availability even with unpredictable LLM outputs.
 
 ## 🔄 Secure CI/CD Pipeline (DevSecOps)
 
 The deployment pipeline demonstrates how to automate "Click-to-Deploy" without compromising security boundaries:
 
 1. **Build & Scan:** Code is linted, built into OCI-compliant images, and pushed to **GHCR**.
-2. **Tunnel Authentication:** The GitHub Runner authenticates against the Cloudflare Edge using high-entropy **Service Tokens** (Client ID/Secret) to bypass Zero Trust policies.
-3. **Encrypted Transport:** Deployment commands are sent over a secure WebSocket tunnel (SSH over HTTPS), eliminating the need for a VPN.
-4. **Surgical Update:** The pipeline performs a zero-downtime container replacement on the target server without disrupting the tunnel infrastructure.
+2. **Tunnel Authentication:** The GitHub Runner authenticates against the Cloudflare Edge using high-entropy **Service Tokens**.
+3. **Encrypted Transport:** Deployment commands are sent over a secure WebSocket tunnel (SSH over HTTPS).
+4. **Surgical Update:** Zero-downtime container replacement on the target server.
 
 ## 🛠️ Tech Stack
 
 | Domain | Technologies |
 | --- | --- |
 | **Backend** | Python 3.11, FastAPI, Pydantic, SQLAlchemy (Async) |
-| **Security** | Cloudflare Zero Trust (Tunnels, Access, WAF), Argon2 Hashing, JWT |
+| **AI Core** | **Google Gemini 1.5 Flash** (Audio & Text Analysis) |
+| **Integrations** | **Twilio** (WhatsApp API), Cloudflare Zero Trust |
 | **Cloud & DevOps** | AWS (SSM, EC2), GitHub Actions, Podman (Rootless), Systemd |
 | **Database** | PostgreSQL 15, Alembic |
-| **AI Processing** | Faster-Whisper (Quantized), LLM Integration |
+| **Security** | Argon2, JWT, Cloudflare Access (mTLS/Service Tokens) |
 
 ## 🚀 Local Development
 

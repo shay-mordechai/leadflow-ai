@@ -51,5 +51,5 @@ slowapi
 
 # --- Telephony Providers ---
 twilio>=8.0.0
-telnyx>=2.0.0
+plivo
 vonage

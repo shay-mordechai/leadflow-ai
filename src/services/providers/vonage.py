@@ -1,73 +1,67 @@
-import vonage
+# src/services/providers/vonage.py
+import requests
 import logging
-from typing import List, Dict
+from typing import List, Dict, Optional
 from src.config import settings
+from src.services.providers.base import PhoneProviderStrategy
 
 logger = logging.getLogger("VonageProvider")
 
-class VonageProvider:
+class VonageProvider(PhoneProviderStrategy):
     def __init__(self):
-        # Vonage דורש גם Key וגם Secret
         self.api_key = settings.VONAGE_API_KEY
         self.api_secret = settings.VONAGE_API_SECRET
-        
-        if self.api_key and self.api_secret:
-            self.client = vonage.Client(key=self.api_key, secret=self.api_secret)
-        else:
-            self.client = None
-            logger.warning("⚠️ Vonage Credentials missing!")
+        self.base_url = "https://rest.nexmo.com/number"
 
-    def search_numbers(self, country_code: str = "IL", type: str = "mobile-lvn") -> List[Dict]:
-        """
-        Vonage Search: type='mobile-lvn' for Mobile, 'landline' for Landline.
-        """
-        if not self.client: return []
+    @property
+    def provider_name(self) -> str:
+        return "VONAGE"
+
+    @property
+    def is_configured(self) -> bool:
+        return bool(self.api_key and self.api_secret)
+
+    def search_numbers(self, country_code: str, number_type: str = "mobile-lvn", limit: int = 5) -> List[Dict]:
+        if not self.is_configured:
+            logger.warning("Vonage not configured (missing key/secret)")
+            return []
 
         try:
-            logger.info(f"🔍 Searching Vonage for {country_code}...")
+            v_type = "mobile-lvn" if number_type == "mobile" else "landline"
             
-            # Vonage משתמש ב-SDK בצורה קצת שונה
-            numbers = self.client.numbers.get_available_numbers(
-                country=country_code,
-                features=["SMS", "VOICE"],
-                size=5,
-                type=type 
-            )
-
+            params = {
+                "api_key": self.api_key,
+                "api_secret": self.api_secret,
+                "country": country_code,
+                "features": "VOICE,SMS",
+                "size": limit,
+                "type": v_type
+            }
+            
+            response = requests.get(f"{self.base_url}/search", params=params)
+            data = response.json()
+            
+            # DEBUG: Print error if exists
+            if 'error-code' in data:
+                 logger.error(f"❌ [Vonage] API Error: {data}")
+            
             results = []
-            if 'numbers' in numbers:
-                for num in numbers['numbers']:
+            if 'numbers' in data:
+                for num in data['numbers']:
                     results.append({
-                        "phone_number": "+" + num['msisdn'], # Vonage מחזיר בלי +
-                        "friendly_name": num['msisdn'],
-                        "locality": "", # Vonage לרוב לא נותן מידע גיאוגרפי מדויק למובייל
+                        "phone_number": "+" + num['msisdn'], # FIX: Key matches compare script
+                        "locality": num.get('type', 'unknown'),
                         "price": num.get('cost', 'Unknown'),
-                        "currency": "EUR", # Vonage לרוב מחייב ביורו
-                        "provider": "vonage"
+                        "currency": "EUR",
+                        "provider": self.provider_name
                     })
             
             return results
 
         except Exception as e:
-            logger.error(f"❌ Vonage Search Error: {e}")
+            logger.error(f"[Vonage] Search Exception: {e}")
             return []
 
-    def buy_number(self, phone_number: str, country_code: str = "IL") -> Dict:
-        try:
-            # Vonage דורש את המספר בלי ה-+
-            clean_number = phone_number.replace("+", "")
-            logger.info(f"🛒 Buying {clean_number} from Vonage...")
-
-            response = self.client.numbers.buy_number({
-                "country": country_code,
-                "msisdn": clean_number
-            })
-
-            if response['error-code'] == '200':
-                return {"status": "success", "phone_number": phone_number, "provider": "vonage"}
-            else:
-                return {"status": "failed", "error": f"Code: {response['error-code']}"}
-
-        except Exception as e:
-             logger.error(f"❌ Vonage Purchase Error: {e}")
-             return {"status": "error", "message": str(e)}
+    def purchase_number(self, phone_number: str, user_id: str) -> Optional[str]:
+        # Purchase logic placeholder
+        return None
