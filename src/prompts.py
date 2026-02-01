@@ -1,11 +1,7 @@
-# src/config/prompts.py
-cat > src/prompts.py <<EOF
 from typing import Dict, Any
 
 # ==============================================================================
 # 🎭 BUSINESS PERSONA REGISTRY
-# ==============================================================================
-# This registry maps specific 'business_types' to their AI personalities.
 # ==============================================================================
 
 PROMPT_TEMPLATES = {
