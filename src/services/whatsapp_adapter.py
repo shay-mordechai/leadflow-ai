@@ -2,13 +2,14 @@
 import os
 import logging
 import requests
+import uuid
 from sqlalchemy.orm import Session
 from src.database.models import User, MediaInteraction, ProcessingStatus
+from src.config import settings
 
 logger = logging.getLogger(__name__)
 
 # --- Configuration: Load from .env ---
-# These match the variables you provided in your prompt
 META_ACCESS_TOKEN = os.getenv("META_ACCESS_TOKEN")
 PHONE_ID = os.getenv("WHATSAPP_PHONE_ID")
 VERIFY_TOKEN = os.getenv("WHATSAPP_VERIFY_TOKEN")
@@ -16,8 +17,8 @@ API_VERSION = "v17.0"
 
 class WhatsAppAdapter:
     """
-    WhatsApp Adapter (Official Meta Cloud API).
-    Handles message ingestion (Webhook) and sending outbound messages via Facebook Graph API.
+    WhatsApp Adapter.
+    Handles message sending and media downloading.
     """
 
     def send_message(self, to_phone: str, text: str):
@@ -35,7 +36,6 @@ class WhatsAppAdapter:
             "Content-Type": "application/json"
         }
 
-        # Meta expects the object to be 'messaging_product': 'whatsapp'
         payload = {
             "messaging_product": "whatsapp",
             "to": to_phone,
@@ -49,48 +49,36 @@ class WhatsAppAdapter:
             logger.info(f"🚀 Sent WhatsApp (Meta) to {to_phone}: {text[:30]}...")
             return True
         except requests.exceptions.RequestException as e:
-            # Enhanced error logging for Meta responses
-            error_msg = "Unknown Error"
-            if response is not None:
-                try:
-                    error_msg = response.json()
-                except:
-                    error_msg = response.text
-            
             logger.error(f"🔥 Failed to send WhatsApp via Meta: {e}")
-            logger.error(f"Meta API Response: {error_msg}")
             return False
 
-    def process_incoming_webhook(self, db: Session, user_id: str, sender_phone: str, message_text: str, media_url: str = None):
+    def download_media(self, media_url: str) -> str:
         """
-        Ingests the message immediately to the DB.
-        This remains the same regardless of the provider (Meta vs GreenAPI),
-        as the logic is internal to our system.
+        Downloads media (audio/image) from a URL to local storage.
+        Returns the local file path.
         """
-        # 1. Lookup User (Business Owner)
-        user = db.query(User).filter(User.id == user_id).first()
+        try:
+            # Generate unique filename
+            filename = f"{uuid.uuid4()}.ogg"
+            save_path = f"storage/audio/{filename}"
+            
+            # Ensure directory exists
+            os.makedirs("storage/audio", exist_ok=True)
 
-        if not user:
-            logger.warning(f"⚠️ Webhook received for unknown User ID: {user_id}")
-            return False
+            # Professional English Comment:
+            # If using Twilio, basic auth might be needed: auth=(settings.TWILIO_SID, settings.TWILIO_TOKEN)
+            # For public URLs (Meta sometimes), standard get works.
+            response = requests.get(media_url)
+            response.raise_for_status()
 
-        logger.info(f"📩 New message for User: {user.business_name}")
-
-        # 2. Save job to DB for the Worker
-        new_interaction = MediaInteraction(
-            user_id=user.id,
-            sender_phone=sender_phone,
-            media_type="AUDIO" if media_url else "TEXT",
-            message_text=message_text,
-            file_path=media_url, 
-            status=ProcessingStatus.PENDING 
-        )
-        
-        db.add(new_interaction)
-        db.commit()
-        
-        logger.info(f"✅ Job queued: {new_interaction.id}. Worker is watching.")
-        return True
+            with open(save_path, 'wb') as f:
+                f.write(response.content)
+            
+            logger.info(f"📥 Media downloaded to {save_path}")
+            return save_path
+        except Exception as e:
+            logger.error(f"❌ Error downloading media: {e}")
+            return None
 
 # Singleton Instance
 whatsapp_adapter = WhatsAppAdapter()

@@ -1,14 +1,14 @@
 # LeadFlowAI 🛡️
 
-**Secure-by-Design SaaS Platform with Multimodal AI Agents.**
+**Secure-by-Design Full-Stack SaaS Platform with Multimodal AI Agents.**
 
-LeadFlowAI is a next-generation CRM & AI Agent platform engineered with a **Security-First mindset**. It demonstrates a robust DevSecOps pipeline, utilizing a **Zero Trust** network architecture to eliminate external attack surfaces while providing seamless, automated deployments.
+LeadFlowAI is a next-generation CRM & AI Agent platform engineered with a **Security-First mindset**. It demonstrates a robust DevSecOps pipeline, utilizing a **Zero Trust** network architecture to eliminate external attack surfaces while providing a modern, reactive user experience.
 
-The system features an autonomous **WhatsApp AI Agent** capable of understanding both **Text and Voice Notes** (Hebrew/English) to manage bookings, cancellations, and customer inquiries in real-time.
+The system features a **Hybrid AI Engine** combining **Local Privacy-First Processing** (Whisper) with Cloud Intelligence (Gemini) to manage bookings, transcribe meetings, and automate customer inquiries via WhatsApp.
 
 ## 🏗️ Security Architecture Overview
 
-The infrastructure creates a "Dark Server" environment. The production server exposes **zero** inbound ports (0.0.0.0/0) to the public internet. All ingress traffic is tunneled and inspected via Cloudflare's Edge Network.
+The infrastructure creates a "Dark Server" environment. The production server exposes **zero** inbound ports (0.0.0.0/0) to the public internet. All ingress traffic is tunneled and inspected via Cloudflare's Edge Network to the Next.js Frontend, which proxies API requests internally.
 
 ```mermaid
 graph TD
@@ -16,20 +16,22 @@ graph TD
     
     User((Authorized User)) -->|HTTPS / mTLS| CF[Cloudflare Edge (WAF + Access)]
     GitHub((GitHub Actions)) -->|Service Token Auth| CF
-    Twilio((Twilio Webhook)) -->|Signed Request| CF
     
     CF -->|Encrypted Tunnel (Argo)| Cloudflared[cloudflared Container]
     
     subgraph "Production (Fedora Linux / Hardened)"
         direction TB
-        Cloudflared -->|Host Network| AppStack
+        Cloudflared -->|localhost:3000| Frontend
         
         subgraph "App Stack (Rootless Podman)"
-            API[FastAPI Service]
-            AI[AI Engine (Gemini)]
+            Frontend[Next.js 14 Client]
+            Backend[FastAPI Service]
+            
+            Frontend <-->|Internal Docker Network| Backend
         end
         
-        API -.->|Runtime Injection| SSM[AWS SSM Parameter Store]
+        Backend -.->|Local Processing| Whisper[Whisper AI (CPU)]
+        Backend -.->|Storage| DB[(SQLite/Postgres)]
     end
 
 ```
@@ -40,61 +42,61 @@ graph TD
 
 * **Attack Surface Reduction:** SSH and HTTP ports (22, 80, 443) are blocked at the AWS Security Group level.
 * **Identity-Aware Proxy (IAP):** SSH access is proxied via `cloudflared`. Authentication requires passing Cloudflare Access policies.
-* **WAF & Bot Management:** Custom WAF rules configured to allow specific CI/CD pipeline traffic while mitigating automated threats.
+* **Frontend Proxying:** The Next.js frontend handles all API rewrites, hiding the backend topology from the client browser.
 
 ### 2. Hardened Container Runtime
 
 * **Daemonless & Rootless:** The platform runs on **Podman** instead of Docker to mitigate container breakout vulnerabilities.
-* **Systemd Integration:** Services are managed via `systemd` user units, ensuring persistence and auto-recovery.
-* **Immutable Infrastructure:** Containers are ephemeral; no state is stored inside the application container.
+* **Systemd Integration:** Services (`container-leadflow-frontend`, `container-leadflow-backend`) are managed via `systemd` user units, ensuring persistence and auto-recovery.
+* **Immutable Infrastructure:** Containers are ephemeral; state is persisted only in mounted volumes.
 
 ### 3. Secrets Management Strategy
 
-* **No .env Files:** Production secrets are never stored on disk or committed to Git.
-* **Runtime Injection:** Sensitive data (DB credentials, API Keys) is fetched dynamically from **AWS Systems Manager (SSM) Parameter Store**.
+* **No .env Files in Repo:** Production secrets are injected at runtime via CI/CD variables or **AWS Systems Manager (SSM)**.
+* **MFA & OTP:** Custom implementation of Email-based Multi-Factor Authentication.
 
-## 🧠 AI & Business Logic (New)
+## 🧠 AI & Business Logic
 
-The platform powers a **Yoga Studio Management Agent** ("Lea") that handles:
+The platform powers a **Smart Business Assistant** capable of:
 
-* **Multimodal Input:** Native processing of **Voice Notes (Audio)** and Text via **Google Gemini 1.5 Flash**.
-* **Complex Reasoning:** Handles conditional logic (e.g., "Cancel class if > 24h, otherwise waitlist").
+* **Local Audio Transcription:** Uses **OpenAI Whisper** running locally on the EC2 instance to transcribe voice notes without third-party data leaks.
+* **Intelligent Reasoning:** Uses **Google Gemini 1.5 Flash** for complex intent analysis and conversation flow.
+* **Automated Documentation:** Generates professional **PDF Meeting Summaries** and receipts automatically using `FPDF`.
 * **WhatsApp Integration:** Full bi-directional integration via Twilio API.
-* **Crash-Resilient Parsing:** Robust JSON handling to ensure 24/7 availability even with unpredictable LLM outputs.
 
-## 🔄 Secure CI/CD Pipeline (DevSecOps)
-
-The deployment pipeline demonstrates how to automate "Click-to-Deploy" without compromising security boundaries:
-
-1. **Build & Scan:** Code is linted, built into OCI-compliant images, and pushed to **GHCR**.
-2. **Tunnel Authentication:** The GitHub Runner authenticates against the Cloudflare Edge using high-entropy **Service Tokens**.
-3. **Encrypted Transport:** Deployment commands are sent over a secure WebSocket tunnel (SSH over HTTPS).
-4. **Surgical Update:** Zero-downtime container replacement on the target server.
-
-## 🛠️ Tech Stack
+## 💻 Modern Tech Stack
 
 | Domain | Technologies |
 | --- | --- |
-| **Backend** | Python 3.11, FastAPI, Pydantic, SQLAlchemy (Async) |
-| **AI Core** | **Google Gemini 1.5 Flash** (Audio & Text Analysis) |
-| **Integrations** | **Twilio** (WhatsApp API), Cloudflare Zero Trust |
-| **Cloud & DevOps** | AWS (SSM, EC2), GitHub Actions, Podman (Rootless), Systemd |
-| **Database** | PostgreSQL 15, Alembic |
-| **Security** | Argon2, JWT, Cloudflare Access (mTLS/Service Tokens) |
+| **Frontend** | **Next.js 14**, React, TypeScript, Tailwind CSS, Lucide Icons |
+| **Backend** | Python 3.11, **FastAPI**, Pydantic, SQLAlchemy |
+| **AI & NLP** | **Whisper (Local)**, Google Gemini 1.5, FPDF2 |
+| **Infrastructure** | **Podman (Rootless)**, Cloudflare Zero Trust, AWS EC2, GitHub Actions |
+| **Communications** | **FastAPI-Mail**, Twilio API |
+
+## 🔄 Secure CI/CD Pipeline (DevSecOps)
+
+The deployment pipeline automates "Click-to-Deploy" for a multi-container architecture:
+
+1. **Parallel Builds:** GitHub Actions builds Frontend and Backend images in parallel.
+2. **Tunnel Authentication:** The Runner authenticates against the Cloudflare Edge using high-entropy **Service Tokens**.
+3. **Encrypted Transport:** Deployment commands are sent over a secure WebSocket tunnel.
+4. **Orchestrated Update:** Stops old containers, pulls new images, and restarts services with `systemd` persistence in under 30 seconds.
 
 ## 🚀 Local Development
 
-To spin up the environment locally (bypassing the Zero Trust layer):
+To spin up the full environment locally:
 
 ```bash
 # Clone the repo
-git clone https://github.com/shay-mordechai/leadflow-ai.git
+git clone [https://github.com/shay-mordechai/leadflow-ai.git](https://github.com/shay-mordechai/leadflow-ai.git)
 
-# Start services using Podman Compose
-podman-compose up -d --build
+# Run via Docker Compose (Builds both Front & Back)
+docker-compose up -d --build
 
-# Access Documentation
-open http://localhost:8000/docs
+# Access Application
+# Frontend: http://localhost:3000
+# Backend API Docs: http://localhost:8000/docs
 
 ```
 

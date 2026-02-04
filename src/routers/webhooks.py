@@ -1,159 +1,155 @@
 # src/routers/webhooks.py
 import logging
 import os
-import aiofiles
-import httpx
-import uuid
 from typing import Optional
-from fastapi import APIRouter, Form, Response
+from fastapi import APIRouter, Form, Response, BackgroundTasks
 
-# Twilio TwiML imports
+# Services
+from src.services.whatsapp_adapter import whatsapp_adapter
+from src.services.ai_engine import ai_engine
+# Note: Ensure these services are created in src/services/
+from src.services.transcription import transcriber, pdf_maker 
+from src.services.email import email_service
+
+# Twilio TwiML
 from twilio.twiml.messaging_response import MessagingResponse
 from twilio.twiml.voice_response import VoiceResponse
-
-from src.services.ai_engine import ai_engine
-from src.config import settings
 
 logger = logging.getLogger("Webhooks")
 router = APIRouter()
 
-# Directory for saving voice notes temporarily
-STORAGE_PATH = "/tmp/voice_notes"
-os.makedirs(STORAGE_PATH, exist_ok=True)
+# --- Background Worker Function ---
+async def process_audio_pipeline(media_url: str, sender_phone: str):
+    """
+    Background Task:
+    1. Download Audio
+    2. Transcribe (Local Whisper)
+    3. Summarize (Gemini)
+    4. Generate PDF
+    5. Email PDF to Admin
+    """
+    logger.info(f"⚙️ Starting background pipeline for {sender_phone}...")
+    local_audio_path = None
+    pdf_path = None
 
-async def download_audio_file(url: str, sender_id: str) -> Optional[str]:
-    """
-    Downloads an audio file from a URL securely.
-    Returns the local file path or None if failed.
-    """
     try:
-        # Generate a unique filename using UUID to prevent collisions
-        filename = f"{sender_id}_{uuid.uuid4().hex[:8]}.ogg"
-        file_path = os.path.join(STORAGE_PATH, filename)
+        # 1. Download
+        local_audio_path = whatsapp_adapter.download_media(media_url)
+        if not local_audio_path:
+            return
 
-        # Configure client with redirects enabled (Crucial for external URLs)
-        async with httpx.AsyncClient(follow_redirects=True, timeout=15.0) as client:
-            resp = await client.get(url)
-            
-            if resp.status_code == 200:
-                async with aiofiles.open(file_path, 'wb') as f:
-                    await f.write(resp.content)
-                logger.info(f"✅ Audio downloaded successfully: {file_path}")
-                return file_path
-            else:
-                logger.error(f"❌ Failed to download audio. Status: {resp.status_code}")
-                return None
-                
+        # 2. Transcribe (Heavy CPU)
+        # Using the local Whisper instance we verified on the server
+        transcription_result = transcriber.transcribe_audio(local_audio_path)
+        raw_text = transcription_result["text"]
+        logger.info(f"📝 Transcribed: {raw_text[:30]}...")
+
+        # 3. Summarize
+        summary_text = ai_engine.generate_meeting_summary(raw_text)
+
+        # 4. Generate PDF
+        # We assume phone number is safe for filename
+        safe_phone = sender_phone.replace("+", "")
+        pdf_filename = f"summary_{safe_phone}.pdf"
+        pdf_path = pdf_maker.create_meeting_summary(summary_text, pdf_filename)
+
+        # 5. Email (Send to hardcoded admin for MVP, later DB user)
+        # Replace with your actual test email or fetch from DB
+        admin_email = "shay.mordechai@proton.me" 
+        
+        await email_service.send_receipt_with_pdf(
+            email=admin_email,
+            pdf_path=pdf_path,
+            amount=0.0 # Reusing the receipt function structure
+        )
+
+        # 6. Notify User (Optional)
+        # whatsapp_adapter.send_message(sender_phone, "✅ Meeting summary sent to your email!")
+        logger.info("✅ Pipeline completed successfully.")
+
     except Exception as e:
-        logger.error(f"❌ Download Exception (DNS/Network): {e}")
-        return None
+        logger.error(f"❌ Background pipeline failed: {e}")
+    
+    finally:
+        # Cleanup
+        if local_audio_path and os.path.exists(local_audio_path):
+            os.remove(local_audio_path)
 
 # ---------------------------------------------------------
-# 1. WhatsApp Handler (Text + Voice Notes)
+# 1. WhatsApp Handler
 # ---------------------------------------------------------
 @router.post("/whatsapp/twilio")
 async def whatsapp_webhook(
+    background_tasks: BackgroundTasks,
     From: str = Form(...),       
     Body: Optional[str] = Form(None),
     MediaUrl0: Optional[str] = Form(None),
-    NumMedia: int = Form(0)
+    NumMedia: int = Form(0),
+    MediaContentType0: str = Form(None)
 ):
     """
-    Handles incoming WhatsApp messages.
-    Supports Text and Audio (Voice Notes).
+    Handles incoming WhatsApp messages via Twilio.
+    Triggers background processing for Audio.
     """
     sender_phone = From.replace("whatsapp:", "")
     logger.info(f"📩 WhatsApp from {sender_phone}")
 
-    # Mock User Context
-    user_context = {"name": "Dana Cohen", "hours_until_class": 20}
-    ai_response = {}
-    local_audio_path = None
+    # Initialize TwiML Response
+    resp = MessagingResponse()
+
+    # Context for AI
+    user_context = {"name": "Client", "business_type": "Consulting"}
 
     try:
         # A. Handle Audio (Voice Note) 🎤
-        if int(NumMedia) > 0 and MediaUrl0:
-            logger.info(f"🎤 Voice Note Detected: {MediaUrl0}")
+        if int(NumMedia) > 0 and MediaUrl0 and "audio" in (MediaContentType0 or ""):
+            logger.info(f"🎤 Voice Note Detected. URL: {MediaUrl0}")
             
-            # Download the file
-            local_audio_path = await download_audio_file(MediaUrl0, sender_phone)
+            # Immediate Response to avoid Timeout
+            resp.message("🎧 קיבלתי את ההקלטה. אני מתמלל ומסכם... זה ייקח דקה.")
             
-            if local_audio_path:
-                # Analyze Audio with Gemini
-                ai_response = await ai_engine.analyze_interaction(
-                    audio_path=local_audio_path, 
-                    user_context=user_context
-                )
-            else:
-                ai_response = {"reply_text": "סליחה, הייתה בעיה בהורדת ההקלטה."}
+            # Offload heavy lifting to background
+            background_tasks.add_task(process_audio_pipeline, MediaUrl0, sender_phone)
+            
+            return Response(content=str(resp), media_type="application/xml")
 
         # B. Handle Text Message 💬
         elif Body:
-            logger.info(f"💬 Text Detected: {Body}")
-            # Analyze Text with Gemini
+            # Standard Gemini Chat
             ai_response = await ai_engine.analyze_interaction(
                 text_input=Body, 
                 user_context=user_context
             )
+            resp.message(ai_response.get("reply_text", "תודה."))
         
         else:
-            ai_response = {"reply_text": "הודעה ריקה."}
+            resp.message("הודעה ללא תוכן.")
 
     except Exception as e:
-        logger.error(f"❌ Webhook Logic Error: {e}")
-        ai_response = {"reply_text": "תקלה במערכת."}
+        logger.error(f"❌ Webhook Error: {e}")
+        resp.message("תקלה במערכת.")
 
-    finally:
-        # Cleanup: Delete the temp audio file to save space
-        if local_audio_path and os.path.exists(local_audio_path):
-            try:
-                os.remove(local_audio_path)
-                logger.info(f"🧹 Cleaned up file: {local_audio_path}")
-            except Exception as cleanup_error:
-                logger.warning(f"Failed to delete temp file: {cleanup_error}")
-
-    # Prepare TwiML Response
-    reply = ai_response.get("reply_text", "תודה.")
-    resp = MessagingResponse()
-    resp.message(reply)
-    
     return Response(content=str(resp), media_type="application/xml")
 
-
 # ---------------------------------------------------------
-# 2. Voice Call Handler (SIP / PSTN)
+# 2. Voice Call Handler
 # ---------------------------------------------------------
 @router.post("/voice/incoming")
-async def voice_webhook(
-    From: str = Form(...),
-    To: str = Form(...),
-    SpeechResult: Optional[str] = Form(None)
-):
+async def voice_webhook(SpeechResult: Optional[str] = Form(None)):
     """
-    Handles incoming Voice Calls.
-    Uses Twilio's <Gather> for Speech-to-Text interaction.
+    Handles incoming Voice Calls (Twilio).
     """
-    logger.info(f"📞 Incoming Call from {From} to {To}")
-    
     twiml = VoiceResponse()
 
     if SpeechResult:
-        logger.info(f"🗣️ User said: {SpeechResult}")
         try:
             ai_response = await ai_engine.analyze_interaction(text_input=SpeechResult)
-            reply_text = ai_response.get("reply_text", "בודקת...")
-            twiml.say(reply_text, language="he-IL", voice="alice")
-        except Exception as e:
-            logger.error(f"❌ Voice Error: {e}")
+            reply = ai_response.get("reply_text", "בודקת...")
+            twiml.say(reply, language="he-IL", voice="alice")
+        except Exception:
             twiml.say("תקלה טכנית.", language="he-IL")
     else:
-        twiml.say("שלום, כאן הסטודיו של לאה. איך אפשר לעזור?", language="he-IL", voice="alice")
+        twiml.say("שלום, הגעת לבוט החכם. דבר אליי.", language="he-IL", voice="alice")
 
-    twiml.gather(
-        input="speech", 
-        language="he-IL", 
-        action="/webhooks/voice/incoming", 
-        timeout=4
-    )
-
+    twiml.gather(input="speech", language="he-IL", action="/webhooks/voice/incoming", timeout=4)
     return Response(content=str(twiml), media_type="application/xml")

@@ -25,28 +25,24 @@ email-validator
 httpx
 requests
 
+# --- Email ---
+fastapi-mail>=1.4.1
+
+# --- PDF Generation ---
+fpdf2>=2.7.4
+
 # --- AI & Processing ---
-# Note: faster-whisper is memory intensive (requires min 2GB RAM on EC2)
-# faster-whisper
+# Note: faster-whisper is memory intensive. Using standard openai-whisper for T3.Micro stability.
+openai-whisper
 openai>=1.0.0
 google-generativeai
 
 # --- Security & Auth ---
-# Bleach: Required for HTML sanitization in input validation
 bleach==6.1.0
-
-# Cryptography: Core library for encryption operations
 cryptography
-
-# Password Hashing:
-# Locked to 4.0.1 to prevent 'Invalid salt'/C-extension errors on Amazon Linux
 bcrypt==4.0.1
 passlib[bcrypt]
-
-# JWT Tokens:
 python-jose[cryptography]
-
-# Rate Limiting:
 slowapi
 
 # --- Telephony Providers ---
