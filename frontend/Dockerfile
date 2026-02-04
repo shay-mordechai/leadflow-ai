@@ -1,24 +1,23 @@
 # frontend/Dockerfile
 
-# 1. Install dependencies only when needed
-# UPDATE: Changed from node:18 to node:20 for Next.js 16 support
+# 1. Install dependencies
 FROM node:20-alpine AS deps
 WORKDIR /app
 COPY package.json package-lock.json ./
 RUN npm ci
 
-# 2. Rebuild the source code only when needed
+# 2. Build
 FROM node:20-alpine AS builder
 WORKDIR /app
 COPY --from=deps /app/node_modules ./node_modules
 COPY . .
 
-# Set env var for build time
+# Environment variables for build
 ENV NEXT_PUBLIC_API_URL=http://localhost:8000
 
 RUN npm run build
 
-# 3. Production image, copy all the files and run next
+# 3. Production Image
 FROM node:20-alpine AS runner
 WORKDIR /app
 
@@ -37,4 +36,7 @@ USER nextjs
 
 EXPOSE 3000
 ENV PORT 3000
+
+ENV HOSTNAME "0.0.0.0"
+
 CMD ["node", "server.js"]
