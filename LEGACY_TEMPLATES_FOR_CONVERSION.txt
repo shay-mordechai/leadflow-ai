@@ -1,0 +1,1391 @@
+=== LEGACY HTML EXPORT ===
+
+==========================================
+FILE PATH: ./legacy_frontend_archive_20260204_0703/templates/payment.html
+==========================================
+<!DOCTYPE html>
+<html lang="he" dir="rtl">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>הפעלת חשבון | My-Leads</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" rel="stylesheet">
+    <link href="https://fonts.googleapis.com/css2?family=Heebo:wght@300;400;500;700&display=swap" rel="stylesheet">
+    <style>
+        body { font-family: 'Heebo', sans-serif; }
+    </style>
+</head>
+<body class="bg-slate-900 font-sans min-h-screen flex items-center justify-center p-4 relative overflow-hidden">
+
+    <div class="absolute top-0 right-0 w-96 h-96 bg-blue-600/20 rounded-full blur-[100px]"></div>
+    <div class="absolute bottom-0 left-0 w-96 h-96 bg-purple-600/20 rounded-full blur-[100px]"></div>
+
+    <div class="max-w-md w-full bg-white/95 backdrop-blur-xl rounded-3xl shadow-2xl overflow-hidden relative z-10">
+        <div class="bg-slate-800 p-8 text-center text-white relative overflow-hidden">
+            <div class="absolute inset-0 bg-blue-600/10"></div>
+            <div class="relative z-10">
+                <div class="w-16 h-16 bg-gradient-to-br from-blue-500 to-indigo-600 rounded-2xl flex items-center justify-center mx-auto mb-4 shadow-lg shadow-blue-500/30">
+                    <i class="fas fa-rocket text-2xl text-white"></i>
+                </div>
+                <h1 class="text-2xl font-black">כמעט סיימנו!</h1>
+                <p class="text-slate-300 mt-2 text-sm">השלם את התשלום להפעלת המערכת</p>
+            </div>
+        </div>
+
+        <div class="p-8">
+            <div class="bg-blue-50 border border-blue-100 rounded-2xl p-6 mb-8 text-center relative">
+                <div class="absolute -top-3 left-1/2 -translate-x-1/2 bg-blue-600 text-white text-[10px] font-bold px-3 py-1 rounded-full uppercase tracking-wider">
+                    חבילת Starter
+                </div>
+                <p class="text-slate-600 text-sm mb-1 font-medium">סכום לתשלום</p>
+                <h2 class="text-5xl font-black text-slate-800 tracking-tight">₪99<span class="text-lg font-normal text-slate-500">/חודש</span></h2>
+            </div>
+
+            <div class="space-y-6">
+                <div class="flex items-start bg-slate-50 p-4 rounded-xl">
+                    <div class="bg-green-100 text-green-600 p-2 rounded-lg ml-4 shrink-0">
+                        <i class="fas fa-shield-alt"></i>
+                    </div>
+                    <div>
+                        <h3 class="font-bold text-slate-800 text-sm">תשלום מאובטח ב-Bit</h3>
+                        <p class="text-xs text-slate-500 mt-1 leading-relaxed">אנחנו משתמשים ב-Bit כדי להבטיח את פרטיותך ולא שומרים פרטי אשראי בשרתים שלנו.</p>
+                    </div>
+                </div>
+
+                <div class="border-t border-slate-100 pt-6">
+                    <p class="text-center text-slate-700 font-bold mb-4 text-sm">שלם למספר הבא:</p>
+                    <button onclick="copyNumber()" class="w-full bg-slate-100 hover:bg-slate-200 p-4 rounded-xl flex items-center justify-between gap-4 group transition border border-slate-200">
+                        <span class="text-2xl font-mono font-bold tracking-widest text-slate-700 group-hover:text-blue-600 transition" id="phoneNum">050-1234567</span>
+                        <div class="flex items-center gap-2 text-slate-400 group-hover:text-blue-600">
+                            <span class="text-xs font-bold">העתק</span>
+                            <i class="far fa-copy"></i>
+                        </div>
+                    </button>
+                </div>
+            </div>
+
+            <div class="mt-8 space-y-4">
+                <a href="https://www.bitpay.co.il/" target="_blank" class="block w-full text-center bg-[#00d07a] hover:bg-[#00b068] text-white py-4 rounded-2xl font-bold text-lg shadow-lg shadow-green-500/20 transition transform hover:scale-[1.02]">
+                    פתח אפליקציית Bit
+                </a>
+                <p class="text-xs text-center text-slate-400 leading-relaxed px-4">
+                    לאחר התשלום, שלח לנו צילום מסך בוואטסאפ.<br>
+                    חשבונך יופעל אוטומטית תוך דקות.
+                </p>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        function copyNumber() {
+            const num = document.getElementById('phoneNum').innerText;
+            navigator.clipboard.writeText(num);
+            
+            // Visual Feedback
+            const btn = document.querySelector('button[onclick="copyNumber()"]');
+            const originalContent = btn.innerHTML;
+            
+            btn.classList.add('bg-green-50', 'border-green-200');
+            btn.innerHTML = `<span class="text-green-600 font-bold mx-auto">המספר הועתק! ✅</span>`;
+            
+            setTimeout(() => {
+                btn.innerHTML = originalContent;
+                btn.classList.remove('bg-green-50', 'border-green-200');
+            }, 2000);
+        }
+    </script>
+</body>
+</html>
+==========================================
+FILE PATH: ./legacy_frontend_archive_20260204_0703/templates/schedule.html
+==========================================
+<!DOCTYPE html>
+<html lang="he" dir="rtl">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>ניהול יומן | My-Leads</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" rel="stylesheet">
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Heebo:wght@300;400;500;700&display=swap');
+        body { font-family: 'Heebo', sans-serif; background-color: #f8fafc; }
+        .slot { transition: all 0.2s; user-select: none; }
+        .slot:active { transform: scale(0.95); }
+        .slot.active { background-color: #2563eb; color: white; border-color: #2563eb; }
+        .slot.inactive { background-color: white; color: #64748b; border-color: #e2e8f0; }
+    </style>
+</head>
+<body class="pb-24">
+
+    <header class="bg-white/80 backdrop-blur-md border-b border-slate-200 sticky top-0 z-50 p-4 flex justify-between items-center shadow-sm">
+        <div class="flex items-center gap-3">
+            <a href="/dashboard" class="w-8 h-8 rounded-full bg-slate-100 flex items-center justify-center text-slate-600 hover:bg-slate-200 transition">
+                <i class="fas fa-arrow-right"></i>
+            </a>
+            <h1 class="font-black text-slate-800 text-lg">ניהול זמינות</h1>
+        </div>
+        <div class="text-[10px] font-bold text-blue-600 bg-blue-50 px-2 py-1 rounded-lg border border-blue-100">
+            14 יום קדימה
+        </div>
+    </header>
+
+    <main class="container mx-auto px-4 py-6 max-w-xl">
+        <div class="bg-blue-50 p-4 rounded-2xl border border-blue-100 mb-6 flex items-start gap-3">
+            <i class="fas fa-info-circle text-blue-500 mt-1"></i>
+            <p class="text-xs text-blue-800 leading-relaxed">
+                סמן את השעות הפנויות שלך. <br>
+                הבוט יציע ללקוחות רק את השעות המסומנות בכחול.
+            </p>
+        </div>
+
+        <div id="calendar-grid" class="space-y-6">
+            </div>
+    </main>
+
+    <div class="fixed bottom-0 left-0 right-0 p-4 bg-white border-t border-slate-200 shadow-[0_-5px_20px_rgba(0,0,0,0.05)] z-40">
+        <div class="bg-slate-900 text-white text-center py-3 rounded-xl shadow-lg text-sm max-w-md mx-auto flex items-center justify-center gap-2 cursor-pointer active:scale-95 transition" onclick="copyLink()">
+            <i class="fas fa-link text-slate-400"></i>
+            <span>העתק קישור לזימון</span>
+        </div>
+    </div>
+
+    <script>
+        // Inject from Backend Jinja
+        const activeSlots = new Set([
+            {% for s in active_slots %}"{{ s }}",{% endfor %}
+        ]);
+
+        const container = document.getElementById('calendar-grid');
+        const days = ['יום ראשון','יום שני','יום שלישי','יום רביעי','יום חמישי','יום שישי','שבת'];
+
+        const today = new Date();
+        for(let i=0; i<14; i++) {
+            const date = new Date(today);
+            date.setDate(today.getDate() + i);
+            
+            // Skip weekends if needed (Example: Skip Saturday)
+            // if(date.getDay() === 6) continue; 
+
+            const dateStr = date.toISOString().split('T')[0];
+            const displayDate = `${days[date.getDay()]} ${date.getDate()}/${date.getMonth()+1}`;
+
+            const wrapper = document.createElement('div');
+            wrapper.className = "bg-white p-4 rounded-2xl shadow-sm border border-slate-100";
+            
+            const header = document.createElement('h3');
+            header.className = "font-bold text-slate-700 mb-3 text-sm flex items-center gap-2";
+            header.innerHTML = `<span class="w-1.5 h-1.5 rounded-full bg-blue-500"></span> ${displayDate}`;
+            wrapper.appendChild(header);
+
+            const grid = document.createElement('div');
+            grid.className = "grid grid-cols-4 gap-2";
+
+            for(let h=9; h<=18; h++) {
+                const timeStr = `${h < 10 ? '0'+h : h}:00`;
+                const fullKey = `${dateStr} ${timeStr}`;
+                const isActive = activeSlots.has(fullKey);
+
+                const slot = document.createElement('div');
+                slot.className = `slot border rounded-lg py-2.5 text-center font-bold text-xs cursor-pointer ${isActive ? 'active' : 'inactive'}`;
+                slot.innerText = timeStr;
+                slot.onclick = () => toggleSlot(slot, dateStr, timeStr);
+                grid.appendChild(slot);
+            }
+            wrapper.appendChild(grid);
+            container.appendChild(wrapper);
+        }
+
+        async function toggleSlot(el, date, time) {
+            el.classList.toggle('active');
+            el.classList.toggle('inactive');
+
+            try {
+                await fetch('/api/v1/schedule/toggle', {
+                    method: 'POST',
+                    headers: {'Content-Type': 'application/json'},
+                    body: JSON.stringify({ date_str: date, time_str: time })
+                });
+            } catch(e) {
+                // Revert on error
+                el.classList.toggle('active');
+                el.classList.toggle('inactive');
+                alert("שגיאת תקשורת");
+            }
+        }
+
+        function copyLink() {
+            navigator.clipboard.writeText("https://my-leads.app/book/{{ tenant_id }}");
+            alert("הקישור הועתק!");
+        }
+    </script>
+</body>
+</html>
+==========================================
+FILE PATH: ./legacy_frontend_archive_20260204_0703/templates/dashboard.html
+==========================================
+<!DOCTYPE html>
+<html lang="he" dir="rtl">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>דשבורד | My-Leads AI</title>
+
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css" rel="stylesheet">
+    <link href="https://fonts.googleapis.com/css2?family=Heebo:wght@300;400;500;700;900&display=swap" rel="stylesheet">
+
+    <style>
+        body { font-family: 'Heebo', sans-serif; background-color: #f8fafc; }
+        .glass-header { background: rgba(255, 255, 255, 0.9); backdrop-filter: blur(10px); }
+    </style>
+</head>
+<body class="text-slate-800 pb-24 bg-slate-50">
+
+    {% if user.plan_tier == "STARTER" %}
+    <div class="bg-gradient-to-r from-indigo-600 to-blue-500 text-white px-4 py-3 shadow-lg relative z-40">
+        <div class="container mx-auto flex flex-col md:flex-row items-center justify-between gap-3">
+            <div class="flex items-center gap-3">
+                <span class="bg-white/20 p-1.5 rounded-lg"><i class="fas fa-crown text-yellow-300"></i></span>
+                <div>
+                    <p class="text-sm font-bold">אתה משתמש בחבילת ההתחלה (חינם)</p>
+                    <p class="text-xs text-blue-100">שדרג ל-Pro כדי לקבל לידים ללא הגבלה ותשובות AI חכמות.</p>
+                </div>
+            </div>
+            <a href="/api/v1/payments/checkout/pro" class="whitespace-nowrap bg-white text-blue-600 px-5 py-2 rounded-full font-bold text-xs hover:bg-blue-50 transition shadow-sm">
+                שדרג ל-Pro ב-99₪ <i class="fas fa-arrow-left mr-1"></i>
+            </a>
+        </div>
+    </div>
+    {% endif %}
+
+    <header class="glass-header border-b border-slate-200 sticky top-0 z-30">
+        <div class="container mx-auto px-4 h-16 flex justify-between items-center">
+            <div class="flex items-center gap-3">
+                <a href="/" class="w-8 h-8 bg-slate-900 rounded-lg flex items-center justify-center text-white shadow-lg">
+                    <i class="fas fa-bolt text-xs"></i>
+                </a>
+                <h1 class="font-black text-slate-800 text-lg tracking-tight">My-Leads</h1>
+            </div>
+            
+            <div class="flex items-center gap-3">
+                {% if user.plan_tier == "PRO" %}
+                <span class="bg-emerald-100 text-emerald-700 text-[10px] font-bold px-2 py-1 rounded-full border border-emerald-200">
+                    PRO
+                </span>
+                {% else %}
+                <span class="bg-slate-100 text-slate-500 text-[10px] font-bold px-2 py-1 rounded-full border border-slate-200">
+                    FREE
+                </span>
+                {% endif %}
+
+                <span class="text-sm font-bold text-slate-600 hidden md:block">{{ user.name }}</span>
+                <a href="/logout" class="w-8 h-8 rounded-full bg-slate-100 flex items-center justify-center text-slate-500 hover:bg-red-50 hover:text-red-500 transition">
+                    <i class="fas fa-power-off text-xs"></i>
+                </a>
+            </div>
+        </div>
+    </header>
+
+    <section class="container mx-auto px-4 py-6">
+        <div id="paymentAlert" class="hidden mb-4 p-4 rounded-xl text-sm font-bold shadow-sm"></div>
+
+        <div class="grid grid-cols-3 gap-3">
+            <div class="bg-white p-4 rounded-2xl shadow-sm border border-slate-100 text-center">
+                <p class="text-[10px] text-slate-400 uppercase font-bold tracking-wider mb-1">סה״כ לידים</p>
+                <p class="text-2xl font-black text-slate-800">{{ stats.total }}</p>
+            </div>
+            
+            <div class="bg-white p-4 rounded-2xl shadow-sm border border-slate-100 text-center">
+                <p class="text-[10px] text-slate-400 uppercase font-bold tracking-wider mb-1">לידים חמים</p>
+                <p class="text-2xl font-black text-emerald-500">{{ stats.qualified }}</p>
+            </div>
+            
+            <div class="bg-white p-4 rounded-2xl shadow-sm border border-slate-100 text-center relative overflow-hidden">
+                {% if stats.followups > 0 %}
+                <span class="absolute top-2 left-2 flex h-2 w-2">
+                  <span class="animate-ping absolute inline-flex h-full w-full rounded-full bg-orange-400 opacity-75"></span>
+                  <span class="relative inline-flex rounded-full h-2 w-2 bg-orange-500"></span>
+                </span>
+                {% endif %}
+                <p class="text-[10px] text-slate-400 uppercase font-bold tracking-wider mb-1">לטיפול</p>
+                <p class="text-2xl font-black text-orange-500">{{ stats.followups }}</p>
+            </div>
+        </div>
+    </section>
+
+    <main class="container mx-auto px-4">
+        <div class="flex items-center justify-between mb-4">
+            <h2 class="text-lg font-bold text-slate-800">פעילות אחרונה</h2>
+            <div class="flex items-center gap-2 bg-green-50 px-2 py-1 rounded-full border border-green-100">
+                <span class="relative flex h-1.5 w-1.5">
+                  <span class="animate-ping absolute inline-flex h-full w-full rounded-full bg-green-400 opacity-75"></span>
+                  <span class="relative inline-flex rounded-full h-1.5 w-1.5 bg-green-500"></span>
+                </span>
+                <span class="text-[10px] text-green-700 font-bold">מתעדכן בזמן אמת</span>
+            </div>
+        </div>
+
+        <div class="space-y-4" id="leadsContainer">
+            {% for lead in leads %}
+            <div class="bg-white rounded-2xl p-5 shadow-sm border border-slate-200 relative overflow-hidden transition hover:shadow-md group">
+
+                <div class="absolute top-0 left-0 bottom-0 w-1
+                    {% if (lead.coach_feedback and '8' in lead.coach_feedback) or lead.status == 'QUALIFIED' %}bg-emerald-500
+                    {% elif lead.status == 'REROUTED' %}bg-amber-500
+                    {% else %}bg-slate-300{% endif %}">
+                </div>
+
+                <div class="pl-4"> 
+                    <div class="flex justify-between items-start mb-2">
+                        <div>
+                            <h3 class="font-bold text-lg text-slate-900 leading-none group-hover:text-blue-600 transition">
+                                {{ lead.name or 'מספר לא מזוהה' }}
+                            </h3>
+                            <a href="tel:{{ lead.phone_number }}" class="text-sm font-mono text-slate-400 mt-1 hover:text-slate-600 block" dir="ltr">
+                                {{ lead.phone_number }}
+                            </a>
+                        </div>
+                        <span class="text-xs text-slate-400 bg-slate-50 px-2 py-1 rounded-lg border border-slate-100">
+                            {{ lead.created_at.strftime('%H:%M') }}
+                        </span>
+                    </div>
+
+                    <div class="bg-slate-50 rounded-xl p-4 text-sm text-slate-700 leading-relaxed border border-slate-100 mb-5 relative mt-3">
+                        <div class="absolute -top-2 -right-2 bg-white p-1 rounded-full border border-slate-100 shadow-sm z-10 text-blue-500">
+                            <i class="fas fa-robot text-xs"></i>
+                        </div>
+
+                        {% if lead.summary_text %}
+                            {{ lead.summary_text }}
+                        {% else %}
+                            <div class="animate-pulse space-y-2">
+                                <div class="h-2 bg-slate-200 rounded w-3/4"></div>
+                                <div class="h-2 bg-slate-200 rounded w-1/2"></div>
+                                <div class="flex items-center gap-2 mt-2">
+                                    <span class="text-xs text-blue-500 font-bold">המערכת מנתחת...</span>
+                                </div>
+                            </div>
+                        {% endif %}
+                    </div>
+
+                    <div class="grid grid-cols-1 gap-3">
+                        {% if lead.suggested_reply %}
+                        <a href="https://wa.me/{{ lead.phone_number }}?text={{ lead.suggested_reply | urlencode }}" 
+                           target="_blank" 
+                           class="flex items-center justify-center gap-2 bg-[#25D366] hover:bg-[#20bd5a] text-white py-3 rounded-xl font-bold text-sm shadow-sm transition active:scale-[0.98]">
+                            <i class="fab fa-whatsapp text-lg"></i> שלח תשובה חכמה
+                        </a>
+                        {% else %}
+                        <a href="https://wa.me/{{ lead.phone_number }}" 
+                           target="_blank" 
+                           class="flex items-center justify-center gap-2 bg-slate-800 hover:bg-slate-700 text-white py-3 rounded-xl font-bold text-sm shadow-sm transition active:scale-[0.98]">
+                             <i class="fab fa-whatsapp"></i> פתח בוואטסאפ
+                        </a>
+                        {% endif %}
+                    </div>
+                </div>
+            </div>
+            {% endfor %}
+            
+            {% if not leads %}
+            <div class="text-center py-16 opacity-50">
+                <i class="fas fa-inbox text-4xl text-slate-300 mb-3"></i>
+                <p class="text-slate-400">אין לידים חדשים כרגע</p>
+            </div>
+            {% endif %}
+        </div>
+    </main>
+
+    <script>
+        // Check URL for payment status
+        const urlParams = new URLSearchParams(window.location.search);
+        const paymentStatus = urlParams.get('payment');
+        const alertBox = document.getElementById('paymentAlert');
+
+        if (paymentStatus === 'success') {
+            alertBox.classList.remove('hidden');
+            alertBox.classList.add('bg-emerald-100', 'text-emerald-800', 'border', 'border-emerald-200');
+            alertBox.innerHTML = '🎉 תודה! החשבון שודרג בהצלחה ל-PRO.';
+            // Remove param from URL clean
+            window.history.replaceState({}, document.title, "/dashboard");
+        } else if (paymentStatus === 'cancel') {
+            alertBox.classList.remove('hidden');
+            alertBox.classList.add('bg-red-100', 'text-red-800', 'border', 'border-red-200');
+            alertBox.innerHTML = 'התשלום בוטל.';
+        }
+
+        // Auto-refresh every 60 seconds
+        setTimeout(function() {
+            window.location.reload();
+        }, 60000);
+    </script>
+</body>
+</html>
+==========================================
+FILE PATH: ./legacy_frontend_archive_20260204_0703/templates/settings.html
+==========================================
+<!DOCTYPE html>
+<html lang="he" dir="rtl">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>הגדרות בוט | My-Leads</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css" rel="stylesheet">
+    <style>@import url('https://fonts.googleapis.com/css2?family=Heebo:wght@300;400;700&display=swap'); body { font-family: 'Heebo', sans-serif; }</style>
+</head>
+<body class="bg-slate-50 text-slate-800 pb-24">
+
+    <header class="bg-white border-b border-slate-200 sticky top-0 z-50 p-4 flex justify-between items-center shadow-sm">
+        <h1 class="font-black text-lg">⚙️ מוח ה-AI</h1>
+        <a href="/dashboard" class="w-8 h-8 rounded-full bg-slate-100 flex items-center justify-center text-slate-500 hover:bg-slate-200 transition">
+            <i class="fas fa-times"></i>
+        </a>
+    </header>
+
+    <main class="max-w-xl mx-auto p-4 space-y-6">
+        
+        <div class="bg-gradient-to-br from-blue-500 to-indigo-600 text-white p-5 rounded-2xl shadow-lg shadow-blue-500/20">
+            <div class="flex items-start gap-4">
+                <div class="bg-white/20 p-2 rounded-lg backdrop-blur-sm">
+                    <i class="fas fa-robot text-xl"></i>
+                </div>
+                <div>
+                    <h3 class="font-bold text-sm">איך הבוט מתנהג?</h3>
+                    <p class="text-xs text-blue-100 mt-1 leading-relaxed">
+                        ההגדרות כאן משפיעות ישירות על התשובות שג'מיני ינסח עבורך בוואטסאפ.
+                    </p>
+                </div>
+            </div>
+        </div>
+
+        <form id="settingsForm" class="space-y-6">
+            
+            <div class="bg-white p-5 rounded-2xl shadow-sm border border-slate-100 space-y-4">
+                <div class="flex items-center gap-2 border-b border-slate-50 pb-2 mb-2">
+                    <i class="fas fa-store text-blue-500"></i>
+                    <h2 class="font-bold text-slate-800 text-sm">זהות העסק</h2>
+                </div>
+                
+                <div>
+                    <label class="block text-xs font-bold text-slate-500 mb-1.5">שם העסק (כפי שיוצג ללקוח)</label>
+                    <input type="text" name="business_name" id="businessName" class="w-full px-4 py-3 bg-slate-50 rounded-xl border border-slate-200 focus:ring-2 focus:ring-blue-500 outline-none text-sm font-medium" placeholder="למשל: דני כהן נדל״ן">
+                </div>
+
+                <div>
+                    <label class="block text-xs font-bold text-slate-500 mb-1.5">תחום עיסוק</label>
+                    <select name="business_type" id="businessType" class="w-full px-4 py-3 bg-slate-50 rounded-xl border border-slate-200 outline-none text-sm">
+                        <option value="Real Estate Agent">נדל"ן</option>
+                        <option value="Fitness Coach">כושר ובריאות</option>
+                        <option value="Sales">מכירות כללי</option>
+                        <option value="Consulting">ייעוץ</option>
+                        <option value="Other">אחר</option>
+                    </select>
+                </div>
+            </div>
+
+            <div class="bg-white p-5 rounded-2xl shadow-sm border border-slate-100 space-y-4">
+                <div class="flex items-center gap-2 border-b border-slate-50 pb-2 mb-2">
+                    <i class="fas fa-theater-masks text-purple-500"></i>
+                    <h2 class="font-bold text-slate-800 text-sm">סגנון דיבור</h2>
+                </div>
+
+                <div class="grid grid-cols-3 gap-3">
+                    <label class="cursor-pointer relative">
+                        <input type="radio" name="ai_tone" value="Formal" class="peer sr-only">
+                        <div class="p-3 text-center rounded-xl border border-slate-200 bg-slate-50 peer-checked:bg-slate-800 peer-checked:text-white peer-checked:border-slate-800 transition hover:bg-slate-100">
+                            <div class="text-xl mb-1">👔</div>
+                            <span class="text-xs font-bold">רשמי</span>
+                        </div>
+                    </label>
+                    <label class="cursor-pointer relative">
+                        <input type="radio" name="ai_tone" value="Friendly" class="peer sr-only">
+                        <div class="p-3 text-center rounded-xl border border-slate-200 bg-slate-50 peer-checked:bg-slate-800 peer-checked:text-white peer-checked:border-slate-800 transition hover:bg-slate-100">
+                            <div class="text-xl mb-1">👋</div>
+                            <span class="text-xs font-bold">חברי</span>
+                        </div>
+                    </label>
+                    <label class="cursor-pointer relative">
+                        <input type="radio" name="ai_tone" value="Sales" class="peer sr-only">
+                        <div class="p-3 text-center rounded-xl border border-slate-200 bg-slate-50 peer-checked:bg-slate-800 peer-checked:text-white peer-checked:border-slate-800 transition hover:bg-slate-100">
+                            <div class="text-xl mb-1">🔥</div>
+                            <span class="text-xs font-bold">מכירתי</span>
+                        </div>
+                    </label>
+                </div>
+            </div>
+
+            <div class="bg-white p-5 rounded-2xl shadow-sm border border-slate-100 space-y-4">
+                <div class="flex items-center gap-2 border-b border-slate-50 pb-2 mb-2">
+                    <i class="fas fa-lightbulb text-yellow-500"></i>
+                    <h2 class="font-bold text-slate-800 text-sm">ידע עסקי</h2>
+                </div>
+
+                <div>
+                    <label class="block text-xs font-bold text-slate-500 mb-1.5">המוצרים/שירותים שלך</label>
+                    <textarea name="products_services" id="products" rows="4" class="w-full p-3 bg-slate-50 rounded-xl border border-slate-200 focus:ring-2 focus:ring-blue-500 outline-none text-sm" placeholder="למשל:&#10;- אימון אישי: 250 ש״ח&#10;- מנוי חודשי: 400 ש״ח&#10;- שעות פתיחה: 08:00 עד 20:00"></textarea>
+                </div>
+            </div>
+
+            <button type="submit" class="w-full bg-blue-600 text-white py-4 rounded-xl font-bold shadow-lg shadow-blue-500/30 hover:bg-blue-700 transition active:scale-95 fixed bottom-6 left-4 right-4 max-w-xl mx-auto z-40">
+                שמור שינויים
+            </button>
+        </form>
+    </main>
+
+    <script>
+        async function loadSettings() {
+            try {
+                const res = await fetch('/api/v1/settings/');
+                if (!res.ok) return;
+                const data = await res.json();
+                
+                document.getElementById('businessName').value = data.business_name || '';
+                document.getElementById('businessType').value = data.business_type || 'Other';
+                document.getElementById('products').value = data.products_services || '';
+                
+                const tone = data.ai_tone || 'Friendly';
+                const radio = document.querySelector(`input[name="ai_tone"][value="${tone}"]`);
+                if(radio) radio.checked = true;
+                
+            } catch (e) {
+                console.error("Failed to load settings");
+            }
+        }
+
+        document.getElementById('settingsForm').onsubmit = async (e) => {
+            e.preventDefault();
+            const btn = e.target.querySelector('button');
+            const originalText = btn.innerText;
+            btn.innerHTML = '<i class="fas fa-circle-notch fa-spin"></i> שומר...';
+            btn.disabled = true;
+
+            const formData = new FormData(e.target);
+            const payload = Object.fromEntries(formData.entries());
+
+            try {
+                const res = await fetch('/api/v1/settings/', {
+                    method: 'POST',
+                    headers: {'Content-Type': 'application/json'},
+                    body: JSON.stringify(payload)
+                });
+                
+                if (res.ok) {
+                    alert('✅ המוח עודכן בהצלחה!');
+                    window.location.href = '/dashboard';
+                } else {
+                    alert('שגיאה בשמירה');
+                }
+            } catch (e) {
+                alert('שגיאת תקשורת');
+            } finally {
+                btn.innerHTML = originalText;
+                btn.disabled = false;
+            }
+        };
+
+        loadSettings();
+    </script>
+</body>
+</html>
+==========================================
+FILE PATH: ./legacy_frontend_archive_20260204_0703/templates/privacy.html
+==========================================
+{% extends "base.html" %}
+
+{% block title %}מדיניות פרטיות | My-Leads{% endblock %}
+
+{% block content %}
+<div class="container mx-auto px-4 py-12 max-w-4xl">
+    <div class="bg-white rounded-3xl p-8 md:p-12 shadow-sm border border-slate-100">
+        <h1 class="text-3xl font-black mb-2 text-slate-900">מדיניות פרטיות</h1>
+        <p class="text-slate-500 text-sm mb-8 border-b border-slate-100 pb-8">עודכן לאחרונה: ינואר 2025</p>
+
+        <div class="space-y-8 text-slate-700 leading-relaxed">
+            
+            <section>
+                <h2 class="text-xl font-bold mb-3 text-slate-900 flex items-center gap-2">
+                    <i class="fas fa-info-circle text-blue-500"></i> 1. מבוא
+                </h2>
+                <p>ברוכים הבאים ל-My-Leads. אנו מכבדים את הפרטיות שלך ומחויבים להגן על המידע האישי שלך ושל הלקוחות שלך. מסמך זה מפרט כיצד אנו אוספים, מעבדים ושומרים את המידע בעת השימוש במערכת האוטומציה שלנו לוואטסאפ.</p>
+            </section>
+
+            <section>
+                <h2 class="text-xl font-bold mb-3 text-slate-900 flex items-center gap-2">
+                    <i class="fas fa-database text-blue-500"></i> 2. המידע שאנו אוספים
+                </h2>
+                <ul class="list-disc pr-6 space-y-2">
+                    <li><strong>פרטי קשר:</strong> שם, כתובת אימייל ומספר טלפון לצורך יצירת חשבון וחיוב.</li>
+                    <li><strong>תוכן הודעות (Data Processing):</strong> הודעות טקסט והקלטות קוליות שנשלחות לבוט הוואטסאפ שלך. מידע זה משמש אך ורק לצורך תמלול וניתוח.</li>
+                    <li><strong>מידע טכני:</strong> כתובת IP וסוג דפדפן לצורכי אבטחה (מוגן ע"י Cloudflare).</li>
+                </ul>
+            </section>
+
+            <section>
+                <h2 class="text-xl font-bold mb-3 text-slate-900 flex items-center gap-2">
+                    <i class="fas fa-brain text-blue-500"></i> 3. השימוש במידע
+                </h2>
+                <p>אנו משתמשים במידע אך ורק למטרות הבאות:</p>
+                <ul class="list-disc pr-6 space-y-2 mt-2">
+                    <li>תמלול הודעות קוליות לטקסט (באמצעות מנוע Whisper המקומי שלנו).</li>
+                    <li>ניתוח כוונות הליד באמצעות בינה מלאכותית (LLM).</li>
+                    <li>יצירת טיוטות לתשובה עבור בעל העסק.</li>
+                </ul>
+                <div class="bg-blue-50 p-4 rounded-xl mt-4 border border-blue-100">
+                    <strong class="text-blue-800">התחייבות:</strong> אנו לא מוכרים את המידע שלך או של הלקוחות שלך לצד שלישי.
+                </div>
+            </section>
+
+            <section>
+                <h2 class="text-xl font-bold mb-3 text-slate-900 flex items-center gap-2">
+                    <i class="fas fa-lock text-blue-500"></i> 4. אבטחת מידע
+                </h2>
+                <p>השרתים שלנו מוגנים בפרוטוקולי הצפנה מחמירים. קבצי האודיו נמחקים מהשרתים שלנו באופן אוטומטי לאחר עיבודם (24-48 שעות), ונשמרים רק הטקסטים המתומללים בבסיס הנתונים המאובטח.</p>
+            </section>
+
+            <section>
+                <h2 class="text-xl font-bold mb-3 text-slate-900 flex items-center gap-2">
+                    <i class="fas fa-envelope text-blue-500"></i> 5. צור קשר
+                </h2>
+                <p>בכל שאלה בנוגע לפרטיות, ניתן לפנות אלינו בכתובת:</p>
+                <a href="mailto:{{ email }}" class="text-blue-600 font-bold hover:underline mt-2 inline-block">{{ email }}</a>
+            </section>
+
+        </div>
+    </div>
+</div>
+{% endblock %}
+==========================================
+FILE PATH: ./legacy_frontend_archive_20260204_0703/templates/terms.html
+==========================================
+{% extends "base.html" %}
+
+{% block title %}תנאי שימוש | My-LeadsAI{% endblock %}
+
+{% block content %}
+<div class="container mx-auto px-4 py-12 max-w-4xl">
+    <div class="bg-white rounded-3xl p-8 md:p-12 shadow-sm border border-slate-100">
+        <h1 class="text-3xl font-black mb-2 text-slate-900">תנאי שימוש</h1>
+        <p class="text-slate-500 text-sm mb-8 border-b border-slate-100 pb-8">עודכן לאחרונה: ינואר 2026</p>
+
+        <div class="space-y-8 text-slate-700 leading-relaxed">
+            
+            <section>
+                <h2 class="text-xl font-bold mb-3 text-slate-900">1. הסכמה לתנאים</h2>
+                <p>השימוש במערכת <strong>My-LeadsAI</strong> ("השירות") מהווה הסכמה מלאה לתנאים אלו. אם אינך מסכים לתנאים, עליך להפסיק את השימוש בשירות באופן מיידי.</p>
+            </section>
+
+            <section>
+                <h2 class="text-xl font-bold mb-3 text-slate-900">2. תיאור השירות</h2>
+                <p>המערכת מספקת כלי אוטומציה לתמלול וניתוח הודעות וואטסאפ באמצעות בינה מלאכותית. השירות נועד לסייע לבעלי עסקים בניהול לידים ויומן, ואינו מחליף שיקול דעת אנושי.</p>
+            </section>
+
+            <section>
+                <h2 class="text-xl font-bold mb-3 text-slate-900">3. אחריות על דיוק המידע (AI Disclaimer)</h2>
+                <p>הפלטים במערכת (תמלולים, סיכומים, הצעות לתשובה) מיוצרים באופן אוטומטי על ידי מודלים של בינה מלאכותית (LLM). למרות המאמצים לדיוק מירבי, ייתכנו טעויות ("הזיות"). <br><strong>האחריות לבדוק את התוכן לפני שליחתו ללקוח קצה חלה על המשתמש (בעל העסק) בלבד.</strong></p>
+            </section>
+
+            <section>
+                <h2 class="text-xl font-bold mb-3 text-slate-900">4. שימוש הולם</h2>
+                <p>חל איסור להשתמש בשירות למטרות ספאם, הטרדה, או כל פעילות בלתי חוקית. אנו שומרים לעצמנו את הזכות לחסום משתמשים המפרים כלל זה ללא התראה מוקדמת.</p>
+            </section>
+
+             <section>
+                <h2 class="text-xl font-bold mb-3 text-slate-900">5. מדיניות ביטולים</h2>
+                <p>ניתן לבטל את המנוי בכל עת דרך אזור האישי או בפנייה לשירות הלקוחות. החיוב יופסק במחזור החיוב הבא ללא דמי ביטול.</p>
+            </section>
+            
+            <section class="bg-slate-50 p-6 rounded-2xl mt-8">
+                <h2 class="text-lg font-bold mb-2 text-slate-900">יש שאלות נוספות?</h2>
+                <p class="text-sm mb-2">אנחנו כאן כדי לעזור.</p>
+                <a href="mailto:support@my-leads.ai" class="text-blue-600 font-bold hover:underline">support@my-leads.ai</a>
+            </section>
+        </div>
+    </div>
+</div>
+{% endblock %}
+==========================================
+FILE PATH: ./legacy_frontend_archive_20260204_0703/templates/contact.html
+==========================================
+{% extends "base.html" %}
+
+{% block title %}צור קשר | My-Leads{% endblock %}
+
+{% block content %}
+<div class="flex-grow flex items-center justify-center px-4 py-20">
+    <div class="max-w-lg w-full glass-card p-10 rounded-3xl shadow-2xl text-center border border-white/10 relative overflow-hidden">
+        
+        <div class="absolute top-0 right-0 w-32 h-32 bg-blue-500/20 rounded-full blur-[50px]"></div>
+
+        <div class="mb-6 inline-flex items-center justify-center w-20 h-20 bg-blue-500/10 rounded-2xl border border-blue-500/20 text-blue-400">
+            <i class="fas fa-headset text-3xl"></i>
+        </div>
+        
+        <h1 class="text-3xl font-black font-display mb-4 text-white">אנחנו כאן לכל שאלה</h1>
+        <p class="text-slate-400 mb-10 text-lg">
+            נתקלת בבעיה טכנית? רוצה לשמוע עוד על החבילות העסקיות?
+            הצוות שלנו זמין עבורך.
+        </p>
+
+        <div class="space-y-4">
+            <div class="bg-slate-800/50 p-6 rounded-2xl border border-white/5 hover:border-blue-500/30 transition group">
+                <p class="text-xs text-slate-500 uppercase font-bold tracking-wider mb-1">מייל לתמיכה טכנית</p>
+                <a href="mailto:{{ email }}" class="text-2xl font-bold text-blue-400 group-hover:text-blue-300 transition font-mono">{{ email }}</a>
+            </div>
+
+            <div class="text-sm text-slate-500 mt-6 space-y-1">
+                <p><i class="far fa-clock ml-2"></i> שעות פעילות: א' - ה', 09:00 - 18:00</p>
+                <p><i class="fas fa-map-marker-alt ml-2"></i> תל אביב, ישראל</p>
+            </div>
+        </div>
+        
+        <div class="mt-10 border-t border-white/5 pt-6">
+             <a href="/" class="text-slate-400 hover:text-white text-sm font-bold transition flex items-center justify-center gap-2">
+                <i class="fas fa-arrow-right"></i> חזרה לדף הבית
+             </a>
+        </div>
+    </div>
+</div>
+{% endblock %}
+==========================================
+FILE PATH: ./legacy_frontend_archive_20260204_0703/templates/base.html
+==========================================
+<!DOCTYPE html>
+<html lang="he" dir="rtl">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <meta name="theme-color" content="#0f172a">
+    <meta name="description" content="My-Leads - מערכת AI לניהול לידים ותמלול פגישות מאובטח באוטומט.">
+
+    <title>{% block title %}My-Leads | אוטומציה חכמה{% endblock %}</title>
+
+    <link rel="manifest" href="/static/manifest.json">
+    <link rel="apple-touch-icon" href="https://img.icons8.com/color/192/artificial-intelligence.png">
+    <link rel="icon" type="image/png" href="https://img.icons8.com/color/32/artificial-intelligence.png">
+
+    <script src="https://cdn.tailwindcss.com"></script>
+
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css" rel="stylesheet">
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Assistant:wght@300;400;600;800&family=Heebo:wght@300;400;500;700;900&display=swap" rel="stylesheet">
+
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    fontFamily: {
+                        sans: ['Heebo', 'sans-serif'],
+                        display: ['Assistant', 'sans-serif'],
+                    },
+                    animation: {
+                        'blob': 'blob 7s infinite',
+                        'shimmer': 'shimmer 2.5s linear infinite',
+                        'fade-in-up': 'fadeInUp 0.8s ease-out',
+                    },
+                    keyframes: {
+                        blob: {
+                            '0%': { transform: 'translate(0px, 0px) scale(1)' },
+                            '33%': { transform: 'translate(30px, -50px) scale(1.1)' },
+                            '66%': { transform: 'translate(-20px, 20px) scale(0.9)' },
+                            '100%': { transform: 'translate(0px, 0px) scale(1)' },
+                        },
+                        shimmer: {
+                            '0%': { backgroundPosition: '-1000px 0' },
+                            '100%': { backgroundPosition: '1000px 0' }
+                        },
+                        fadeInUp: {
+                            '0%': { opacity: '0', transform: 'translateY(20px)' },
+                            '100%': { opacity: '1', transform: 'translateY(0)' }
+                        }
+                    }
+                }
+            }
+        }
+    </script>
+
+    <style>
+        .glass-nav { background: rgba(15, 23, 42, 0.7); backdrop-filter: blur(12px); border-bottom: 1px solid rgba(255, 255, 255, 0.05); }
+        .glass-card { background: rgba(30, 41, 59, 0.4); backdrop-filter: blur(12px); border: 1px solid rgba(255, 255, 255, 0.05); }
+        html { scroll-behavior: smooth; }
+        .btn-shimmer { background: linear-gradient(to right, #2563eb 4%, #3b82f6 25%, #2563eb 36%); background-size: 1000px 100%; }
+        ::selection { background: #3b82f6; color: #fff; }
+    </style>
+</head>
+<body class="bg-slate-900 text-slate-50 overflow-x-hidden antialiased font-sans flex flex-col min-h-screen">
+
+    <div class="fixed inset-0 overflow-hidden pointer-events-none z-0">
+        <div class="absolute top-0 right-1/4 w-96 h-96 bg-blue-600/20 rounded-full blur-[100px] animate-blob"></div>
+        <div class="absolute bottom-0 left-1/4 w-96 h-96 bg-purple-600/10 rounded-full blur-[100px] animate-blob animation-delay-2000"></div>
+        <div class="absolute top-1/2 left-1/2 transform -translate-x-1/2 -translate-y-1/2 w-[500px] h-[500px] bg-indigo-600/10 rounded-full blur-[120px]"></div>
+    </div>
+
+    <nav class="fixed top-0 w-full z-50 glass-nav transition-all duration-300">
+        <div class="container mx-auto px-6 h-20 flex justify-between items-center">
+            <a href="/" class="text-2xl font-black tracking-tight flex items-center gap-3">
+                <div class="w-10 h-10 bg-gradient-to-br from-blue-600 to-indigo-600 rounded-xl flex items-center justify-center shadow-lg shadow-blue-500/30 border border-white/10">
+                    <i class="fas fa-bolt text-white text-base"></i>
+                </div>
+                <span class="font-display tracking-tight">My-Leads<span class="text-blue-500">AI</span></span>
+            </a>
+
+            <div class="flex items-center gap-6">
+                {% if user %}
+                    <span class="hidden md:block text-sm font-medium text-slate-300">
+                        שלום, {{ user.full_name }}
+                    </span>
+                    <a href="/dashboard" class="text-sm font-medium text-blue-400 hover:text-white transition">דשבורד</a>
+                    <a href="/logout" class="text-sm font-bold text-white bg-red-500/10 hover:bg-red-500/20 text-red-400 px-5 py-2.5 rounded-lg border border-red-500/10 transition backdrop-blur-sm">
+                        יציאה
+                    </a>
+                {% else %}
+                    <a href="/privacy" class="hidden md:block text-sm font-medium text-slate-300 hover:text-white transition">פרטיות</a>
+                    <a href="/#pricing" class="hidden md:block text-sm font-medium text-slate-300 hover:text-white transition">מחירים</a>
+                    <a href="/login" class="text-sm font-bold text-white bg-white/5 hover:bg-white/10 px-5 py-2.5 rounded-lg border border-white/5 transition backdrop-blur-sm">
+                        התחברות
+                    </a>
+                {% endif %}
+            </div>
+        </div>
+    </nav>
+
+    <main class="relative z-10 flex-grow pt-24">
+        {% block content %}
+        {% endblock %}
+    </main>
+
+    <footer class="border-t border-white/5 bg-slate-900 pt-16 pb-8 text-center text-slate-600 relative z-10 mt-auto">
+        <div class="flex justify-center gap-6 mb-8">
+            <a href="#" class="hover:text-blue-500 transition"><i class="fab fa-facebook text-xl"></i></a>
+            <a href="#" class="hover:text-blue-500 transition"><i class="fab fa-instagram text-xl"></i></a>
+            <a href="#" class="hover:text-blue-500 transition"><i class="fab fa-linkedin text-xl"></i></a>
+        </div>
+        <div class="flex justify-center gap-4 text-xs mb-4">
+            <a href="/terms" class="hover:text-slate-300">תנאי שימוש</a>
+            <span class="text-slate-700">|</span>
+            <a href="/privacy" class="hover:text-slate-300">מדיניות פרטיות</a>
+        </div>
+        <p class="text-sm tracking-widest uppercase mb-4">My-Leads AI - הדיסקרטיות שלך, הטכנולוגיה שלנו.</p>
+        <p class="text-xs">&copy; 2026 כל הזכויות שמורות.</p>
+    </footer>
+</body>
+</html>
+==========================================
+FILE PATH: ./legacy_frontend_archive_20260204_0703/templates/marketing.html
+==========================================
+{% extends "base.html" %}
+
+{% block title %}My-LeadsAI | הבוט החכם לעסק שלך{% endblock %}
+
+{% block content %}
+<section class="relative pt-20 pb-32 overflow-hidden bg-slate-900">
+    <div class="container mx-auto px-4 text-center relative z-10">
+        
+        <h1 class="text-4xl md:text-6xl font-bold mb-6 leading-tight text-white">
+            <span class="block">הפלאפון של העבודה</span>
+            <span class="text-transparent bg-clip-text bg-gradient-to-r from-blue-400 to-purple-500">
+                משתלט לך על החיים האישיים?
+            </span>
+        </h1>
+
+        <p class="text-xl text-gray-400 mb-10 max-w-2xl mx-auto">
+            תמלול פגישות וניהול לידים <span class="text-white font-bold">בפרטיות מוחלטת</span>.
+            <br>
+            המערכת שתקשיב להודעות הקוליות במקומך, תבין מה הלקוח רוצה, ותנסח תשובה מדויקת תוך שניות.
+        </p>
+
+        <div class="flex justify-center gap-4">
+            <a href="/register?plan=start" class="px-8 py-4 bg-blue-600 hover:bg-blue-700 text-white rounded-xl font-bold text-lg transition-all shadow-lg shadow-blue-500/30">
+                אני רוצה לנסות בחינם 🚀
+                <span class="block text-xs font-normal opacity-80 mt-1">ללא צורך בכרטיס אשראי</span>
+            </a>
+        </div>
+    </div>
+</section>
+
+<section class="py-20 bg-slate-800">
+    <div class="container mx-auto px-4">
+        <div class="grid md:grid-cols-3 gap-8 text-center">
+            <div class="p-6 bg-slate-900 rounded-2xl border border-slate-700">
+                <div class="text-4xl mb-4">🔒</div>
+                <h3 class="text-xl font-bold text-white mb-2">פרטיות מוחלטת</h3>
+                <p class="text-gray-400">המידע שלך לא משמש לאימון מודלים חיצוניים.</p>
+            </div>
+            <div class="p-6 bg-slate-900 rounded-2xl border border-slate-700">
+                <div class="text-4xl mb-4">🎙️</div>
+                <h3 class="text-xl font-bold text-white mb-2">תמלול וניתוח</h3>
+                <p class="text-gray-400">הופך הודעות קוליות לטקסט ולמשימות ברורות.</p>
+            </div>
+            <div class="p-6 bg-slate-900 rounded-2xl border border-slate-700">
+                <div class="text-4xl mb-4">⚡</div>
+                <h3 class="text-xl font-bold text-white mb-2">תגובה בשניות</h3>
+                <p class="text-gray-400">מנסח תשובות חכמות שחוסכות לך זמן יקר.</p>
+            </div>
+        </div>
+    </div>
+</section>
+
+<section class="py-24 relative overflow-hidden bg-slate-900">
+    <div class="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[800px] h-[400px] bg-blue-600/10 rounded-full blur-[120px]"></div>
+
+    <div class="container mx-auto px-4 relative z-10">
+        <div class="text-center mb-16">
+            <h2 class="text-3xl md:text-5xl font-bold text-white mb-4">
+                מדבר בשפה <span class="text-transparent bg-clip-text bg-gradient-to-r from-pink-500 to-orange-400">של העסק שלך</span>
+            </h2>
+            <p class="text-gray-400 text-lg max-w-2xl mx-auto">
+                הבוט שלנו יודע ששיחה עם מתאמנת יוגה לא נשמעת כמו שיחה עם קונה דירה.
+                <br>
+                בהרשמה אתם בוחרים את המקצוע, וה-AI מתאים את הטון, האימוג'ים והנהלים אוטומטית.
+            </p>
+        </div>
+
+        <div class="grid md:grid-cols-3 gap-6 max-w-6xl mx-auto">
+            
+            <div class="group relative bg-slate-800 border border-slate-700 rounded-2xl p-6 hover:border-pink-500 transition-all duration-300 hover:-translate-y-1">
+                <div class="absolute -top-4 right-6 bg-pink-500 text-white text-xs font-bold px-3 py-1 rounded-full shadow-lg">יוגה ופילאטיס 🧘‍♀️</div>
+                <div class="space-y-4">
+                    <div class="bg-slate-700/50 p-3 rounded-lg rounded-tl-none text-right">
+                        <p class="text-xs text-slate-400 mb-1">לקוחה:</p>
+                        <p class="text-slate-200 text-sm">היי, אפשר לבטל את האימון של מחר בבוקר?</p>
+                    </div>
+                    <div class="bg-pink-500/10 border border-pink-500/30 p-3 rounded-lg rounded-tr-none text-right">
+                        <p class="text-xs text-pink-400 mb-1">הבוט שלך:</p>
+                        <p class="text-slate-200 text-sm">
+                            היי אהובה! בטח, חבל שלא נראה אותך 💪<br>
+                            מזכירה שביטול לבוקר אפשרי עד 23:00. נתראה בשבוע הבא? ✨
+                        </p>
+                    </div>
+                </div>
+            </div>
+
+            <div class="group relative bg-slate-800 border border-slate-700 rounded-2xl p-6 hover:border-blue-500 transition-all duration-300 hover:-translate-y-1">
+                <div class="absolute -top-4 right-6 bg-blue-600 text-white text-xs font-bold px-3 py-1 rounded-full shadow-lg">נדל"ן 🏠</div>
+                <div class="space-y-4">
+                    <div class="bg-slate-700/50 p-3 rounded-lg rounded-tl-none text-right">
+                        <p class="text-xs text-slate-400 mb-1">לקוח:</p>
+                        <p class="text-slate-200 text-sm">ראיתי את הדירה ברוטשילד, רלוונטי?</p>
+                    </div>
+                    <div class="bg-blue-600/10 border border-blue-500/30 p-3 rounded-lg rounded-tr-none text-right">
+                        <p class="text-xs text-blue-400 mb-1">הבוט שלך:</p>
+                        <p class="text-slate-200 text-sm">
+                            שלום דני, הנכס ברוטשילד אכן רלוונטי. הדירה היא 4 חדרים, מחיר מבוקש 4.2M. האם זה בתקציב שלך לתיאום סיור? 🤝
+                        </p>
+                    </div>
+                </div>
+            </div>
+
+            <div class="group relative bg-slate-800 border border-slate-700 rounded-2xl p-6 hover:border-orange-500 transition-all duration-300 hover:-translate-y-1">
+                <div class="absolute -top-4 right-6 bg-orange-500 text-white text-xs font-bold px-3 py-1 rounded-full shadow-lg">שירותי בית 🔧</div>
+                <div class="space-y-4">
+                    <div class="bg-slate-700/50 p-3 rounded-lg rounded-tl-none text-right">
+                        <p class="text-xs text-slate-400 mb-1">לקוח:</p>
+                        <p class="text-slate-200 text-sm">יש לי נזילה דחופה באמבטיה!!</p>
+                    </div>
+                    <div class="bg-orange-500/10 border border-orange-500/30 p-3 rounded-lg rounded-tr-none text-right">
+                        <p class="text-xs text-orange-400 mb-1">הבוט שלך:</p>
+                        <p class="text-slate-200 text-sm">
+                            היי, ראיתי את ההודעה. תוכל לשלוח לי תמונה של הנזילה בוואטסאפ? אני מסיים עבודה וחוזר אליך עם הצעת מחיר. 🛠️
+                        </p>
+                    </div>
+                </div>
+            </div>
+
+        </div>
+    </div>
+</section>
+
+<section id="pricing" class="py-20 bg-slate-900">
+    <div class="container mx-auto px-4">
+        <h2 class="text-3xl font-bold text-center text-white mb-12">חבילות ומחירים</h2>
+        
+        <div class="grid md:grid-cols-3 gap-8 max-w-5xl mx-auto">
+            <div class="bg-slate-800 border border-slate-700 rounded-2xl p-8 hover:border-blue-500 transition-colors">
+                <h3 class="text-xl font-bold text-white mb-2">Start</h3>
+                <div class="text-3xl font-bold text-blue-400 mb-4">0 ₪</div>
+                <p class="text-gray-400 text-sm mb-6">למתחילים שרוצים לבדוק את המערכת.</p>
+                <ul class="space-y-3 text-gray-300 mb-8">
+                    <li>✅ עד 20 לידים בחודש</li>
+                    <li>✅ תמלול הודעות קוליות</li>
+                    <li>✅ ניסוח תשובות בסיסי</li>
+                </ul>
+                <a href="/register?plan=start" class="block w-full py-3 border border-blue-600 text-blue-400 hover:bg-blue-600 hover:text-white text-center rounded-lg transition-all">התחל חינם</a>
+            </div>
+
+            <div class="bg-slate-800 border-2 border-blue-600 rounded-2xl p-8 relative transform scale-105 shadow-2xl shadow-blue-900/20">
+                <div class="absolute top-0 right-0 bg-blue-600 text-white text-xs px-3 py-1 rounded-bl-lg rounded-tr-lg">מומלץ</div>
+                <h3 class="text-xl font-bold text-white mb-2">Pro</h3>
+                <div class="text-3xl font-bold text-white mb-4">99 ₪ <span class="text-sm font-normal text-gray-400">/חודש</span></div>
+                <p class="text-gray-400 text-sm mb-6">לבעלי עסקים שרוצים אוטומציה מלאה.</p>
+                <ul class="space-y-3 text-gray-300 mb-8">
+                    <li>✅ לידים ללא הגבלה</li>
+                    <li>✅ תמלול ללא הגבלה</li>
+                    <li>✅ <strong>התאמת אישיות לפי סוג העסק</strong></li> <li>✅ תמיכה בוואטסאפ</li>
+                </ul>
+                <a href="/register?plan=pro" class="block w-full py-3 bg-blue-600 text-white hover:bg-blue-700 text-center rounded-lg transition-all font-bold">נסה 14 יום חינם</a>
+            </div>
+
+            <div class="bg-slate-800 border border-slate-700 rounded-2xl p-8 hover:border-purple-500 transition-colors">
+                <h3 class="text-xl font-bold text-white mb-2">Business</h3>
+                <div class="text-3xl font-bold text-purple-400 mb-4">צור קשר</div>
+                <p class="text-gray-400 text-sm mb-6">לחברות וארגונים.</p>
+                <ul class="space-y-3 text-gray-300 mb-8">
+                    <li>✅ התממשקות ל-CRM</li>
+                    <li>✅ דאשבורד מנהלים</li>
+                    <li>✅ API פרטי</li>
+                </ul>
+                <a href="/contact" class="block w-full py-3 border border-gray-600 text-gray-300 hover:bg-gray-700 text-center rounded-lg transition-all">דבר איתנו</a>
+            </div>
+        </div>
+    </div>
+</section>
+{% endblock %}
+==========================================
+FILE PATH: ./legacy_frontend_archive_20260204_0703/templates/register.html
+==========================================
+<!DOCTYPE html>
+<html lang="he" dir="rtl">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>הרשמה | My-Leads</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Heebo:wght@300;400;500;700;900&display=swap" rel="stylesheet">
+    <style>
+        body { font-family: 'Heebo', sans-serif; }
+        /* Custom scrollbar for form container */
+        .custom-scrollbar::-webkit-scrollbar { width: 6px; }
+        .custom-scrollbar::-webkit-scrollbar-track { background: transparent; }
+        .custom-scrollbar::-webkit-scrollbar-thumb { background-color: #cbd5e1; border-radius: 20px; }
+    </style>
+</head>
+<body class="bg-slate-900 min-h-screen flex items-center justify-center p-4 relative overflow-hidden py-10">
+
+    <div class="absolute top-0 right-0 w-96 h-96 bg-blue-600/20 rounded-full blur-[100px]"></div>
+    <div class="absolute bottom-0 left-0 w-96 h-96 bg-purple-600/20 rounded-full blur-[100px]"></div>
+
+    <div class="max-w-md w-full bg-white rounded-3xl shadow-2xl relative z-10 overflow-hidden">
+        
+        <div class="bg-slate-50 p-8 text-center border-b border-slate-100">
+            <h1 class="text-2xl font-black text-slate-800 mb-1">יצירת חשבון חדש</h1>
+            <p class="text-slate-500 text-sm">הפרד בין העסק לחיים האישיים</p>
+            <p id="planDisplay" class="text-blue-600 text-xs font-bold mt-2"></p>
+        </div>
+
+        <form id="registerForm" class="space-y-5 p-8 max-h-[70vh] overflow-y-auto custom-scrollbar">
+            
+            <input type="hidden" name="plan" id="planInput" value="start">
+
+            <div>
+                <label class="block text-xs font-bold text-slate-500 mb-1.5 uppercase">שם מלא</label>
+                <input type="text" id="fullName" name="full_name" required 
+                       class="w-full px-4 py-3 rounded-xl bg-slate-50 border border-slate-200 outline-none focus:ring-2 focus:ring-blue-500 transition font-medium text-slate-800" 
+                       placeholder="ישראל ישראלי">
+            </div>
+
+            <div>
+                <label class="block text-xs font-bold text-slate-500 mb-1.5 uppercase">אימייל</label>
+                <input type="email" id="email" name="email" required dir="ltr" 
+                       class="w-full px-4 py-3 rounded-xl bg-slate-50 border border-slate-200 outline-none focus:ring-2 focus:ring-blue-500 transition text-right" 
+                       placeholder="you@company.com">
+            </div>
+
+            <div>
+                <label class="block text-xs font-bold text-slate-500 mb-1.5 uppercase">סיסמה</label>
+                <input type="password" id="password" name="password" required dir="ltr" minlength="6" 
+                       class="w-full px-4 py-3 rounded-xl bg-slate-50 border border-slate-200 outline-none focus:ring-2 focus:ring-blue-500 transition text-right" 
+                       placeholder="******">
+            </div>
+
+            <div class="relative">
+                <label class="block text-xs font-bold text-slate-500 mb-1.5 uppercase">
+                    וואטסאפ אישי (לקבלת לידים)
+                </label>
+                <input type="tel" id="whatsapp" name="personal_whatsapp" required dir="ltr" 
+                       class="w-full px-4 py-3 rounded-xl bg-slate-50 border border-slate-200 outline-none focus:ring-2 focus:ring-blue-500 transition text-right font-mono" 
+                       placeholder="050-XXXXXXX">
+            </div>
+
+            <div>
+                <label class="block text-xs font-bold text-slate-500 mb-1.5 uppercase">תחום עיסוק</label>
+                <select name="business_type" id="business_type" onchange="toggleOtherField()" 
+                        class="w-full px-4 py-3 rounded-xl bg-slate-50 border border-slate-200 focus:ring-2 focus:ring-blue-500 outline-none text-slate-700 text-sm" required>
+                    <option value="" disabled selected>בחר מהרשימה...</option>
+                    
+                    <optgroup label="כושר, בריאות וסטודיו">
+                        <option value="Yoga Instructor">מורה ליוגה</option>
+                        <option value="Pilates Instructor">מדריכת פילאטיס</option>
+                        <option value="Fitness Trainer">מאמן/ת כושר אישי</option>
+                        <option value="Studio">בעלי סטודיו</option>
+                    </optgroup>
+
+                    <optgroup label="נדל״ן ופיננסים">
+                        <option value="Real Estate Agent">מתווך נדל"ן</option>
+                        <option value="Mortgage Advisor">יועץ משכנתאות</option>
+                        <option value="Insurance Agent">סוכן ביטוח</option>
+                    </optgroup>
+
+                    <optgroup label="אימון וטיפול (Coaching)">
+                        <option value="Business Coach">מאמן עסקי / מנטור</option>
+                        <option value="Life Coach">מאמן אישי (Life Coach)</option>
+                        <option value="Therapist">מטפל / פסיכולוג</option>
+                    </optgroup>
+
+                    <optgroup label="שירותי בית (Home Services)">
+                        <option value="Plumber">אינסטלטור</option>
+                        <option value="Electrician">חשמלאי</option>
+                        <option value="Handyman">הנדימן / שיפוצים</option>
+                        <option value="Locksmith">מנעולן</option>
+                    </optgroup>
+
+                    <option value="Other">אחר (נא לפרט...)</option>
+                </select>
+                
+                <input type="text" name="other_business_type" id="other_business_type" style="display:none;" 
+                       placeholder="הקלד את תחום העיסוק שלך..." 
+                       class="mt-2 w-full px-4 py-3 rounded-xl bg-slate-50 border border-slate-200 outline-none focus:ring-2 focus:ring-blue-500 text-sm">
+            </div>
+
+            <div class="flex items-start gap-3 pt-2">
+                <input type="checkbox" id="tosCheck" required class="mt-1 w-4 h-4 text-blue-600 rounded border-gray-300 cursor-pointer">
+                <label for="tosCheck" class="text-xs text-slate-500 cursor-pointer select-none leading-relaxed">
+                    מאשר את <a href="/terms" target="_blank" class="underline text-blue-600">תנאי השימוש</a> ואת <a href="/privacy" target="_blank" class="underline text-blue-600">מדיניות הפרטיות</a>.
+                </label>
+            </div>
+
+            <button type="submit" class="w-full bg-slate-900 hover:bg-slate-800 text-white font-bold py-4 rounded-xl shadow-lg transition transform active:scale-[0.98]">
+                הרשמה למערכת
+            </button>
+            
+            <p class="text-center text-xs text-slate-400">
+                כבר יש לך חשבון? <a href="/login" class="text-blue-600 font-bold hover:underline">התחבר כאן</a>
+            </p>
+        </form>
+    </div>
+
+    <script>
+        // --- 1. CAPTURE PLAN FROM URL ---
+        window.onload = function() {
+            const urlParams = new URLSearchParams(window.location.search);
+            const selectedPlan = urlParams.get('plan') || 'start'; 
+            
+            document.getElementById('planInput').value = selectedPlan;
+            
+            const planDisplay = document.getElementById('planDisplay');
+            if(selectedPlan === 'pro') {
+                planDisplay.innerText = 'בחירה מצוינת: חבילת Pro';
+            } else if (selectedPlan === 'start') {
+                 planDisplay.innerText = 'נרשם לחבילת Start (חינם)';
+            }
+        };
+
+        // --- 2. HANDLE 'OTHER' BUSINESS TYPE ---
+        function toggleOtherField() {
+            const isOther = document.getElementById('business_type').value === 'Other';
+            const otherInput = document.getElementById('other_business_type');
+            otherInput.style.display = isOther ? 'block' : 'none';
+            otherInput.required = isOther;
+            if (isOther) {
+                otherInput.focus();
+            }
+        }
+
+        // --- 3. FORM SUBMISSION LOGIC ---
+        document.getElementById('registerForm').onsubmit = async (e) => {
+            e.preventDefault();
+            const btn = e.target.querySelector('button');
+            const originalText = btn.innerText;
+            
+            btn.innerHTML = '⏳ יוצר חשבון...';
+            btn.disabled = true;
+
+            const formData = new FormData(e.target);
+            
+            let finalBusinessType = formData.get('business_type');
+            if (finalBusinessType === 'Other') {
+                finalBusinessType = formData.get('other_business_type');
+            }
+
+            const payload = {
+                full_name: formData.get('full_name'),
+                email: formData.get('email'),
+                password: formData.get('password'),
+                personal_whatsapp: formData.get('personal_whatsapp'),
+                business_type: finalBusinessType,
+                plan_tier: formData.get('plan')
+            };
+
+            try {
+                const response = await fetch('/api/v1/auth/register', {
+                    method: 'POST',
+                    headers: {'Content-Type': 'application/json'},
+                    body: JSON.stringify(payload)
+                });
+
+                if (response.ok) {
+                    window.location.href = '/login?registered=true';
+                } else {
+                    const err = await response.json();
+                    console.error('Server Error:', err);
+                    alert('שגיאה בהרשמה: ' + (err.detail || 'נסה שנית'));
+                }
+            } catch (error) {
+                console.error('Network Error:', error);
+                alert('שגיאת תקשורת. אנא בדוק את החיבור לאינטרנט.');
+            } finally {
+                btn.innerHTML = originalText;
+                btn.disabled = false;
+            }
+        };
+    </script>
+</body>
+</html>
+==========================================
+FILE PATH: ./legacy_frontend_archive_20260204_0703/templates/login.html
+==========================================
+<!DOCTYPE html>
+<html lang="he" dir="rtl">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>התחברות | My-Leads</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Heebo:wght@300;400;500;700;900&display=swap" rel="stylesheet">
+    <style>
+        body { font-family: 'Heebo', sans-serif; }
+        .glass-card { background: rgba(255, 255, 255, 0.95); backdrop-filter: blur(20px); }
+        /* Custom Checkbox Style */
+        .checkbox-wrapper input:checked + div { background-color: #0f172a; border-color: #0f172a; }
+        .checkbox-wrapper input:checked + div svg { display: block; }
+    </style>
+</head>
+<body class="bg-slate-900 min-h-screen flex items-center justify-center p-4 relative overflow-hidden">
+
+    <div class="absolute top-0 right-0 w-96 h-96 bg-blue-600/30 rounded-full blur-[100px] animate-pulse"></div>
+    <div class="absolute bottom-0 left-0 w-96 h-96 bg-purple-600/20 rounded-full blur-[100px]"></div>
+
+    <div class="max-w-sm w-full glass-card rounded-3xl shadow-2xl relative z-10 overflow-hidden">
+        
+        <div class="p-8 pb-0 text-center">
+            <div class="w-12 h-12 bg-blue-600 rounded-xl flex items-center justify-center mx-auto mb-4 shadow-lg text-white text-xl">
+                <i class="fas fa-bolt"></i>
+            </div>
+            <h1 class="text-2xl font-black text-slate-800">ברוכים השבים</h1>
+            <p class="text-slate-500 text-sm mt-1">התחבר למערכת הניהול</p>
+        </div>
+
+        <form id="loginForm" class="p-8 space-y-5">
+            <div>
+                <label class="block text-xs font-bold text-slate-500 uppercase tracking-wider mb-1.5">כתובת אימייל</label>
+                <input 
+                    type="email" 
+                    name="username" 
+                    required 
+                    dir="ltr" 
+                    class="w-full px-4 py-3 rounded-xl bg-slate-50 border border-slate-200 outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-200 transition text-left placeholder-slate-300 font-bold text-slate-800" 
+                    placeholder="you@example.com"
+                >
+            </div>
+            <div>
+                <label class="block text-xs font-bold text-slate-500 uppercase tracking-wider mb-1.5">סיסמה</label>
+                <input type="password" name="password" required class="w-full px-4 py-3 rounded-xl bg-slate-50 border border-slate-200 outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-200 transition placeholder-slate-300" placeholder="••••••••">
+            </div>
+
+            <div class="flex items-center justify-between">
+                <label class="flex items-center cursor-pointer checkbox-wrapper group">
+                    <input type="checkbox" name="remember_me" class="hidden">
+                    <div class="w-5 h-5 border-2 border-slate-300 rounded-md flex items-center justify-center transition-colors mr-2 group-hover:border-blue-400">
+                        <svg class="w-3 h-3 text-white hidden pointer-events-none" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="3" d="M5 13l4 4L19 7"></path></svg>
+                    </div>
+                    <span class="text-sm text-slate-600 select-none mr-2">השאר אותי מחובר</span>
+                </label>
+                <a href="#" class="text-xs font-bold text-blue-600 hover:text-blue-800">שכחתי סיסמה?</a>
+            </div>
+
+            <button type="submit" class="w-full bg-slate-900 hover:bg-slate-800 text-white font-bold py-4 rounded-xl shadow-lg transition transform active:scale-[0.98]">
+                כניסה למערכת
+            </button>
+
+            <div class="text-center mt-4 pt-4 border-t border-slate-100">
+                <a href="/register" class="text-sm text-slate-500 hover:text-blue-600">אין לך חשבון? <span class="font-bold underline">הירשם כאן</span></a>
+            </div>
+        </form>
+    </div>
+    <script>
+    document.getElementById('loginForm').onsubmit = async (e) => {
+        e.preventDefault();
+        const btn = e.target.querySelector('button');
+        const originalText = btn.innerHTML;
+        btn.innerHTML = 'מתחבר...'; 
+        btn.disabled = true;
+
+        const formData = new FormData(e.target);
+        const emailValue = formData.get('phone'); 
+        const rememberMe = formData.get('remember_me') === 'on'; // Check if user checked the box
+
+        const data = {
+            email: emailValue,
+            password: formData.get('password'),
+            // We can send remember_me to server if we implement Refresh Tokens later
+            remember_me: rememberMe 
+        };
+
+        try {
+            console.log('Sending login request...', data);
+            const response = await fetch('/api/v1/auth/login', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(data)
+            });
+
+            const result = await response.json();
+
+            if (response.ok) {
+                console.log('Login successful');
+
+                if (result.access_token) {
+                    // 1. Save to LocalStorage (Optional, mostly for API calls)
+                    localStorage.setItem('token', result.access_token);
+                    
+                    // 2. COOKIE LOGIC (Long expiry vs Short expiry)
+                    const now = new Date();
+                    let expiryTime;
+
+                    if (rememberMe) {
+                        // 30 Days if "Remember Me" is checked
+                        expiryTime = 30 * 24 * 60 * 60 * 1000;
+                    } else {
+                        // 24 Hours if NOT checked
+                        expiryTime = 24 * 60 * 60 * 1000;
+                    }
+
+                    now.setTime(now.getTime() + expiryTime);
+                    
+                    // Set the cookie with the calculated expiry
+                    document.cookie = `access_token=${result.access_token}; expires=${now.toUTCString()}; path=/; SameSite=Lax; Secure`;
+                    
+                    console.log(`Cookie set. Remember Me: ${rememberMe}. Expires in: ${expiryTime/1000/60/60} hours.`);
+                }
+                
+                window.location.href = '/dashboard';
+            } else {
+                // If location check failed (401), this block will run
+                console.error('Login failed:', result);
+                const errorMsg = result.detail?.[0]?.msg || result.detail || 'פרטי התחברות שגויים';
+                alert('שגיאה: ' + errorMsg);
+                btn.innerHTML = originalText;
+                btn.disabled = false;
+            }
+        } catch (error) {
+            console.error('Network Error:', error);
+            alert('שגיאת תקשורת. נא לבדוק את החיבור.');
+            btn.innerHTML = originalText;
+            btn.disabled = false;
+        }
+    };
+</script>
+</body>
+</html>

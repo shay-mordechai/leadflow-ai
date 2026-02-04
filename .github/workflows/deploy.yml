@@ -10,7 +10,6 @@
 # This deployment script manages the APP service (leadflow-ai) as a USER service.
 # We must NEVER stop the tunnel, or SSH access will be lost immediately.
 # ==============================================================================
-
 name: LeadFlow Production Deploy
 
 on:
@@ -19,11 +18,13 @@ on:
 
 env:
   REGISTRY: ghcr.io
-  IMAGE_NAME: shay-mordechai/leadflow-ai
+  IMAGE_BACKEND: shay-mordechai/leadflow-backend
+  IMAGE_FRONTEND: shay-mordechai/leadflow-frontend
   AWS_REGION: eu-north-1
 
 jobs:
-  build-and-push:
+  # --- JOB 1: BUILD BACKEND (Python) ---
+  build-backend:
     runs-on: ubuntu-latest
     permissions:
       contents: read
@@ -32,171 +33,145 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@v3
 
-      - name: Log in to the Container registry
+      - name: Log in to Registry
         uses: docker/login-action@v2
         with:
           registry: ${{ env.REGISTRY }}
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: Build and push Docker image
+      - name: Build and Push Backend
         uses: docker/build-push-action@v4
         with:
           context: .
+          file: ./Dockerfile
           push: true
-          tags: |
-            ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:latest
-            ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ github.sha }}
+          tags: ${{ env.REGISTRY }}/${{ env.IMAGE_BACKEND }}:${{ github.sha }}
 
-  deploy:
-    needs: build-and-push
+  # --- JOB 2: BUILD FRONTEND (Next.js) ---
+  build-frontend:
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
     steps:
       - name: Checkout code
         uses: actions/checkout@v3
 
-      - name: Install Cloudflared
+      - name: Log in to Registry
+        uses: docker/login-action@v2
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Build and Push Frontend
+        uses: docker/build-push-action@v4
+        with:
+          context: ./frontend
+          file: ./frontend/Dockerfile
+          push: true
+          tags: ${{ env.REGISTRY }}/${{ env.IMAGE_FRONTEND }}:${{ github.sha }}
+
+  # --- JOB 3: DEPLOY BOTH TO EC2 ---
+  deploy:
+    needs: [build-backend, build-frontend]
+    runs-on: ubuntu-latest
+    steps:
+      - name: Install Cloudflared & Config SSH
         run: |
           curl -L --output cloudflared.deb https://github.com/cloudflare/cloudflared/releases/latest/download/cloudflared-linux-amd64.deb
           sudo dpkg -i cloudflared.deb
-
-      - name: Configure SSH & Tunnel
-        env:
-          CF_ID: ${{ secrets.CF_SERVICE_ID }}
-          CF_SECRET: ${{ secrets.CF_SERVICE_SECRET }}
-        run: |
           mkdir -p ~/.ssh/
           echo "${{ secrets.EC2_SSH_KEY }}" > ~/.ssh/id_rsa
           chmod 600 ~/.ssh/id_rsa
-          
-          # SSH Config with Cloudflare Access Proxy
           cat > ~/.ssh/config <<EOF
           Host production
             HostName ${{ secrets.CF_SSH_HOSTNAME }}
             User ec2-user
             IdentityFile ~/.ssh/id_rsa
             StrictHostKeyChecking no
-            UserKnownHostsFile /dev/null
-            ServerAliveInterval 30
-            ServerAliveCountMax 60
-            TCPKeepAlive yes
-            ProxyCommand /usr/local/bin/cloudflared access ssh --hostname %h --id $CF_ID --secret $CF_SECRET --loglevel error
+            ProxyCommand /usr/local/bin/cloudflared access ssh --hostname %h --id ${{ secrets.CF_SERVICE_ID }} --secret ${{ secrets.CF_SERVICE_SECRET }}
           EOF
 
-      - name: 🔍 Debug Connection
-        run: |
-          echo "Testing connection to Cloudflare..."
-          HTTP_CODE=$(curl -s -o /dev/null -w "%{http_code}" \
-            -H "CF-Access-Client-Id: ${{ secrets.CF_SERVICE_ID }}" \
-            -H "CF-Access-Client-Secret: ${{ secrets.CF_SERVICE_SECRET }}" \
-            https://${{ secrets.CF_SSH_HOSTNAME }})
-
-          echo "⚠️ SERVER RESPONSE CODE: $HTTP_CODE"
-
-          if [ "$HTTP_CODE" -ne 200 ]; then
-             echo "❌ Connection check failed. Stopping."
-             exit 1
-          fi
-
-      - name: Create Podman Deployment Script
+      - name: Create Deployment Script
         run: |
           cat <<EOF > deploy_script.sh
           #!/bin/bash
           set -e
 
-          # Setup Variables
-          NEW_TAG="${{ github.sha }}"
-          FULL_IMAGE="${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:\$NEW_TAG"
-          APP_DIR=~/leadflow-ai
+          TAG="${{ github.sha }}"
+          IMG_BACKEND="${{ env.REGISTRY }}/${{ env.IMAGE_BACKEND }}:\$TAG"
+          IMG_FRONTEND="${{ env.REGISTRY }}/${{ env.IMAGE_FRONTEND }}:\$TAG"
           
-          # Ensure User Persistence (Linger) is enabled
+          # Enable user persistence
           sudo loginctl enable-linger ec2-user
 
-          mkdir -p \$APP_DIR
-          cd \$APP_DIR
-
-          # 1. Login to Registry
+          # 1. Login
           echo "${{ secrets.GITHUB_TOKEN }}" | podman login ghcr.io -u ${{ github.actor }} --password-stdin
 
-          # 2. Cleanup BEFORE Pulling (Prevents Disk Full issues on t3.micro)
-          echo "🧹 Pre-cleaning old images to save space..."
+          # 2. Cleanup Old Images
           podman image prune -a -f --filter "until=24h" || true
 
-          # 3. Pull NEW specific version
-          echo "⬇️ Pulling version: \$NEW_TAG"
-          podman pull \$FULL_IMAGE
+          # 3. Pull New Images
+          echo "⬇️ Pulling Backend..."
+          podman pull \$IMG_BACKEND
+          echo "⬇️ Pulling Frontend..."
+          podman pull \$IMG_FRONTEND
 
-          # 4. PREPARE DNS FIX (Critical for Red Hat / Fedora)
-          # We force the container to use Google DNS via a mounted file
-          # to bypass systemd-resolved / SELinux issues.
-          echo "🔧 Creating manual DNS override file..."
+          # 4. Stop Old Containers
+          echo "🔄 Stopping old services..."
+          podman stop leadflow-backend leadflow-frontend || true
+          podman rm leadflow-backend leadflow-frontend || true
+
+          # 5. DNS Fix (Critical for Fedora/RH)
           echo 'nameserver 8.8.8.8' > /tmp/resolv.conf.override
-          echo 'nameserver 1.1.1.1' >> /tmp/resolv.conf.override
 
-          # 5. STOP & REMOVE OLD CONTAINER
-          echo "🔄 Stopping old container..."
-          podman stop leadflow-ai || true
-          podman rm leadflow-ai || true
-          
-          # 6. RUN NEW CONTAINER (Manual Command)
-          # We use 'podman run' directly instead of compose to apply
-          # specific security flags and volume mounts required for network fix.
-          echo "🚀 Deploying new container..."
-          
+          # 6. Run BACKEND (Port 8000)
+          echo "🚀 Starting Backend..."
           podman run -d \\
-            --name leadflow-ai \\
+            --name leadflow-backend \\
             --network host \\
             -v /tmp/resolv.conf.override:/etc/resolv.conf:Z \\
             --security-opt label=disable \\
             --restart always \\
             -e AWS_REGION=${{ env.AWS_REGION }} \\
-            \$FULL_IMAGE
+            -v ~/leadflow-ai/storage:/app/storage:Z \\
+            -v ~/leadflow-ai/leads.db:/app/leads.db:Z \\
+            --env-file ~/leadflow-ai/.env \\
+            \$IMG_BACKEND
 
-          # 7. Ensure Systemd Persistence for the APP
-          echo "🛡️ Configuring Auto-Start for App..."
+          # 7. Run FRONTEND (Port 3000)
+          echo "🚀 Starting Frontend..."
+          podman run -d \\
+            --name leadflow-frontend \\
+            --network host \\
+            -v /tmp/resolv.conf.override:/etc/resolv.conf:Z \\
+            --security-opt label=disable \\
+            --restart always \\
+            \$IMG_FRONTEND
+
+          # 8. Generate Systemd Files (Persistence)
           mkdir -p ~/.config/systemd/user/
           cd ~/.config/systemd/user/
-          
-          # Generate systemd unit file from the running container
-          podman generate systemd --new --files --name leadflow-ai
-          
+          podman generate systemd --new --files --name leadflow-backend
+          podman generate systemd --new --files --name leadflow-frontend
           systemctl --user daemon-reload
-          systemctl --user enable container-leadflow-ai.service
-          
-          cd \$APP_DIR
+          systemctl --user enable container-leadflow-backend.service
+          systemctl --user enable container-leadflow-frontend.service
 
-          # 8. Health Check
-          echo '--- 🏥 Health Analysis (Waiting 15s) ---'
-          sleep 15
-
-          CONTAINER_ID=\$(podman ps -q --filter "name=leadflow" | head -n 1)
-
-          if [ -z "\$CONTAINER_ID" ]; then
-             echo '❌ CRITICAL: No container found running!'
-             exit 1
+          # 9. Health Check
+          echo '🏥 Waiting for services to stabilize...'
+          sleep 10
+          if podman ps | grep -q leadflow-backend && podman ps | grep -q leadflow-frontend; then
+             echo "✅ All systems operational!"
           else
-             # Scan logs for fatal errors
-             RECENT_LOGS=\$(podman logs --tail 100 \$CONTAINER_ID 2>&1)
-             if echo "\$RECENT_LOGS" | grep -iqE 'exception|traceback|critical error|fatal|importerror'; then
-                  # Ignore expected warning about Google GenAI deprecation if present
-                  if echo "\$RECENT_LOGS" | grep -v "google.generativeai" | grep -iqE 'exception|traceback|critical error|fatal'; then
-                      echo '❌ CRITICAL: Error keywords detected in logs.'
-                      echo "\$RECENT_LOGS"
-                      exit 1
-                  fi
-             fi
-             echo '✅ Deployment Successful. App is running.'
+             echo "❌ Deployment failed. Check logs."
+             exit 1
           fi
-
-          # 9. Final Cleanup
-          echo '--- 🧹 Post-Cleaning ---'
-          podman image prune -f
           EOF
 
-      - name: Execute Deployment on Server
+      - name: Execute Deployment
         run: |
-          # Copy script
-          scp deploy_script.sh production:~/leadflow-ai/deploy.sh
-          
-          # Run the script via SSH
-          ssh production "chmod +x ~/leadflow-ai/deploy.sh && ~/leadflow-ai/deploy.sh"
+          scp deploy_script.sh production:~/deploy.sh
+          ssh production "chmod +x ~/deploy.sh && ~/deploy.sh"

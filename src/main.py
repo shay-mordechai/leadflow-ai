@@ -17,7 +17,8 @@ from src.database.session import engine, get_db
 from src.database.models import Base
 
 # Import Routers
-from src.routers import leads, auth, webhooks, ui, payments, phones, settings as settings_router
+# Note: 'ui' router has been removed as the frontend is now handled by React (Next.js)
+from src.routers import leads, auth, webhooks, payments, phones, settings as settings_router
 
 # Professional English Comment:
 # Configure Root Logger for centralized logging.
@@ -33,7 +34,7 @@ async def lifespan(app: FastAPI):
     Ensures the database is reachable and the schema is initialized.
     """
     logger.info(f"🚀 Starting up {settings.APP_NAME} System...")
-    
+
     try:
         # Professional English Comment:
         # metadata.create_all is used here for MVP/Fast deployment.
@@ -43,9 +44,9 @@ async def lifespan(app: FastAPI):
     except Exception as e:
         logger.warning(f"⚠️ Database init skipped (likely initialized by another worker): {e}")
         # We don't exit here to allow for manual inspection via /health endpoint
-    
-    yield 
-    
+
+    yield
+
     logger.info(f"🛑 Shutting down {settings.APP_NAME} System...")
 
 # Initialize FastAPI Application
@@ -66,7 +67,7 @@ app.add_middleware(TrustedHostMiddleware, allowed_hosts=settings.ALLOWED_HOSTS)
 # Cross-Origin Resource Sharing (CORS) Configuration
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"], # In production, replace with specific domain for better security
+    allow_origins=["*"], # In production, replace with specific domain (e.g., localhost:3000) for better security
     allow_credentials=True,
     allow_methods=["GET", "POST", "PUT", "DELETE", "OPTIONS"],
     allow_headers=["*"],
@@ -81,27 +82,27 @@ async def security_headers_middleware(request: Request, call_next):
     try:
         response = await call_next(request)
         process_time = time.time() - start_time
-        
+
         # Performance & Security Headers
         response.headers["X-Process-Time"] = f"{process_time:.4f}s"
         response.headers["X-Frame-Options"] = "DENY"
         response.headers["X-Content-Type-Options"] = "nosniff"
-        
+
         # Professional English Comment:
         # HSTS ensures the browser only communicates over HTTPS.
         if not settings.DEBUG:
             response.headers["Strict-Transport-Security"] = "max-age=31536000; includeSubDomains"
-            
+
         return response
     except Exception as e:
         logger.error(f"🔥 Unhandled Middleware Exception: {e}")
         return JSONResponse(
-            status_code=500, 
+            status_code=500,
             content={"detail": "Internal Server Error", "error_type": "MiddlewareCrash"}
         )
 
 # --- Static Files Service ---
-# Ensure the static directory exists before mounting to avoid startup crashes
+# Kept for backward compatibility or serving API assets (like invoices/logs)
 os.makedirs("src/static", exist_ok=True)
 app.mount("/static", StaticFiles(directory="src/static"), name="static")
 
@@ -121,9 +122,8 @@ if settings.ENABLE_REAL_PHONE_PURCHASE:
     app.include_router(phones.router, prefix="/api/v1/phones", tags=["Phone System"])
     logger.info("📞 Phone Purchase Module Loaded Successfully.")
 
-
-# 2. Frontend / UI Routes
-app.include_router(ui.router, tags=["User Interface"])
+# Note: UI Router removed (Legacy HTML Templates).
+# Frontend is now served via Next.js on a separate port.
 
 # --- System & Diagnostic Routes ---
 
@@ -136,8 +136,8 @@ def health_check(db: Session = Depends(get_db)):
         # Verify database connectivity
         db.execute(text("SELECT 1"))
         return {
-            "status": "online", 
-            "database": "connected", 
+            "status": "online",
+            "database": "connected",
             "version": app.version,
             "mode": "Development" if settings.DEBUG else "Production"
         }

@@ -27,7 +27,7 @@ requests
 
 # --- AI & Processing ---
 # Note: faster-whisper is memory intensive (requires min 2GB RAM on EC2)
-faster-whisper
+# faster-whisper
 openai>=1.0.0
 google-generativeai
 
