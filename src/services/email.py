@@ -1,32 +1,59 @@
-import smtplib
-import logging
+# src/services/email.py
 import os
-from email.mime.text import MIMEText
-from email.mime.multipart import MIMEMultipart
+import logging
+from typing import List, Optional
+from fastapi_mail import FastMail, MessageSchema, ConnectionConfig, MessageType
+from pydantic import EmailStr
+from src.config import settings  # Pulling configuration from SSM via Pydantic
 
 logger = logging.getLogger("EmailService")
 
-# --- Configuration (Load from Environment) ---
-SMTP_SERVER = "smtp.gmail.com"
-SMTP_PORT = 587
-# ברירת מחדל: אם לא מוגדר בשרת, המערכת תודיע בלוגים
-SENDER_EMAIL = os.getenv("MAIL_USERNAME", "noreply@leadflow.ai")
-SENDER_PASSWORD = os.getenv("MAIL_PASSWORD", "")
+# --- Configuration Loading ---
+# We retrieve values directly from our settings object (populated by SSM)
+MAIL_USERNAME = settings.MAIL_USERNAME
+MAIL_PASSWORD = settings.MAIL_PASSWORD
+MAIL_FROM = settings.MAIL_FROM
+MAIL_PORT = settings.MAIL_PORT
+MAIL_SERVER = settings.MAIL_SERVER
 
-def send_otp_email(to_email: str, otp_code: str):
-    """
-    Sends an OTP code via SMTP (Gmail/Outlook/AWS SES).
-    This function is blocking, so it should be run in BackgroundTasks.
-    """
-    if not SENDER_PASSWORD:
-        logger.warning("⚠️ MAIL_PASSWORD not set! OTP will strictly be logged only.")
-        logger.info(f"CONFIDENTIAL OTP for {to_email}: {otp_code}")
-        return
+# Check if credentials exist to avoid runtime crashes
+USE_CREDENTIALS = bool(MAIL_USERNAME and MAIL_PASSWORD)
 
-    try:
-        # Create the email content
-        subject = f"Your Login Code: {otp_code}"
-        body = f"""
+if not USE_CREDENTIALS:
+    logger.warning("⚠️ MAIL_USERNAME or MAIL_PASSWORD missing in SSM. Emails will NOT be sent (Log only).")
+
+# FastAPI-Mail Configuration Object
+# We only initialize this if credentials exist, otherwise FastMail might raise validation errors on init
+conf = None
+if USE_CREDENTIALS:
+    conf = ConnectionConfig(
+        MAIL_USERNAME=MAIL_USERNAME,
+        MAIL_PASSWORD=MAIL_PASSWORD,
+        MAIL_FROM=MAIL_FROM,
+        MAIL_PORT=MAIL_PORT,
+        MAIL_SERVER=MAIL_SERVER,
+        MAIL_STARTTLS=True,      # Typical for Gmail/Outlook (Port 587)
+        MAIL_SSL_TLS=False,      # Typical for Port 465
+        USE_CREDENTIALS=USE_CREDENTIALS,
+        VALIDATE_CERTS=True
+    )
+
+class EmailService:
+    """
+    Asynchronous email service using fastapi-mail.
+    Handles OTPs and File Attachments (PDFs).
+    """
+
+    async def send_otp_email(self, to_email: EmailStr, otp_code: str):
+        """
+        Sends an OTP code asynchronously.
+        """
+        if not USE_CREDENTIALS or not conf:
+            logger.info(f"🛑 [MOCK EMAIL] To: {to_email} | OTP: {otp_code}")
+            return
+
+        # HTML Template for the OTP
+        html_content = f"""
         <html>
           <body style="font-family: Arial, sans-serif; padding: 20px;">
             <h2 style="color: #2c3e50;">LeadFlow AI Security</h2>
@@ -39,22 +66,54 @@ def send_otp_email(to_email: str, otp_code: str):
         </html>
         """
 
-        msg = MIMEMultipart()
-        msg["From"] = f"LeadFlow AI <{SENDER_EMAIL}>"
-        msg["To"] = to_email
-        msg["Subject"] = subject
-        msg.attach(MIMEText(body, "html"))
+        try:
+            message = MessageSchema(
+                subject=f"Your Login Code: {otp_code}",
+                recipients=[to_email],
+                body=html_content,
+                subtype=MessageType.html
+            )
 
-        # Connect to Server
-        server = smtplib.SMTP(SMTP_SERVER, SMTP_PORT)
-        server.starttls() # Secure the connection
-        server.login(SENDER_EMAIL, SENDER_PASSWORD)
-        
-        # Send
-        server.send_message(msg)
-        server.quit()
-        
-        logger.info(f"✅ OTP Email sent successfully to {to_email}")
+            fm = FastMail(conf)
+            await fm.send_message(message)
+            logger.info(f"✅ OTP Email sent successfully to {to_email}")
 
-    except Exception as e:
-        logger.error(f"❌ Failed to send email to {to_email}: {e}")
+        except Exception as e:
+            logger.error(f"❌ Failed to send OTP email: {e}")
+
+    async def send_payment_receipt(self, to_email: EmailStr, pdf_path: str):
+        """
+        Sends a payment receipt or meeting summary with PDF attachment.
+        """
+        if not USE_CREDENTIALS or not conf:
+            logger.info(f"🛑 [MOCK RECEIPT] To: {to_email} | File: {pdf_path}")
+            return
+            
+        if not os.path.exists(pdf_path):
+            logger.error(f"❌ PDF file not found: {pdf_path}")
+            return
+
+        html_content = """
+        <p>Hello,</p>
+        <p>Please find your automated summary/receipt attached.</p>
+        <p>Best regards,<br>LeadFlow AI</p>
+        """
+
+        try:
+            message = MessageSchema(
+                subject="Your Document from LeadFlow AI",
+                recipients=[to_email],
+                body=html_content,
+                subtype=MessageType.html,
+                attachments=[pdf_path] # Auto-handles MIME types
+            )
+
+            fm = FastMail(conf)
+            await fm.send_message(message)
+            logger.info(f"✅ Receipt sent successfully to {to_email}")
+
+        except Exception as e:
+            logger.error(f"❌ Failed to send receipt: {e}")
+
+# Singleton instance to be imported elsewhere
+email_service = EmailService()

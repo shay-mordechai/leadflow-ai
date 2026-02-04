@@ -1,3 +1,4 @@
+# src/config.py
 import os
 import logging
 import requests
@@ -14,12 +15,14 @@ logging.basicConfig(level=logging.INFO)
 
 def load_aws_configurations():
     """
-    Loads secrets from AWS SSM Parameter Store.
+    Loads secrets from AWS SSM Parameter Store into os.environ.
+    This runs before the Settings object is initialized.
     """
     ssm_path = "/leadflow/prod/"
     region = "eu-north-1" 
 
     try:
+        # 1. Detect Region from EC2 Metadata
         token_url = "http://169.254.169.254/latest/api/token"
         headers = {"X-aws-ec2-metadata-token-ttl-seconds": "1"}
         token_response = requests.put(token_url, headers=headers, timeout=0.5)
@@ -35,6 +38,7 @@ def load_aws_configurations():
     except (requests.exceptions.RequestException, requests.exceptions.Timeout):
         logger.info(f"💻 Running Locally. Defaulting to Region: {region}")
 
+    # 2. Load Parameters from SSM
     try:
         ssm_client = boto3.client('ssm', region_name=region)
         paginator = ssm_client.get_paginator('get_parameters_by_path')
@@ -43,6 +47,7 @@ def load_aws_configurations():
         params_loaded = 0
         for page in page_iterator:
             for param in page.get('Parameters', []):
+                # /leadflow/prod/MAIL_PASSWORD -> MAIL_PASSWORD
                 key = param['Name'].split("/")[-1]
                 value = param['Value']
                 os.environ[key] = value
@@ -55,6 +60,7 @@ def load_aws_configurations():
     except Exception as e:
         logger.warning(f"⚠️ SSM Load Failed: {e}")
 
+# Execute Load Logic
 load_dotenv()
 load_aws_configurations()
 
@@ -62,12 +68,12 @@ class Settings(BaseSettings):
     APP_NAME: str = "LeadFlowAI Secure Platform"
     DEBUG: bool = False
     
-    # --- 🔴 THIS WAS MISSING AND CAUSED THE CRASH ---
+    # Feature Flags
     ENABLE_REAL_PHONE_PURCHASE: bool = True
-    # -----------------------------------------------
 
     BASE_URL: str = "https://my-leads.app"
 
+    # Database & Security
     DATABASE_URL: str = Field(..., description="Database connection string")
     SECRET_KEY: str = Field(..., min_length=32)
     ENCRYPTION_KEY: str = Field(...)
@@ -75,10 +81,18 @@ class Settings(BaseSettings):
     ACCESS_TOKEN_EXPIRE_MINUTES: int = 1440 
     ALGORITHM: str = "HS256"
 
+    # AI Keys
     OPENAI_API_KEY: Optional[str] = None
     GOOGLE_API_KEY: Optional[str] = None
     
-    # SignalWire Config
+    # Email Settings (Mapped from SSM)
+    MAIL_USERNAME: Optional[str] = None
+    MAIL_PASSWORD: Optional[str] = None
+    MAIL_FROM: str = "noreply@leadflow.ai"
+    MAIL_PORT: int = 587
+    MAIL_SERVER: str = "smtp.gmail.com"
+
+    # SignalWire / Telephony Config
     SIGNALWIRE_PROJECT_ID: Optional[str] = None
     SIGNALWIRE_AUTH_TOKEN: Optional[str] = None
     SIGNALWIRE_SPACE_URL: Optional[str] = None
