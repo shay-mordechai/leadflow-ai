@@ -1,6 +1,7 @@
 # src/schemas/user.py
 from pydantic import BaseModel, EmailStr, Field, field_validator, model_validator, ConfigDict
 from typing import Optional
+from uuid import UUID
 import re
 
 # --- Constants for Security Regex Patterns ---
@@ -40,6 +41,15 @@ class UserBase(BaseModel):
             return clean_v
         return v
 
+    @field_validator('other_business_type')
+    @classmethod
+    def validate_strict_text(cls, v: str | None):
+        if v:
+            if not re.match(SAFE_TEXT_REGEX, v):
+                raise ValueError("Field contains invalid characters.")
+            v = re.sub(r'[<>]', '', v)
+        return v
+
 # --- Schema for Registration (Input) ---
 class UserCreate(UserBase):
     # Professional English Comment:
@@ -49,6 +59,9 @@ class UserCreate(UserBase):
     @field_validator("password")
     @classmethod
     def validate_password_strength(cls, v):
+        """
+        Enforces strict password policy to prevent brute-force attacks.
+        """
         if len(v) < 12:
             raise ValueError("Password must be at least 12 characters long")
         if not re.search(r"[A-Z]", v):
@@ -65,19 +78,30 @@ class UserCreate(UserBase):
             raise ValueError("Please specify your business type in the text field.")
         return self
 
+# --- Schema for OTP Verification ---
+class VerifyOTP(BaseModel):
+    email: EmailStr
+    otp_code: str = Field(..., min_length=6, max_length=6)
+
 # --- Schema for Reading/Response (The Security Filter) 🛡️ ---
 class UserResponse(BaseModel):
-    id: int # Changed to int to match DB
+    """
+    This is the First Line of Defense.
+    It defines exactly what data is allowed to leave the API.
+    Sensitive fields (password_hash, otp_code, etc.) are strictly excluded.
+    """
+    # Fix: Changed type from 'int' to 'UUID' to match the PostgreSQL database schema
+    id: UUID
     email: EmailStr
     
-    # Secure Handling: Provide both name for Frontend and full_name for API consistency
-    full_name: str = Field(..., alias="name")
+    # Mapping: DB 'name' -> API 'full_name'
+    full_name: str = Field(..., alias="name") 
     name: Optional[str] = None # Support for older Frontend logic
     
     business_name: Optional[str] = None
     business_type: Optional[str] = None
     
-    # Mapping DB 'plan_type' to API 'plan_tier'
+    # Mapping: DB 'plan_type' -> API 'plan_tier'
     plan_tier: str = Field(default="free", alias="plan_type") 
     
     # S3 Integration: URL for profile image stored in AWS S3
@@ -92,4 +116,5 @@ class UserResponse(BaseModel):
             self.name = self.full_name
         return self
 
+    # Pydantic V2 Configuration to work with SQLAlchemy ORM
     model_config = ConfigDict(from_attributes=True, populate_by_name=True)
