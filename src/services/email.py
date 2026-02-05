@@ -4,26 +4,25 @@ import logging
 from typing import List, Optional
 from fastapi_mail import FastMail, MessageSchema, ConnectionConfig, MessageType
 from pydantic import EmailStr
-from src.config import settings  # Pulling configuration from SSM via Pydantic
+from src.config import settings  # Configuration populated from AWS SSM
 
 logger = logging.getLogger("EmailService")
 
 # --- Configuration Loading ---
-# We retrieve values directly from our settings object (populated by SSM)
+# Retrieve SMTP settings from the global settings object
 MAIL_USERNAME = settings.MAIL_USERNAME
 MAIL_PASSWORD = settings.MAIL_PASSWORD
-MAIL_FROM = settings.MAIL_FROM
-MAIL_PORT = settings.MAIL_PORT
+MAIL_FROM = settings.MAIL_FROM or "noreply@leadflow.ai"
+MAIL_PORT = int(settings.MAIL_PORT) if settings.MAIL_PORT else 587
 MAIL_SERVER = settings.MAIL_SERVER
 
-# Check if credentials exist to avoid runtime crashes
+# Safety Check: Verify if SMTP credentials exist to prevent runtime crashes
 USE_CREDENTIALS = bool(MAIL_USERNAME and MAIL_PASSWORD)
 
 if not USE_CREDENTIALS:
     logger.warning("⚠️ MAIL_USERNAME or MAIL_PASSWORD missing in SSM. Emails will NOT be sent (Log only).")
 
-# FastAPI-Mail Configuration Object
-# We only initialize this if credentials exist, otherwise FastMail might raise validation errors on init
+# FastAPI-Mail Connection Object
 conf = None
 if USE_CREDENTIALS:
     conf = ConnectionConfig(
@@ -32,43 +31,53 @@ if USE_CREDENTIALS:
         MAIL_FROM=MAIL_FROM,
         MAIL_PORT=MAIL_PORT,
         MAIL_SERVER=MAIL_SERVER,
-        MAIL_STARTTLS=True,      # Typical for Gmail/Outlook (Port 587)
-        MAIL_SSL_TLS=False,      # Typical for Port 465
+        MAIL_STARTTLS=True,      # Standard for Port 587 (Gmail/Outlook)
+        MAIL_SSL_TLS=False,      # Standard for Port 465
         USE_CREDENTIALS=USE_CREDENTIALS,
         VALIDATE_CERTS=True
     )
 
 class EmailService:
     """
-    Asynchronous email service using fastapi-mail.
-    Handles OTPs and File Attachments (PDFs).
+    Asynchronous email service handler using fastapi-mail.
+    Supports OTP delivery and automated PDF attachments.
     """
 
     async def send_otp_email(self, to_email: EmailStr, otp_code: str):
         """
-        Sends an OTP code asynchronously.
+        Sends a security OTP code for MFA verification.
         """
+        # Fallback to logging if SMTP is not configured
         if not USE_CREDENTIALS or not conf:
             logger.info(f"🛑 [MOCK EMAIL] To: {to_email} | OTP: {otp_code}")
             return
 
-        # HTML Template for the OTP
+        # Modern HTML Template for OTP
         html_content = f"""
         <html>
-          <body style="font-family: Arial, sans-serif; padding: 20px;">
-            <h2 style="color: #2c3e50;">LeadFlow AI Security</h2>
-            <p>Hello,</p>
-            <p>Please use the following code to complete your login:</p>
-            <h1 style="color: #2980b9; letter-spacing: 5px; background: #ecf0f1; padding: 10px; display: inline-block;">{otp_code}</h1>
-            <p>This code is valid for 5 minutes.</p>
-            <p style="font-size: 12px; color: #7f8c8d;">If you did not request this, please ignore this email.</p>
+          <body style="font-family: Arial, sans-serif; padding: 20px; color: #333;">
+            <div style="max-width: 500px; margin: auto; border: 1px solid #eee; padding: 20px; border-radius: 10px;">
+                <h2 style="color: #4F46E5; text-align: center;">LeadFlow AI Security</h2>
+                <p>Hello,</p>
+                <p>Please use the following verification code to access your account:</p>
+                <div style="text-align: center; margin: 30px 0;">
+                    <span style="font-size: 32px; font-weight: bold; letter-spacing: 8px; background: #F3F4F6; padding: 15px 25px; border-radius: 8px; color: #111827;">
+                        {otp_code}
+                    </span>
+                </div>
+                <p>This code is valid for <b>5 minutes</b>.</p>
+                <hr style="border: none; border-top: 1px solid #eee; margin: 20px 0;">
+                <p style="font-size: 11px; color: #6B7280; text-align: center;">
+                    If you did not request this code, please ignore this email or contact support.
+                </p>
+            </div>
           </body>
         </html>
         """
 
         try:
             message = MessageSchema(
-                subject=f"Your Login Code: {otp_code}",
+                subject=f"Login Code: {otp_code}",
                 recipients=[to_email],
                 body=html_content,
                 subtype=MessageType.html
@@ -83,20 +92,20 @@ class EmailService:
 
     async def send_payment_receipt(self, to_email: EmailStr, pdf_path: str):
         """
-        Sends a payment receipt or meeting summary with PDF attachment.
+        Sends a payment receipt or summary with a PDF attachment.
         """
         if not USE_CREDENTIALS or not conf:
             logger.info(f"🛑 [MOCK RECEIPT] To: {to_email} | File: {pdf_path}")
             return
             
         if not os.path.exists(pdf_path):
-            logger.error(f"❌ PDF file not found: {pdf_path}")
+            logger.error(f"❌ Attachment not found: {pdf_path}")
             return
 
         html_content = """
         <p>Hello,</p>
-        <p>Please find your automated summary/receipt attached.</p>
-        <p>Best regards,<br>LeadFlow AI</p>
+        <p>Your requested document (meeting summary or receipt) is attached to this email.</p>
+        <p>Best regards,<br><b>LeadFlow AI Team</b></p>
         """
 
         try:
@@ -105,7 +114,7 @@ class EmailService:
                 recipients=[to_email],
                 body=html_content,
                 subtype=MessageType.html,
-                attachments=[pdf_path] # Auto-handles MIME types
+                attachments=[pdf_path]
             )
 
             fm = FastMail(conf)
@@ -115,5 +124,10 @@ class EmailService:
         except Exception as e:
             logger.error(f"❌ Failed to send receipt: {e}")
 
-# Singleton instance to be imported elsewhere
+# Singleton instance for easy import
 email_service = EmailService()
+
+# --- Hotfix Proxy Function ---
+# This ensures that 'from src.services.email import send_otp_email' works in auth.py
+async def send_otp_email(email: str, otp_code: str):
+    await email_service.send_otp_email(email, otp_code)

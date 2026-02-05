@@ -1,5 +1,5 @@
 # src/schemas/user.py
-from pydantic import BaseModel, EmailStr, Field, field_validator, model_validator
+from pydantic import BaseModel, EmailStr, Field, field_validator, model_validator, ConfigDict
 from typing import Optional
 import re
 
@@ -10,9 +10,7 @@ SAFE_TEXT_REGEX = r"^[a-zA-Zא-ת0-9\s\-\.]+$"
 
 # --- Base Schema (Shared Fields) ---
 class UserBase(BaseModel):
-    # --- THE FIX: Added plan_tier here so UserCreate inherits it ---
     plan_tier: Optional[str] = "starter" 
-    
     email: EmailStr
     full_name: str = Field(..., min_length=2, max_length=50, description="User full name")
     
@@ -71,8 +69,9 @@ class UserCreate(UserBase):
             raise ValueError("Password must contain at least one lowercase letter")
         if not re.search(r"\d", v):
             raise ValueError("Password must contain at least one digit")
-        if not re.search(r"[!@#$%^&*(),.?\":{}|<>]", v):
-            raise ValueError("Password must contain at least one special character")
+        # Optional: Uncomment if you want to force special characters
+        # if not re.search(r"[!@#$%^&*(),.?\":{}|<>]", v):
+        #     raise ValueError("Password must contain at least one special character")
         return v
 
     @model_validator(mode='after')
@@ -90,11 +89,26 @@ class VerifyOTP(BaseModel):
     email: EmailStr
     otp_code: str = Field(..., min_length=6, max_length=6)
 
-# --- Schema for Reading/Response (Output) ---
-class UserRead(UserBase):
-    id: str # Changed to str because we use UUID/GUID
-    is_active: bool
-    # plan_tier is already in UserBase, so it's inherited here automatically
+# --- Schema for Reading/Response (The Security Filter) 🛡️ ---
+class UserResponse(BaseModel):
+    """
+    This is the First Line of Defense.
+    It defines exactly what data is allowed to leave the API.
+    Sensitive fields (password_hash, otp_code, etc.) are strictly excluded.
+    """
+    id: str
+    email: EmailStr
     
-    class Config:
-        from_attributes = True
+    # Mapping: DB 'name' -> API 'full_name'
+    full_name: str = Field(..., alias="name") 
+    
+    business_name: Optional[str] = None
+    business_type: Optional[str] = None
+    
+    # Mapping: DB 'plan_type' -> API 'plan_tier'
+    plan_tier: str = Field(default="free", alias="plan_type") 
+    
+    is_active: bool
+
+    # Pydantic V2 Configuration to work with SQLAlchemy ORM
+    model_config = ConfigDict(from_attributes=True, populate_by_name=True)
