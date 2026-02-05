@@ -2,13 +2,15 @@
 
 **Secure-by-Design Full-Stack SaaS Platform with Multimodal AI Agents.**
 
-LeadFlowAI is a next-generation CRM & AI Agent platform engineered with a **Security-First mindset**. It demonstrates a robust DevSecOps pipeline, utilizing a **Zero Trust** network architecture to eliminate external attack surfaces while providing a modern, reactive user experience.
+LeadFlowAI is a next-generation CRM & AI Agent platform engineered with a **Security-First mindset**. It demonstrates a robust DevSecOps pipeline, utilizing a **Zero Trust** network architecture and **React Server Components (RSC)** to eliminate external attack surfaces while providing a modern, high-performance user experience.
 
 The system features a **Hybrid AI Engine** combining **Local Privacy-First Processing** (Whisper) with Cloud Intelligence (Gemini) to manage bookings, transcribe meetings, and automate customer inquiries via WhatsApp.
 
 ## 🏗️ Security Architecture Overview
 
-The infrastructure creates a "Dark Server" environment. The production server exposes **zero** inbound ports (0.0.0.0/0) to the public internet. All ingress traffic is tunneled and inspected via Cloudflare's Edge Network to the Next.js Frontend, which proxies API requests internally.
+The infrastructure creates a "Dark Server" environment. The production server exposes **zero** inbound ports (0.0.0.0/0) to the public internet. All ingress traffic is tunneled and inspected via Cloudflare's Edge Network to the Next.js Frontend.
+
+The architecture leverages **Next.js 14 App Router**, where the Frontend Server talks directly to the Backend API within the internal Docker network, reducing client-side latency and exposure.
 
 ```mermaid
 graph TD
@@ -24,14 +26,14 @@ graph TD
         Cloudflared -->|localhost:3000| Frontend
         
         subgraph "App Stack (Rootless Podman)"
-            Frontend[Next.js 14 Client]
+            Frontend[Next.js 14 Server (RSC)]
             Backend[FastAPI Service]
             
             Frontend <-->|Internal Docker Network| Backend
         end
         
         Backend -.->|Local Processing| Whisper[Whisper AI (CPU)]
-        Backend -.->|Storage| DB[(SQLite/Postgres)]
+        Backend -.->|Storage| DB[(PostgreSQL)]
     end
 
 ```
@@ -42,18 +44,21 @@ graph TD
 
 * **Attack Surface Reduction:** SSH and HTTP ports (22, 80, 443) are blocked at the AWS Security Group level.
 * **Identity-Aware Proxy (IAP):** SSH access is proxied via `cloudflared`. Authentication requires passing Cloudflare Access policies.
-* **Frontend Proxying:** The Next.js frontend handles all API rewrites, hiding the backend topology from the client browser.
 
-### 2. Hardened Container Runtime
+### 2. Strict Data Sanitization (The "Air Gap")
 
-* **Daemonless & Rootless:** The platform runs on **Podman** instead of Docker to mitigate container breakout vulnerabilities.
-* **Systemd Integration:** Services (`container-leadflow-frontend`, `container-leadflow-backend`) are managed via `systemd` user units, ensuring persistence and auto-recovery.
-* **Immutable Infrastructure:** Containers are ephemeral; state is persisted only in mounted volumes.
+* **Pydantic Response Models:** We implement a strict "First Line of Defense" in the backend. API endpoints use specific Pydantic Output Schemas (`UserResponse`) that automatically strip sensitive fields (password hashes, internal IDs, OTP codes) before serialization.
+* **React Server Components (RSC):** Data fetching occurs server-side. Sensitive business logic remains in the Next.js server environment and is never exposed to the client browser via `useEffect` waterfalls.
 
 ### 3. Secrets Management Strategy
 
-* **No .env Files in Repo:** Production secrets are injected at runtime via CI/CD variables or **AWS Systems Manager (SSM)**.
-* **MFA & OTP:** Custom implementation of Email-based Multi-Factor Authentication.
+* **AWS Systems Manager (SSM):** Production secrets (DB credentials, API Keys, SMTP configs) are stored securely in AWS SSM Parameter Store.
+* **Runtime Injection:** Secrets are loaded directly into the application environment at runtime using `boto3`, ensuring no sensitive data exists in the file system or `.env` files.
+
+### 4. Hardened Container Runtime
+
+* **Daemonless & Rootless:** The platform runs on **Podman** instead of Docker to mitigate container breakout vulnerabilities.
+* **Systemd Integration:** Services are managed via `systemd` user units for persistence and auto-recovery.
 
 ## 🧠 AI & Business Logic
 
@@ -62,17 +67,17 @@ The platform powers a **Smart Business Assistant** capable of:
 * **Local Audio Transcription:** Uses **OpenAI Whisper** running locally on the EC2 instance to transcribe voice notes without third-party data leaks.
 * **Intelligent Reasoning:** Uses **Google Gemini 1.5 Flash** for complex intent analysis and conversation flow.
 * **Automated Documentation:** Generates professional **PDF Meeting Summaries** and receipts automatically using `FPDF`.
-* **WhatsApp Integration:** Full bi-directional integration via Twilio API.
+* **Secure Communications:** Asynchronous email notifications (OTP, Receipts) via `fastapi-mail` and WhatsApp integration via Twilio.
 
 ## 💻 Modern Tech Stack
 
 | Domain | Technologies |
 | --- | --- |
-| **Frontend** | **Next.js 14**, React, TypeScript, Tailwind CSS, Lucide Icons |
-| **Backend** | Python 3.11, **FastAPI**, Pydantic, SQLAlchemy |
+| **Frontend** | **Next.js 14 (App Router / RSC)**, TypeScript, Tailwind CSS, Lucide Icons |
+| **Backend** | Python 3.11, **FastAPI**, Pydantic V2, SQLAlchemy |
 | **AI & NLP** | **Whisper (Local)**, Google Gemini 1.5, FPDF2 |
-| **Infrastructure** | **Podman (Rootless)**, Cloudflare Zero Trust, AWS EC2, GitHub Actions |
-| **Communications** | **FastAPI-Mail**, Twilio API |
+| **Infrastructure** | **Podman (Rootless)**, Cloudflare Zero Trust, **AWS EC2 & SSM** |
+| **Auth & Security** | JWT (Stateless), **MFA (Email OTP)**, BCrypt, RBAC |
 
 ## 🔄 Secure CI/CD Pipeline (DevSecOps)
 
