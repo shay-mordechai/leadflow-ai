@@ -40,15 +40,6 @@ class UserBase(BaseModel):
             return clean_v
         return v
 
-    @field_validator('other_business_type')
-    @classmethod
-    def validate_strict_text(cls, v: str | None):
-        if v:
-            if not re.match(SAFE_TEXT_REGEX, v):
-                raise ValueError("Field contains invalid characters.")
-            v = re.sub(r'[<>]', '', v)
-        return v
-
 # --- Schema for Registration (Input) ---
 class UserCreate(UserBase):
     # Professional English Comment:
@@ -58,9 +49,6 @@ class UserCreate(UserBase):
     @field_validator("password")
     @classmethod
     def validate_password_strength(cls, v):
-        """
-        Enforces strict password policy to prevent brute-force attacks.
-        """
         if len(v) < 12:
             raise ValueError("Password must be at least 12 characters long")
         if not re.search(r"[A-Z]", v):
@@ -69,46 +57,39 @@ class UserCreate(UserBase):
             raise ValueError("Password must contain at least one lowercase letter")
         if not re.search(r"\d", v):
             raise ValueError("Password must contain at least one digit")
-        # Optional: Uncomment if you want to force special characters
-        # if not re.search(r"[!@#$%^&*(),.?\":{}|<>]", v):
-        #     raise ValueError("Password must contain at least one special character")
         return v
 
     @model_validator(mode='after')
     def check_other_business_type(self):
-        b_type = self.business_type
-        other_type = self.other_business_type
-
-        if b_type == 'Other' and not other_type:
+        if self.business_type == 'Other' and not self.other_business_type:
             raise ValueError("Please specify your business type in the text field.")
-        
         return self
-
-# --- Schema for OTP Verification ---
-class VerifyOTP(BaseModel):
-    email: EmailStr
-    otp_code: str = Field(..., min_length=6, max_length=6)
 
 # --- Schema for Reading/Response (The Security Filter) 🛡️ ---
 class UserResponse(BaseModel):
-    """
-    This is the First Line of Defense.
-    It defines exactly what data is allowed to leave the API.
-    Sensitive fields (password_hash, otp_code, etc.) are strictly excluded.
-    """
-    id: str
+    id: int # Changed to int to match DB
     email: EmailStr
     
-    # Mapping: DB 'name' -> API 'full_name'
-    full_name: str = Field(..., alias="name") 
+    # Secure Handling: Provide both name for Frontend and full_name for API consistency
+    full_name: str = Field(..., alias="name")
+    name: Optional[str] = None # Support for older Frontend logic
     
     business_name: Optional[str] = None
     business_type: Optional[str] = None
     
-    # Mapping: DB 'plan_type' -> API 'plan_tier'
+    # Mapping DB 'plan_type' to API 'plan_tier'
     plan_tier: str = Field(default="free", alias="plan_type") 
+    
+    # S3 Integration: URL for profile image stored in AWS S3
+    profile_image_url: Optional[str] = None
     
     is_active: bool
 
-    # Pydantic V2 Configuration to work with SQLAlchemy ORM
+    @model_validator(mode='after')
+    def sync_name_fields(self):
+        # Ensure 'name' field is populated from 'full_name' alias if missing
+        if not self.name:
+            self.name = self.full_name
+        return self
+
     model_config = ConfigDict(from_attributes=True, populate_by_name=True)
