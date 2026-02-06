@@ -107,6 +107,9 @@ class UserResponse(BaseModel):
     # S3 Integration: URL for profile image stored in AWS S3
     profile_image_url: Optional[str] = None
     
+    # Twilio Integration: Check if user has purchased a number
+    assigned_phone: Optional[str] = None
+    
     is_active: bool
 
     @model_validator(mode='after')

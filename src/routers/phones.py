@@ -1,113 +1,101 @@
 # src/routers/phones.py
 import logging
-from typing import List, Dict, Any, Optional
+from typing import List, Optional
 from fastapi import APIRouter, Depends, HTTPException, Query, Body
 from pydantic import BaseModel, Field
+from sqlalchemy.orm import Session
 
-# Ensure these modules exist in your project structure
+from src.database.session import get_db
 from src.security.dependencies import get_current_user
-from src.database.models import User
-from src.services.phone_service import phone_service 
+from src.database.models import User, PhoneNumber
+# Import the provider directly
+from src.services.providers.twilio import twilio_provider 
 
 router = APIRouter()
 logger = logging.getLogger("PhoneSystem")
 
-# --- Security & Validation Models ---
+# --- Validation Models ---
 
-class PhoneNumber(BaseModel):
+class PhoneResult(BaseModel):
     number: str
-    country: str = "US"
-    # Professional English Comment:
-    # Added default values to prevent API validation errors if the provider 
-    # (or Mock service) returns incomplete data.
-    capabilities: List[str] = Field(default_factory=lambda: ["voice", "sms", "mms"])
+    friendly_name: Optional[str] = None
+    locality: Optional[str] = None
+    country: str = "IL"
     price_monthly: float = 1.00
-    provider: str = "signalwire"
+    capabilities: List[str] = []
+    provider: str = "twilio"
 
 class PurchaseRequest(BaseModel):
-    # Field validation prevents empty strings or super long inputs (SAST protection)
-    phone_number: str = Field(..., min_length=10, max_length=20, description="E.164 formatted phone number")
-    friendly_name: str = Field("My Studio Line", max_length=50)
+    phone_number: str = Field(..., min_length=10, max_length=20, description="E.164 format")
+    country_code: str = "IL"
 
 # --- Routes ---
 
-@router.get("/available", response_model=List[PhoneNumber])
+@router.get("/available", response_model=List[PhoneResult])
 async def search_available_phones(
-    country_code: str = Query("US", min_length=2, max_length=2, pattern="^[A-Z]{2}$"), # Regex validation
-    area_code: Optional[str] = Query(None, min_length=3, max_length=3),
+    country_code: str = Query("IL", min_length=2, max_length=2),
+    contains: Optional[str] = Query(None, min_length=2, max_length=10),
     user: User = Depends(get_current_user)
 ):
     """
-    Returns REAL available numbers from SignalWire/Twilio (with markup).
-    Defaults to US for testing.
+    Returns available numbers from Twilio.
     """
     logger.info(f"User {user.id} searching for numbers in {country_code}")
     
     try:
-        # Delegate to the Service Manager
-        raw_results = await phone_service.search_best_numbers(country_code, area_code)
-        
-        # Professional English Comment:
-        # Normalize data to ensure it strictly matches the Pydantic schema.
-        # This prevents 500 errors if the provider omits optional fields.
-        normalized_results = []
-        for item in raw_results:
-            # Handle case where item might be a dict or an object
-            data = item.dict() if hasattr(item, 'dict') else item
-            
-            normalized_results.append(PhoneNumber(
-                number=data.get("number"),
-                country=data.get("country", country_code),
-                capabilities=data.get("capabilities", ["voice", "sms"]),
-                price_monthly=float(data.get("price_monthly", 1.00)),
-                provider=data.get("provider", "signalwire")
-            ))
-            
-        return normalized_results
+        results = twilio_provider.search_numbers(
+            country_code=country_code, 
+            contains=contains
+        )
+        return results
 
     except Exception as e:
-        logger.error(f"Search failed for user {user.id}: {e}")
-        # Return empty list instead of crashing to allow UI to handle gracefully
+        logger.error(f"Search failed: {e}")
+        # Return empty list to prevent frontend crash
         return []
 
 @router.post("/purchase")
 async def purchase_phone_number(
     request: PurchaseRequest,
+    db: Session = Depends(get_db),
     user: User = Depends(get_current_user)
 ):
     """
-    Buys a number and immediately configures the AI Webhooks.
-    SECURED: Only allows 'premium' or 'PRO' users to purchase.
+    Buys a number via Twilio and assigns it to the User in the DB.
     """
-    # Professional English Comment:
-    # Access User attributes safely (assuming SQLAlchemy model).
-    # We allow 'premium' or 'PRO' (case-insensitive) to be safe.
-    plan = str(user.plan_tier).lower() if hasattr(user, "plan_tier") else "free"
+    # 1. Check if user already has a number
+    existing_phone = db.query(PhoneNumber).filter(PhoneNumber.owner_id == user.id).first()
+    if existing_phone:
+        raise HTTPException(status_code=400, detail="You already have an active phone number.")
 
-    # --- SECURITY GATE: BUSINESS LOGIC CHECK ---
-    if plan not in ["premium", "pro"]:
-        logger.warning(f"⛔ Blocked purchase attempt by FREE user: {user.id}")
-        raise HTTPException(
-            status_code=403, 
-            detail="Purchase restricted to Premium subscribers. Please upgrade your plan."
-        )
-    # -------------------------------------------
-
-    logger.info(f"User {user.id} (Plan: {plan}) initiating purchase for {request.phone_number}")
+    logger.info(f"User {user.id} purchasing {request.phone_number}")
     
     try:
-        result = await phone_service.purchase_number(
-            phone_number=request.phone_number, 
-            user_id=str(user.id),
-            friendly_name=request.friendly_name
+        # 2. Execute Purchase on Twilio
+        provider_id = twilio_provider.buy_number(
+            phone_number=request.phone_number,
+            friendly_name=f"LeadFlow_{user.business_name or user.name}"
         )
         
-        if result.get("status") == "failed":
-            logger.error(f"Purchase failed for user {user.id}: {result.get('detail')}")
-            raise HTTPException(status_code=500, detail=result.get("detail", "Purchase failed"))
-            
-        return result
+        if not provider_id:
+            raise HTTPException(status_code=500, detail="Failed to purchase number from provider.")
+
+        # 3. Save to Database
+        new_phone = PhoneNumber(
+            number=request.phone_number,
+            provider="twilio",
+            provider_id=provider_id,
+            owner_id=user.id,
+            is_active=True,
+            country_code=request.country_code
+        )
+        db.add(new_phone)
+        db.commit()
+        db.refresh(new_phone)
+        
+        return {"status": "success", "phone_number": new_phone.number}
         
     except Exception as e:
         logger.error(f"Purchase exception: {e}")
-        raise HTTPException(status_code=500, detail="Internal Purchase Error")
+        db.rollback()
+        raise HTTPException(status_code=500, detail=str(e))
