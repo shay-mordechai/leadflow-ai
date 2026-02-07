@@ -1,15 +1,3 @@
-# ==============================================================================
-# ⚠️  CRITICAL CONFIGURATION WARNING ⚠️
-# ==============================================================================
-# Target Server OS: Amazon Linux 2023
-# Container Runtime: PODMAN
-# Architecture: Zero Trust (Cloudflare Tunnel)
-#
-# CRITICAL NOTE ON DEPLOYMENT LOGIC:
-# The Cloudflare Tunnel runs as a SYSTEM service (container-cloudflared_host).
-# This deployment script manages the APP service (leadflow-ai) as a USER service.
-# We must NEVER stop the tunnel, or SSH access will be lost immediately.
-# ==============================================================================
 name: LeadFlow Production Deploy
 
 on:
@@ -23,8 +11,46 @@ env:
   AWS_REGION: eu-north-1
 
 jobs:
-  # --- JOB 1: BUILD BACKEND (Python) ---
+  # --- JOB 1: RUN TESTS (החדש!) ---
+  test-backend:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v3
+
+      - name: Set up Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: '3.11' 
+
+      - name: Install Dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+          pip install pytest httpx # התקנת כלי הבדיקה
+
+      - name: Run Pytest
+        env:
+          # משתני סביבה פיקטיביים לטובת הטסט (הוא משתמש ב-Memory DB)
+          APP_ENV: testing
+          SECRET_KEY: testing_secret_key_123
+          DATABASE_URL: sqlite:///:memory:
+          AWS_REGION: eu-north-1
+          # הוסף משתנים אחרים אם הקוד דורש אותם כדי לא לקרוס בעלייה
+        run: |
+          # הרצת הטסטים. מוודא שהקובץ נמצא בתיקיית tests או בשורש
+          if [ -f "tests/test_flow.py" ]; then
+            pytest tests/test_flow.py -v
+          elif [ -f "test_flow.py" ]; then
+            pytest test_flow.py -v
+          else
+            echo "❌ Test file not found!"
+            exit 1
+          fi
+
+  # --- JOB 2: BUILD BACKEND (Only if tests pass) ---
   build-backend:
+    needs: [test-backend] # חוסם את הבנייה אם הטסטים נכשלו
     runs-on: ubuntu-latest
     permissions:
       contents: read
@@ -48,8 +74,9 @@ jobs:
           push: true
           tags: ${{ env.REGISTRY }}/${{ env.IMAGE_BACKEND }}:${{ github.sha }}
 
-  # --- JOB 2: BUILD FRONTEND (Next.js) ---
+  # --- JOB 3: BUILD FRONTEND ---
   build-frontend:
+    # הטסטים של הבקנד פחות קריטיים לפרונט, אבל אפשר להוסיף תלות אם רוצים
     runs-on: ubuntu-latest
     permissions:
       contents: read
@@ -73,7 +100,7 @@ jobs:
           push: true
           tags: ${{ env.REGISTRY }}/${{ env.IMAGE_FRONTEND }}:${{ github.sha }}
 
-  # --- JOB 3: DEPLOY BOTH TO EC2 ---
+  # --- JOB 4: DEPLOY BOTH TO EC2 ---
   deploy:
     needs: [build-backend, build-frontend]
     runs-on: ubuntu-latest
@@ -101,72 +128,64 @@ jobs:
           set -e
 
           TAG="${{ github.sha }}"
-          IMG_BACKEND="${{ env.REGISTRY }}/${{ env.IMAGE_BACKEND }}:$TAG"
-          IMG_FRONTEND="${{ env.REGISTRY }}/${{ env.IMAGE_FRONTEND }}:$TAG"
+          IMG_BACKEND="${{ env.REGISTRY }}/${{ env.IMAGE_BACKEND }}:\$TAG"
+          IMG_FRONTEND="${{ env.REGISTRY }}/${{ env.IMAGE_FRONTEND }}:\$TAG"
           
-          # Enable user persistence (Runs containers after logout)
+          # Enable user persistence
           sudo loginctl enable-linger ec2-user
 
-          # 1. Prepare Host Directories (Prevent "File not found" errors)
+          # 1. Prepare Host Directories
           mkdir -p ~/leadflow-ai/storage
-          touch ~/leadflow-ai/leads.db # Ensure DB file exists so it's mounted as file, not dir
+          touch ~/leadflow-ai/leads.db 
 
           # 2. Login & Clean
           echo "${{ secrets.GITHUB_TOKEN }}" | podman login ghcr.io -u ${{ github.actor }} --password-stdin
-          
-          # Aggressive cleanup to prevent Disk Full errors
           podman image prune -a -f --filter "until=1h" || true
           
           # 3. Pull New Images
           echo "⬇️ Pulling Images..."
-          podman pull $IMG_BACKEND
-          podman pull $IMG_FRONTEND
+          podman pull \$IMG_BACKEND
+          podman pull \$IMG_FRONTEND
 
-          # 4. Stop Old Services & CLEANUP (The Fix)
+          # 4. Stop Old Services & CLEANUP
           echo "🔄 Stopping old services..."
-          
-          # A. Tell Systemd to stop managing them properly
           systemctl --user stop container-leadflow-backend || true
           systemctl --user stop container-leadflow-frontend || true
           systemctl --user reset-failed || true
-
-          # B. Force delete containers
           podman rm -f leadflow-backend leadflow-frontend || true
-
-          # C. CRITICAL: Kill any Zombie processes holding the ports
-          # (This prevents "Address already in use" errors)
+          
+          # Critical Zombie Kill
           sudo fuser -k 8000/tcp || true
           sudo fuser -k 3000/tcp || true
           
-          # 5. DNS Fix (Critical for AWS/Fedora interaction)
+          # 5. DNS Fix
           echo 'nameserver 8.8.8.8' > /tmp/resolv.conf.override
 
           # 6. Run BACKEND
-          # REMOVED: --env-file (We use AWS SSM now)
           echo "🚀 Starting Backend..."
-          podman run -d \
-            --name leadflow-backend \
-            --network host \
-            -v /tmp/resolv.conf.override:/etc/resolv.conf:Z \
-            --restart always \
-            -e AWS_REGION=${{ env.AWS_REGION }} \
-            -e APP_ENV=production \
-            -v ~/leadflow-ai/storage:/app/storage:Z \
-            -v ~/leadflow-ai/leads.db:/app/leads.db:Z \
-            $IMG_BACKEND
+          podman run -d \\
+            --name leadflow-backend \\
+            --network host \\
+            -v /tmp/resolv.conf.override:/etc/resolv.conf:Z \\
+            --restart always \\
+            -e AWS_REGION=${{ env.AWS_REGION }} \\
+            -e APP_ENV=production \\
+            -v ~/leadflow-ai/storage:/app/storage:Z \\
+            -v ~/leadflow-ai/leads.db:/app/leads.db:Z \\
+            \$IMG_BACKEND
 
           # 7. Run FRONTEND
           echo "🚀 Starting Frontend..."
-          podman run -d \
-            --name leadflow-frontend \
-            --network host \
-            -v /tmp/resolv.conf.override:/etc/resolv.conf:Z \
-            --restart always \
-            -e NEXT_PUBLIC_API_URL=https://my-leads.app \
-            -e INTERNAL_API_URL=http://127.0.0.1:8000 \
-            $IMG_FRONTEND
+          podman run -d \\
+            --name leadflow-frontend \\
+            --network host \\
+            -v /tmp/resolv.conf.override:/etc/resolv.conf:Z \\
+            --restart always \\
+            -e NEXT_PUBLIC_API_URL=https://my-leads.app \\
+            -e INTERNAL_API_URL=http://127.0.0.1:8000 \\
+            \$IMG_FRONTEND
 
-          # 8. Persistence (Systemd)
+          # 8. Persistence
           mkdir -p ~/.config/systemd/user/
           podman generate systemd --new --files --name leadflow-backend > ~/.config/systemd/user/container-leadflow-backend.service
           podman generate systemd --new --files --name leadflow-frontend > ~/.config/systemd/user/container-leadflow-frontend.service
