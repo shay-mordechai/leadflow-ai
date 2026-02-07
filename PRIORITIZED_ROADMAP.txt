@@ -1,0 +1,82 @@
+# 🎯 LeadFlow AI - Strategic Execution Plan
+# Based on "Super-Dev" Roadmap + Business Logic Gaps
+# Status: Ready for Implementation
+
+# ==============================================================================
+# 🚨 TIER 1: IMMEDIATE / CRITICAL (The "Must Haves")
+# Focus: Security holes, Data Loss Prevention, & Billing Integrity.
+# If these are missing, you are losing data or money.
+# ==============================================================================
+
+1.  [Security] Webhook Idempotency: Prevent double-charging/processing if Morning/Twilio sends a webhook twice.
+2.  [Ops] Sentry Integration: Real-time alerts on code crashes. You can't fix what you don't see.
+3.  [Reliability] Graceful Shutdown: Handle SIGTERM so AI doesn't cut off mid-sentence during deployment.
+4.  [Security] Rate Limiting (Auth & API): Stop brute-force attacks on login and expensive API calls.
+5.  [Business] Trial Expiration Job: Cron job to actually downgrade users when trial ends (Money enforcement).
+6.  [Database] Database Migrations (Alembic): Stop editing DB manually. Version control for your schema is mandatory.
+7.  [Logic] Timezone Handling: Store all times in UTC, display in User Local Time. Crucial for scheduling. (NEW)
+8.  [Security] HSTS & CSP Headers: Basic hardening against XSS and MITM attacks.
+9.  [Reliability] Dead Letter Queue (DLQ): Save failed webhooks to DB so no lead is ever "lost".
+10. [Database] Indexing Strategy: Add indexes on `email`, `phone`, `created_at` to prevent slow queries.
+
+# ==============================================================================
+# 📅 TIER 2: SHORT TERM (Next 2-4 Weeks)
+# Focus: User Experience (UX), SEO, and Basic Growth.
+# These make the product feel "Real" and professional.
+# ==============================================================================
+
+11. [Marketing] SEO Sitemap & Robots.txt: Generate XML sitemap so Google indexes your public pages. (NEW)
+12. [Business] Invoice Generation: Auto-email PDF receipts/invoices on payment.
+13. [UX] Optimistic UI: Frontend shows "Message Sent" instantly instead of waiting for server response.
+14. [UX] Toast Notifications: Standardized popups for Success/Error messages.
+15. [DX] Structured Logging (JSON): Make logs searchable/filterable in CloudWatch/Files.
+16. [Security] Audit Logging: Record "User X changed Setting Y" for security and debug.
+17. [Performance] Gzip/Brotli Compression: Shrink API responses for faster load times.
+18. [Business] Usage Limits: Enforce "50 AI Messages/Month" limits based on plan.
+19. [AI] Feedback Loop: Thumbs Up/Down on AI replies to improve the model later.
+20. [Legal] KYC (Know Your Customer): Logic to handle Twilio regulatory bundles/identity proof. (NEW)
+21. [Support] Chat Widget: Embed Intercom/Crisp/WhatsApp button for support. (NEW)
+
+# ==============================================================================
+# 🚀 TIER 3: MEDIUM TERM (Months 2-3)
+# Focus: Optimization, Analytics, and Advanced Features.
+# These help you scale from 10 users to 1000.
+# ==============================================================================
+
+22. [Analytics] Product Analytics (PostHog): Track retention and conversion funnels.
+23. [AI] Streaming Responses (SSE): Typewriter effect for AI (feels much faster).
+24. [AI] Semantic Caching: Cache answers to common questions to save API costs.
+25. [Database] Connection Pooling Tuning: Optimize SQLAlchemy for higher concurrency.
+26. [Security] API Key Rotation: Allow changing internal secrets without downtime.
+27. [Business] Coupon Logic: Marketing codes for discounts.
+28. [Business] Dunning Management: Automated emails when credit card charge fails.
+29. [UX] Skeleton Loaders: Better loading state than spinning circles.
+30. [UX] Dark/Light Mode: Because devs love dark mode.
+31. [Performance] Background Tasks (Worker): Move heavy AI/Email logic to a separate worker process.
+
+# ==============================================================================
+# 🔮 TIER 4: LONG TERM / ENTERPRISE (Phase 4+)
+# Focus: "Nice to Have" or "Big Company Problems".
+# Implement these only when customers ask for them.
+# ==============================================================================
+
+32. [AI] RAG (Vector DB): Upload PDF documents for the AI to learn from.
+33. [AI] Voice Activity Detection (VAD): For voice conversations on the web.
+34. [AI] Multi-Modal Inputs: Handling images sent by leads.
+35. [Compliance] GDPR Export/Delete: Automated "Right to be forgotten".
+36. [Enterprise] Team Management: Multiple users per business account.
+37. [Enterprise] White Labeling: Custom domains for clients.
+38. [UX] PWA (Installable App): Mobile home screen icon.
+39. [UX] Internationalization (i18n): Full English/Hebrew toggle.
+40. [Ops] Blue-Green Deployment: Zero downtime updates (requires more servers).
+
+# ==============================================================================
+# 🗑️ DEPRECATED / NOT NEEDED YET (The "Ignore List")
+# Reasons: Over-engineering, irrelevant for single-server architecture.
+# ==============================================================================
+# - Terraform/Pulumi (Too complex for 1 server)
+# - Chaos Engineering (Netflix scale problem)
+# - SSO / SAML (Enterprise only)
+# - Heatmaps (Focus on talking to users first)
+# - Cost Anomaly Detection (Budget is low anyway)
+# - Multi-Region Support (Stay in eu-north-1 for now)

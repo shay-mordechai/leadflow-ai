@@ -101,8 +101,8 @@ jobs:
           set -e
 
           TAG="${{ github.sha }}"
-          IMG_BACKEND="${{ env.REGISTRY }}/${{ env.IMAGE_BACKEND }}:\$TAG"
-          IMG_FRONTEND="${{ env.REGISTRY }}/${{ env.IMAGE_FRONTEND }}:\$TAG"
+          IMG_BACKEND="${{ env.REGISTRY }}/${{ env.IMAGE_BACKEND }}:$TAG"
+          IMG_FRONTEND="${{ env.REGISTRY }}/${{ env.IMAGE_FRONTEND }}:$TAG"
           
           # Enable user persistence (Runs containers after logout)
           sudo loginctl enable-linger ec2-user
@@ -119,41 +119,52 @@ jobs:
           
           # 3. Pull New Images
           echo "⬇️ Pulling Images..."
-          podman pull \$IMG_BACKEND
-          podman pull \$IMG_FRONTEND
+          podman pull $IMG_BACKEND
+          podman pull $IMG_FRONTEND
 
-          # 4. Stop Old Services
-          echo "🔄 Restarting services..."
-          # Delete only the app containers, keep the Tunnel alive!
+          # 4. Stop Old Services & CLEANUP (The Fix)
+          echo "🔄 Stopping old services..."
+          
+          # A. Tell Systemd to stop managing them properly
+          systemctl --user stop container-leadflow-backend || true
+          systemctl --user stop container-leadflow-frontend || true
+          systemctl --user reset-failed || true
+
+          # B. Force delete containers
           podman rm -f leadflow-backend leadflow-frontend || true
 
+          # C. CRITICAL: Kill any Zombie processes holding the ports
+          # (This prevents "Address already in use" errors)
+          sudo fuser -k 8000/tcp || true
+          sudo fuser -k 3000/tcp || true
+          
           # 5. DNS Fix (Critical for AWS/Fedora interaction)
           echo 'nameserver 8.8.8.8' > /tmp/resolv.conf.override
 
           # 6. Run BACKEND
           # REMOVED: --env-file (We use AWS SSM now)
           echo "🚀 Starting Backend..."
-          podman run -d \\
-            --name leadflow-backend \\
-            --network host \\
-            -v /tmp/resolv.conf.override:/etc/resolv.conf:Z \\
-            --restart always \\
-            -e AWS_REGION=${{ env.AWS_REGION }} \\
-            -e APP_ENV=production \\
-            -v ~/leadflow-ai/storage:/app/storage:Z \\
-            -v ~/leadflow-ai/leads.db:/app/leads.db:Z \\
-            \$IMG_BACKEND
+          podman run -d \
+            --name leadflow-backend \
+            --network host \
+            -v /tmp/resolv.conf.override:/etc/resolv.conf:Z \
+            --restart always \
+            -e AWS_REGION=${{ env.AWS_REGION }} \
+            -e APP_ENV=production \
+            -v ~/leadflow-ai/storage:/app/storage:Z \
+            -v ~/leadflow-ai/leads.db:/app/leads.db:Z \
+            $IMG_BACKEND
 
           # 7. Run FRONTEND
           echo "🚀 Starting Frontend..."
-          podman run -d \\
-            --name leadflow-frontend \\
-            --network host \\
-            -v /tmp/resolv.conf.override:/etc/resolv.conf:Z \\
-            --restart always \\
-            -e NEXT_PUBLIC_API_URL=https://my-leads.app \\
-            -e INTERNAL_API_URL=http://127.0.0.1:8000 \\
-            \$IMG_FRONTEND
+          podman run -d \
+            --name leadflow-frontend \
+            --network host \
+            -v /tmp/resolv.conf.override:/etc/resolv.conf:Z \
+            --restart always \
+            -e NEXT_PUBLIC_API_URL=https://my-leads.app \
+            -e INTERNAL_API_URL=http://127.0.0.1:8000 \
+            $IMG_FRONTEND
 
           # 8. Persistence (Systemd)
           mkdir -p ~/.config/systemd/user/
@@ -165,3 +176,8 @@ jobs:
 
           echo "✅ Deployment Successful!"
           EOF
+
+      - name: Execute Deployment
+        run: |
+          scp deploy_script.sh production:~/deploy.sh
+          ssh production "chmod +x ~/deploy.sh && ~/deploy.sh"
