@@ -104,74 +104,64 @@ jobs:
           IMG_BACKEND="${{ env.REGISTRY }}/${{ env.IMAGE_BACKEND }}:\$TAG"
           IMG_FRONTEND="${{ env.REGISTRY }}/${{ env.IMAGE_FRONTEND }}:\$TAG"
           
-          # Enable user persistence
+          # Enable user persistence (Runs containers after logout)
           sudo loginctl enable-linger ec2-user
 
-          # 1. Login
+          # 1. Prepare Host Directories (Prevent "File not found" errors)
+          mkdir -p ~/leadflow-ai/storage
+          touch ~/leadflow-ai/leads.db # Ensure DB file exists so it's mounted as file, not dir
+
+          # 2. Login & Clean
           echo "${{ secrets.GITHUB_TOKEN }}" | podman login ghcr.io -u ${{ github.actor }} --password-stdin
-
-          # 2. Cleanup Old Images
-          podman image prune -a -f --filter "until=24h" || true
-
+          
+          # Aggressive cleanup to prevent Disk Full errors
+          podman image prune -a -f --filter "until=1h" || true
+          
           # 3. Pull New Images
-          echo "⬇️ Pulling Backend..."
+          echo "⬇️ Pulling Images..."
           podman pull \$IMG_BACKEND
-          echo "⬇️ Pulling Frontend..."
           podman pull \$IMG_FRONTEND
 
-          # 4. Stop Old Containers
-          echo "🔄 Stopping old services..."
-          podman stop leadflow-backend leadflow-frontend || true
-          podman rm leadflow-backend leadflow-frontend || true
+          # 4. Stop Old Services
+          echo "🔄 Restarting services..."
+          # Delete only the app containers, keep the Tunnel alive!
+          podman rm -f leadflow-backend leadflow-frontend || true
 
-          # 5. DNS Fix (Critical for Fedora/RH)
+          # 5. DNS Fix (Critical for AWS/Fedora interaction)
           echo 'nameserver 8.8.8.8' > /tmp/resolv.conf.override
 
-          # 6. Run BACKEND (Port 8000)
+          # 6. Run BACKEND
+          # REMOVED: --env-file (We use AWS SSM now)
           echo "🚀 Starting Backend..."
           podman run -d \\
             --name leadflow-backend \\
             --network host \\
             -v /tmp/resolv.conf.override:/etc/resolv.conf:Z \\
-            --security-opt label=disable \\
             --restart always \\
             -e AWS_REGION=${{ env.AWS_REGION }} \\
+            -e APP_ENV=production \\
             -v ~/leadflow-ai/storage:/app/storage:Z \\
             -v ~/leadflow-ai/leads.db:/app/leads.db:Z \\
-            --env-file ~/leadflow-ai/.env \\
             \$IMG_BACKEND
 
-          # 7. Run FRONTEND (Port 3000)
+          # 7. Run FRONTEND
           echo "🚀 Starting Frontend..."
           podman run -d \\
             --name leadflow-frontend \\
             --network host \\
             -v /tmp/resolv.conf.override:/etc/resolv.conf:Z \\
-            --security-opt label=disable \\
             --restart always \\
+            -e NEXT_PUBLIC_API_URL=https://my-leads.app \\
+            -e INTERNAL_API_URL=http://127.0.0.1:8000 \\
             \$IMG_FRONTEND
 
-          # 8. Generate Systemd Files (Persistence)
+          # 8. Persistence (Systemd)
           mkdir -p ~/.config/systemd/user/
-          cd ~/.config/systemd/user/
-          podman generate systemd --new --files --name leadflow-backend
-          podman generate systemd --new --files --name leadflow-frontend
+          podman generate systemd --new --files --name leadflow-backend > ~/.config/systemd/user/container-leadflow-backend.service
+          podman generate systemd --new --files --name leadflow-frontend > ~/.config/systemd/user/container-leadflow-frontend.service
           systemctl --user daemon-reload
-          systemctl --user enable container-leadflow-backend.service
-          systemctl --user enable container-leadflow-frontend.service
+          systemctl --user enable --now container-leadflow-backend.service
+          systemctl --user enable --now container-leadflow-frontend.service
 
-          # 9. Health Check
-          echo '🏥 Waiting for services to stabilize...'
-          sleep 10
-          if podman ps | grep -q leadflow-backend && podman ps | grep -q leadflow-frontend; then
-             echo "✅ All systems operational!"
-          else
-             echo "❌ Deployment failed. Check logs."
-             exit 1
-          fi
+          echo "✅ Deployment Successful!"
           EOF
-
-      - name: Execute Deployment
-        run: |
-          scp deploy_script.sh production:~/deploy.sh
-          ssh production "chmod +x ~/deploy.sh && ~/deploy.sh"

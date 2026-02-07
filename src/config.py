@@ -15,13 +15,20 @@ class Settings(BaseSettings):
     # Database
     DATABASE_URL: str
     
+    # Infrastructure
+    S3_BUCKET_NAME: str = \"leadflow-user-assets-prod\"
+    
     # External APIs
     OPENAI_API_KEY: str = \"\"
     GOOGLE_API_KEY: str = \"\"
+    
+    # Twilio
     TWILIO_ACCOUNT_SID: str = \"\"
     TWILIO_AUTH_TOKEN: str = \"\"
     
-    # Webhooks & Security
+    # Meta / WhatsApp
+    META_ACCESS_TOKEN: str = \"\"
+    WHATSAPP_PHONE_ID: str = \"\"
     WHATSAPP_VERIFY_TOKEN: str = \"my_secure_token\"
     
     # Email
@@ -39,20 +46,24 @@ class Settings(BaseSettings):
         # Runtime Injection from AWS SSM
         region = \"eu-north-1\"
         try:
-            ssm = boto3.client(\"ssm\", region_name=region)
-            path = \"/leadflow/prod/\"
-            response = ssm.get_parameters_by_path(
-                Path=path, Recursive=True, WithDecryption=True
-            )
-            
-            for param in response.get(\"Parameters\", []):
-                key = param[\"Name\"].replace(path, \"\")
-                if key not in os.environ:
-                    os.environ[key] = param[\"Value\"]
-            
-            logger.info(f\"✅ Successfully loaded {len(response.get('Parameters', []))} secrets from SSM.\")
+            # Only attempt SSM if in production environment or forced
+            if os.getenv(\"APP_ENV\") == \"production\" or True:
+                ssm = boto3.client(\"ssm\", region_name=region)
+                path = \"/leadflow/prod/\"
+                
+                paginator = ssm.get_paginator('get_parameters_by_path')
+                page_iterator = paginator.paginate(Path=path, Recursive=True, WithDecryption=True)
+                
+                count = 0
+                for page in page_iterator:
+                    for param in page.get(\"Parameters\", []):
+                        key = param[\"Name\"].replace(path, \"\")
+                        os.environ[key] = param[\"Value\"]
+                        count += 1
+                
+                logger.info(f\"✅ Loaded {count} secrets from SSM.\")
         except Exception as e:
-            logger.warning(f\"⚠ SSM Load Failed: {e}\")
+            logger.warning(f\"⚠ SSM Load Skipped/Failed: {e}\")
             
         super().__init__(**kwargs)
 

@@ -7,7 +7,6 @@ from fastapi import APIRouter, Depends, HTTPException, status, BackgroundTasks
 from fastapi.security import OAuth2PasswordRequestForm
 from jose import jwt
 from sqlalchemy.orm import Session
-from passlib.context import CryptContext
 
 from src.database.session import get_db
 from src.database.models import User, PhoneNumber, PlanTier
@@ -15,13 +14,11 @@ from src.config import settings
 from src.services.email import send_otp_email 
 from src.schemas.user import UserCreate, UserResponse, VerifyOTP
 from src.security.dependencies import get_current_user
+# Security Fix: Use centralized hashing
+from src.security.hashing import get_hash, verify_hash
 
 router = APIRouter()
 logger = logging.getLogger(\"AuthSecurity\")
-pwd_context = CryptContext(schemes=[\"bcrypt\"], deprecated=\"auto\")
-
-def get_hash(password): return pwd_context.hash(password)
-def verify_password(plain, hashed): return pwd_context.verify(plain, hashed)
 
 def create_access_token(data: dict):
     to_encode = data.copy()
@@ -32,7 +29,7 @@ def create_access_token(data: dict):
 @router.get(\"/me\", response_model=UserResponse)
 async def read_users_me(user: User = Depends(get_current_user), db: Session = Depends(get_db)):
     phone = db.query(PhoneNumber).filter(PhoneNumber.owner_id == user.id).first()
-    user_data = user.__dict__
+    user_data = {c.name: getattr(user, c.name) for c in user.__table__.columns}
     user_data['assigned_phone'] = phone.number if phone else None
     return user_data
 
@@ -42,10 +39,18 @@ async def register(data: UserCreate, db: Session = Depends(get_db)):
         raise HTTPException(status_code=400, detail=\"Email registered\")
     
     tier = PlanTier.PRO if \"PRO\" in (data.plan_tier or \"\").upper() else PlanTier.STARTER
+    
+    # Use centralized get_hash (SHA256 + Bcrypt)
+    secure_hash = get_hash(data.password)
+    
     new_user = User(
-        email=data.email, hashed_password=get_hash(data.password),
-        name=data.full_name, business_name=data.business_name,
-        business_type=data.business_type, plan_tier=tier, is_active=True
+        email=data.email, 
+        hashed_password=secure_hash,
+        name=data.full_name, 
+        business_name=data.business_name,
+        business_type=data.business_type, 
+        plan_tier=tier, 
+        is_active=True
     )
     db.add(new_user)
     db.commit()
@@ -54,10 +59,11 @@ async def register(data: UserCreate, db: Session = Depends(get_db)):
 @router.post(\"/login\")
 async def login(bg_tasks: BackgroundTasks, form: OAuth2PasswordRequestForm = Depends(), db: Session = Depends(get_db)):
     user = db.query(User).filter(User.email == form.username).first()
-    if not user or not verify_password(form.password, user.hashed_password):
+    
+    # Use centralized verify_hash
+    if not user or not verify_hash(form.password, user.hashed_password):
         raise HTTPException(status_code=401, detail=\"Invalid credentials\")
     
-    # Generate OTP
     otp = ''.join(random.choices(string.digits, k=6))
     user.otp_code = otp
     db.commit()

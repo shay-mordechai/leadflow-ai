@@ -7703,6 +7703,173 @@ vonage                                                                          
 ==================== END OF FILE: ./hotfix.tar ====================
 
 
+==================== START OF FILE: ./project_tree.txt ====================
+.
+├── alembic
+│   └── env.py
+├── alembic.ini
+├── cloudflared.rpm
+├── docker-compose.prod.yml
+├── docker-compose.yml
+├── Dockerfile
+├── docs
+│   └── schema_changes.sql
+├── dump_code.py
+├── frontend
+│   ├── actions
+│   │   └── auth.ts
+│   ├── app
+│   │   ├── dashboard
+│   │   │   ├── dashboard-client.tsx
+│   │   │   ├── page.tsx
+│   │   │   └── settings
+│   │   │       ├── page.tsx
+│   │   │       └── settings-form.tsx
+│   │   ├── favicon.ico
+│   │   ├── globals.css
+│   │   ├── layout.tsx
+│   │   ├── login
+│   │   │   ├── login-form.tsx
+│   │   │   └── page.tsx
+│   │   ├── (marketing)
+│   │   │   ├── layout.tsx
+│   │   │   ├── page.tsx
+│   │   │   ├── privacy
+│   │   │   │   └── page.tsx
+│   │   │   └── terms
+│   │   │       └── page.tsx
+│   │   └── register
+│   │       ├── page.tsx
+│   │       └── register-form.tsx
+│   ├── components
+│   │   ├── marketing
+│   │   │   ├── Features.tsx
+│   │   │   ├── Footer.tsx
+│   │   │   ├── Hero.tsx
+│   │   │   ├── Navbar.tsx
+│   │   │   ├── Pricing.tsx
+│   │   │   └── UseCaseExamples.tsx
+│   │   └── ui
+│   │       ├── button.tsx
+│   │       └── input.tsx
+│   ├── Dockerfile
+│   ├── eslint.config.mjs
+│   ├── lib
+│   │   └── utils.ts
+│   ├── next.config.ts
+│   ├── next-env.d.ts
+│   ├── package.json
+│   ├── package-lock.json
+│   ├── postcss.config.mjs
+│   ├── public
+│   │   ├── file.svg
+│   │   ├── globe.svg
+│   │   ├── next.svg
+│   │   ├── vercel.svg
+│   │   └── window.svg
+│   ├── README.md
+│   ├── tree.txt
+│   ├── tsconfig.json
+│   └── types
+│       └── auth.ts
+├── full_codebase.txt
+├── full_project_context.txt
+├── gunicorn_conf.py
+├── hotfix.tar
+├── leads.db
+├── legacy_frontend_archive_20260204_0703
+│   ├── static
+│   │   └── manifest.json
+│   ├── templates
+│   │   ├── base.html
+│   │   ├── contact.html
+│   │   ├── dashboard.html
+│   │   ├── login.html
+│   │   ├── marketing.html
+│   │   ├── payment.html
+│   │   ├── privacy.html
+│   │   ├── register.html
+│   │   ├── schedule.html
+│   │   ├── settings.html
+│   │   └── terms.html
+│   └── ui_router_backup.py
+├── LEGACY_TEMPLATES_FOR_CONVERSION.txt
+├── nginx
+│   └── project.conf
+├── project_tree.txt
+├── qa_interactive.py
+├── README.md
+├── requirements.txt
+├── run_app.sh
+├── run_local.sh
+├── src
+│   ├── config
+│   │   └── policy.py
+│   ├── config.py
+│   ├── database
+│   │   ├── __init__.py
+│   │   ├── mixins.py
+│   │   ├── models.py
+│   │   └── session.py
+│   ├── __init__.py
+│   ├── logging_config.py
+│   ├── main.py
+│   ├── manage_cli.py
+│   ├── middleware
+│   │   └── rate_limit.py
+│   ├── models
+│   │   └── __init__.py
+│   ├── prompts.py
+│   ├── routers
+│   │   ├── auth.py
+│   │   ├── __init__.py
+│   │   ├── leads.py
+│   │   ├── payments.py
+│   │   ├── phones.py
+│   │   ├── sessions.py
+│   │   ├── settings.py
+│   │   └── webhooks.py
+│   ├── schemas
+│   │   └── user.py
+│   ├── scripts
+│   │   ├── init_db.py
+│   │   ├── migrate_json_to_pdf.py
+│   │   ├── reset_db_schema.py
+│   │   └── seed_demo_data.py
+│   ├── security
+│   │   ├── dependencies.py
+│   │   ├── encryption.py
+│   │   ├── hashing.py
+│   │   ├── __init__.py
+│   │   ├── middleware.py
+│   │   └── validation.py
+│   ├── services
+│   │   ├── ai_engine.py
+│   │   ├── audio_processor.py
+│   │   ├── background_processor.py
+│   │   ├── conversation.py
+│   │   ├── email.py
+│   │   ├── __init__.py
+│   │   ├── payment_service.py
+│   │   ├── phone_service.py
+│   │   ├── providers
+│   │   │   ├── base.py
+│   │   │   ├── plivo.py
+│   │   │   ├── twilio.py
+│   │   │   └── vonage.py
+│   │   ├── storage.py
+│   │   ├── transcription.py
+│   │   └── whatsapp_adapter.py
+│   ├── static
+│   └── worker.py
+└── storage
+    └── audio
+
+37 directories, 123 files
+
+==================== END OF FILE: ./project_tree.txt ====================
+
+
 ==================== START OF FILE: ./storage/audio/.gitkeep ====================
 
 ==================== END OF FILE: ./storage/audio/.gitkeep ====================
@@ -31573,118 +31740,61 @@ def setup_logging():
 ==================== START OF FILE: ./src/config.py ====================
 # src/config.py
 import os
-import logging
-import requests
 import boto3
-from typing import Any, List, Optional
-from dotenv import load_dotenv
-from pydantic_settings import BaseSettings, SettingsConfigDict
-from pydantic import Field, field_validator
-from botocore.exceptions import NoCredentialsError, PartialCredentialsError
+import logging
+from pydantic_settings import BaseSettings
 
-# --- Logging Setup ---
-logger = logging.getLogger("Configuration")
-logging.basicConfig(level=logging.INFO)
-
-def load_aws_configurations():
-    """
-    Loads secrets from AWS SSM Parameter Store into os.environ.
-    This runs before the Settings object is initialized.
-    """
-    ssm_path = "/leadflow/prod/"
-    region = "eu-north-1" 
-
-    try:
-        # 1. Detect Region from EC2 Metadata
-        token_url = "http://169.254.169.254/latest/api/token"
-        headers = {"X-aws-ec2-metadata-token-ttl-seconds": "1"}
-        token_response = requests.put(token_url, headers=headers, timeout=0.5)
-        
-        if token_response.status_code == 200:
-            token = token_response.text
-            region_url = "http://169.254.169.254/latest/meta-data/placement/region"
-            region_headers = {"X-aws-ec2-metadata-token": token}
-            region_resp = requests.get(region_url, headers=region_headers, timeout=0.5)
-            if region_resp.status_code == 200:
-                region = region_resp.text
-                logger.info(f"☁️ Running on AWS EC2 (Region: {region})")
-    except (requests.exceptions.RequestException, requests.exceptions.Timeout):
-        logger.info(f"💻 Running Locally. Defaulting to Region: {region}")
-
-    # 2. Load Parameters from SSM
-    try:
-        ssm_client = boto3.client('ssm', region_name=region)
-        paginator = ssm_client.get_paginator('get_parameters_by_path')
-        page_iterator = paginator.paginate(Path=ssm_path, Recursive=True, WithDecryption=True)
-
-        params_loaded = 0
-        for page in page_iterator:
-            for param in page.get('Parameters', []):
-                # /leadflow/prod/MAIL_PASSWORD -> MAIL_PASSWORD
-                key = param['Name'].split("/")[-1]
-                value = param['Value']
-                os.environ[key] = value
-                params_loaded += 1
-        
-        if params_loaded > 0:
-            logger.info(f"✅ Successfully loaded {params_loaded} secrets from SSM.")
-    except (NoCredentialsError, PartialCredentialsError):
-        logger.warning("⚠️ No AWS Credentials found! Cannot load from SSM.")
-    except Exception as e:
-        logger.warning(f"⚠️ SSM Load Failed: {e}")
-
-# Execute Load Logic
-load_dotenv()
-load_aws_configurations()
+logger = logging.getLogger(\"Configuration\")
 
 class Settings(BaseSettings):
-    APP_NAME: str = "LeadFlowAI Secure Platform"
-    DEBUG: bool = False
+    # Core
+    SECRET_KEY: str
+    ALGORITHM: str = \"HS256\"
+    ACCESS_TOKEN_EXPIRE_MINUTES: int = 30
+    
+    # Database
+    DATABASE_URL: str
+    
+    # External APIs
+    OPENAI_API_KEY: str = \"\"
+    GOOGLE_API_KEY: str = \"\"
+    TWILIO_ACCOUNT_SID: str = \"\"
+    TWILIO_AUTH_TOKEN: str = \"\"
+    
+    # Webhooks & Security
+    WHATSAPP_VERIFY_TOKEN: str = \"my_secure_token\"
+    
+    # Email
+    MAIL_USERNAME: str = \"\"
+    MAIL_PASSWORD: str = \"\"
+    MAIL_FROM: str = \"noreply@leadflow.ai\"
+    MAIL_PORT: int = 587
+    MAIL_SERVER: str = \"smtp.gmail.com\"
     
     # Feature Flags
     ENABLE_REAL_PHONE_PURCHASE: bool = True
+    ALLOWED_HOSTS: str = \"*\"
 
-    BASE_URL: str = "https://my-leads.app"
-
-    # Database & Security
-    DATABASE_URL: str = Field(..., description="Database connection string")
-    SECRET_KEY: str = Field(..., min_length=32)
-    ENCRYPTION_KEY: str = Field(...)
-    
-    ACCESS_TOKEN_EXPIRE_MINUTES: int = 1440 
-    ALGORITHM: str = "HS256"
-
-    # AI Keys
-    OPENAI_API_KEY: Optional[str] = None
-    GOOGLE_API_KEY: Optional[str] = None
-    
-    # Email Settings (Mapped from SSM)
-    MAIL_USERNAME: Optional[str] = None
-    MAIL_PASSWORD: Optional[str] = None
-    MAIL_FROM: str = "noreply@leadflow.ai"
-    MAIL_PORT: int = 587
-    MAIL_SERVER: str = "smtp.gmail.com"
-
-    # SignalWire / Telephony Config
-    SIGNALWIRE_PROJECT_ID: Optional[str] = None
-    SIGNALWIRE_AUTH_TOKEN: Optional[str] = None
-    SIGNALWIRE_SPACE_URL: Optional[str] = None
-
-    # Legacy Providers (Optional)
-    TWILIO_ACCOUNT_SID: Optional[str] = None
-    TWILIO_AUTH_TOKEN: Optional[str] = None
-    VONAGE_API_KEY: Optional[str] = None
-    VONAGE_API_SECRET: Optional[str] = None
-    
-    # Networking
-    ALLOWED_HOSTS: Any = ["*"] 
-    @field_validator("ALLOWED_HOSTS", mode="before")
-    @classmethod
-    def parse_allowed_hosts(cls, v: Any) -> List[str]:
-        if isinstance(v, str): return [h.strip() for h in v.split(",") if h.strip()]
-        return v
-
-    model_config = SettingsConfigDict(env_file=".env", env_file_encoding="utf-8", extra="ignore")
+    def __init__(self, **kwargs):
+        # Runtime Injection from AWS SSM
+        region = \"eu-north-1\"
+        try:
+            ssm = boto3.client(\"ssm\", region_name=region)
+            path = \"/leadflow/prod/\"
+            response = ssm.get_parameters_by_path(
+                Path=path, Recursive=True, WithDecryption=True
+            )
+            
+            for param in response.get(\"Parameters\", []):
+                key = param[\"Name\"].replace(path, \"\")
+                if key not in os.environ:
+                    os.environ[key] = param[\"Value\"]
+            
+            logger.info(f\"✅ Successfully loaded {len(response.get('Parameters', []))} secrets from SSM.\")
+        except Exception as e:
+            logger.warning(f\"⚠ SSM Load Failed: {e}\")
+            
+        super().__init__(**kwargs)
 
 settings = Settings()
 ==================== END OF FILE: ./src/config.py ====================
@@ -31692,152 +31802,43 @@ settings = Settings()
 
 ==================== START OF FILE: ./src/main.py ====================
 # src/main.py
-import time
 import logging
-import os
 from contextlib import asynccontextmanager
-from fastapi import FastAPI, Request, Depends, HTTPException
-from fastapi.staticfiles import StaticFiles
-from fastapi.responses import JSONResponse
+from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.middleware.trustedhost import TrustedHostMiddleware
-from sqlalchemy.orm import Session
-from sqlalchemy import text
-
-# Internal Project Imports
 from src.config import settings
-from src.database.session import engine, get_db
-from src.database.models import Base
+from src.database.session import engine, Base
+from src.routers import auth, phones, payments, webhooks, settings as settings_router
 
-# Import Routers
-# Note: 'ui' router has been removed as the frontend is now handled by React (Next.js)
-from src.routers import leads, auth, webhooks, payments, phones, settings as settings_router
-
-# Professional English Comment:
-# Configure Root Logger for centralized logging.
-# In Production, these logs are captured by Podman/Docker logs.
 logging.basicConfig(level=logging.INFO)
-logger = logging.getLogger("LeadFlowSystem")
+logger = logging.getLogger(\"LeadFlowSystem\")
 
-# --- Lifespan Context Manager ---
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    """
-    Handles application startup and shutdown events.
-    Ensures the database is reachable and the schema is initialized.
-    """
-    logger.info(f"🚀 Starting up {settings.APP_NAME} System...")
-
-    try:
-        # Professional English Comment:
-        # metadata.create_all is used here for MVP/Fast deployment.
-        # It checks for table existence before creation to avoid operational errors.
-        Base.metadata.create_all(bind=engine)
-        logger.info("✅ Database schema verified/initialized successfully.")
-    except Exception as e:
-        logger.warning(f"⚠️ Database init skipped (likely initialized by another worker): {e}")
-        # We don't exit here to allow for manual inspection via /health endpoint
-
+    logger.info(\"🚀 Starting System...\")
+    Base.metadata.create_all(bind=engine)
     yield
+    logger.info(\"🛑 Shutting down...\")
 
-    logger.info(f"🛑 Shutting down {settings.APP_NAME} System...")
+app = FastAPI(title=\"LeadFlow AI\", version=\"2.7.0\", lifespan=lifespan)
 
-# Initialize FastAPI Application
-app = FastAPI(
-    title=settings.APP_NAME,
-    version="2.7.0",
-    lifespan=lifespan,
-    # Disable Swagger UI in production unless DEBUG is explicitly enabled
-    docs_url="/docs" if settings.DEBUG else None,
-    redoc_url=None
-)
-
-# --- Middleware Configuration ---
-
-# Ensure the application only responds to allowed domains (Cloudflare/EC2 IP)
-app.add_middleware(TrustedHostMiddleware, allowed_hosts=settings.ALLOWED_HOSTS)
-
-# Cross-Origin Resource Sharing (CORS) Configuration
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"], # In production, replace with specific domain (e.g., localhost:3000) for better security
+    allow_origins=[\"*\"],
     allow_credentials=True,
-    allow_methods=["GET", "POST", "PUT", "DELETE", "OPTIONS"],
-    allow_headers=["*"],
+    allow_methods=[\"*\"],
+    allow_headers=[\"*\"],
 )
 
-@app.middleware("http")
-async def security_headers_middleware(request: Request, call_next):
-    """
-    Custom middleware to inject security headers and measure processing time.
-    """
-    start_time = time.time()
-    try:
-        response = await call_next(request)
-        process_time = time.time() - start_time
+app.include_router(auth.router, prefix=\"/api/v1/auth\", tags=[\"Auth\"])
+app.include_router(phones.router, prefix=\"/api/v1/phones\", tags=[\"Phones\"])
+app.include_router(payments.router, prefix=\"/api/v1/payments\", tags=[\"Payments\"])
+app.include_router(settings_router.router, prefix=\"/api/v1/settings\", tags=[\"Settings\"])
+app.include_router(webhooks.router, prefix=\"/webhooks\", tags=[\"Webhooks\"])
 
-        # Performance & Security Headers
-        response.headers["X-Process-Time"] = f"{process_time:.4f}s"
-        response.headers["X-Frame-Options"] = "DENY"
-        response.headers["X-Content-Type-Options"] = "nosniff"
-
-        # Professional English Comment:
-        # HSTS ensures the browser only communicates over HTTPS.
-        if not settings.DEBUG:
-            response.headers["Strict-Transport-Security"] = "max-age=31536000; includeSubDomains"
-
-        return response
-    except Exception as e:
-        logger.error(f"🔥 Unhandled Middleware Exception: {e}")
-        return JSONResponse(
-            status_code=500,
-            content={"detail": "Internal Server Error", "error_type": "MiddlewareCrash"}
-        )
-
-# --- Static Files Service ---
-# Kept for backward compatibility or serving API assets (like invoices/logs)
-os.makedirs("src/static", exist_ok=True)
-app.mount("/static", StaticFiles(directory="src/static"), name="static")
-
-# --- Router Registration ---
-
-# API v1 Core Routes
-app.include_router(auth.router, prefix="/api/v1/auth", tags=["Authentication"])
-app.include_router(leads.router, prefix="/api/v1/leads", tags=["Leads Management"])
-app.include_router(settings_router.router, prefix="/api/v1/settings", tags=["AI Configuration"])
-app.include_router(webhooks.router, prefix="/webhooks", tags=["Webhooks Integration"])
-app.include_router(payments.router, prefix="/api/v1/payments", tags=["Billing & Subscriptions"])
-
-# 1. Phone System Router (Conditional Load) ---
-if settings.ENABLE_REAL_PHONE_PURCHASE:
-    # Professional English Comment:
-    # Only register phone routes if the feature is explicitly enabled in config.
-    app.include_router(phones.router, prefix="/api/v1/phones", tags=["Phone System"])
-    logger.info("📞 Phone Purchase Module Loaded Successfully.")
-
-# Note: UI Router removed (Legacy HTML Templates).
-# Frontend is now served via Next.js on a separate port.
-
-# --- System & Diagnostic Routes ---
-
-@app.get("/health", tags=["System Maintenance"])
-def health_check(db: Session = Depends(get_db)):
-    """
-    Liveness and Readiness probe to monitor system health.
-    """
-    try:
-        # Verify database connectivity
-        db.execute(text("SELECT 1"))
-        return {
-            "status": "online",
-            "database": "connected",
-            "version": app.version,
-            "mode": "Development" if settings.DEBUG else "Production"
-        }
-    except Exception as e:
-        logger.error(f"System health check failed: {e}")
-        raise HTTPException(status_code=503, detail="Database Connectivity Lost")
-
+@app.get(\"/health\")
+def health_check():
+    return {\"status\": \"online\", \"mode\": \"Prod\"}
 ==================== END OF FILE: ./src/main.py ====================
 
 
@@ -32397,113 +32398,34 @@ class SecurityValidator:
 
 ==================== START OF FILE: ./src/security/dependencies.py ====================
 # src/security/dependencies.py
-from typing import Optional
-from contextvars import ContextVar
-from fastapi import Depends, HTTPException, status, Request, Header
+from fastapi import Depends, HTTPException, status
 from fastapi.security import OAuth2PasswordBearer
+from jose import JWTError, jwt
 from sqlalchemy.orm import Session
-from jose import jwt, JWTError
 
-# --- CRITICAL FIX: Import settings from config, NOT from auth ---
-from src.config import settings
 from src.database.session import get_db
 from src.database.models import User
+from src.config import settings
 
-# 1. Context Variable
-# Holds the current User ID for the duration of the request.
-_user_id_ctx: ContextVar[str] = ContextVar("user_id", default=None)
+oauth2_scheme = OAuth2PasswordBearer(tokenUrl=\"/api/v1/auth/login\")
 
-# Defines the endpoint for Swagger UI
-oauth2_scheme = OAuth2PasswordBearer(tokenUrl="/api/v1/auth/login", auto_error=False)
-
-def get_user_id() -> str:
-    """
-    Retrieves the current user ID from the context variable.
-    """
-    uid = _user_id_ctx.get()
-    if uid is None:
-        raise RuntimeError("Security Violation: No user context found.")
-    return uid
-
-async def get_current_user(
-    request: Request, # Inject request to access cookies
-    token: Optional[str] = Depends(oauth2_scheme),
-    db: Session = Depends(get_db),
-    # --- CLOUDFLARE SECURITY HEADERS ---
-    # These headers are injected by Cloudflare. 
-    # If running locally (no Cloudflare), they will be None.
-    cf_ipcity: Optional[str] = Header(None, alias="cf-ipcity"),
-    cf_ipcountry: Optional[str] = Header(None, alias="cf-ipcountry")
-) -> User:
-    """
-    Dependency to validate the current user.
-    1. Extracts token from Cookie (Dashboard) or Header (API).
-    2. Decodes JWT and validates user in DB.
-    3. Performs 'Impossible Travel' check using Cloudflare headers.
-    """
-    
-    # --- TOKEN EXTRACTION ---
-    # Try to get the token from the Cookie (set during login)
-    actual_token = request.cookies.get("access_token")
-    
-    # Fallback: if no cookie, try the Authorization Header (provided by oauth2_scheme)
-    if not actual_token:
-        actual_token = token
-
-    if not actual_token:
-        raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Not authenticated",
-            headers={"WWW-Authenticate": "Bearer"},
-        )
-
-    # --- REAL JWT VALIDATION ---
+async def get_current_user(token: str = Depends(oauth2_scheme), db: Session = Depends(get_db)):
+    credentials_exception = HTTPException(
+        status_code=status.HTTP_401_UNAUTHORIZED,
+        detail=\"Could not validate credentials\",
+        headers={\"WWW-Authenticate\": \"Bearer\"},
+    )
     try:
-        # Decode the token using our secret key and algorithm from SETTINGS
-        payload = jwt.decode(
-            actual_token, 
-            settings.SECRET_KEY, 
-            algorithms=[settings.ALGORITHM]
-        )
-        email: str = payload.get("sub")
+        payload = jwt.decode(token, settings.SECRET_KEY, algorithms=[settings.ALGORITHM])
+        email: str = payload.get(\"email\") or payload.get(\"sub\")
         if email is None:
-            raise HTTPException(status_code=401, detail="Invalid token payload")
+            raise credentials_exception
     except JWTError:
-        raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED, 
-            detail="Could not validate credentials"
-        )
-
-    # Fetch user from Database
+        raise credentials_exception
+    
     user = db.query(User).filter(User.email == email).first()
-
-    if not user:
-        raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="User not found",
-            headers={"WWW-Authenticate": "Bearer"},
-        )
-
-    # --- LOCATION SECURITY CHECK (IMPOSSIBLE TRAVEL) ---
-    # Logic: If the user has a stored 'last_known_city' in the DB, 
-    # and the current request comes from a DIFFERENT city, we block access.
-    
-    if cf_ipcity and user.last_known_city:
-        # Normalize strings to avoid case sensitivity issues
-        if cf_ipcity.lower() != user.last_known_city.lower():
-            print(f"SECURITY ALERT: User {user.email} moved from {user.last_known_city} to {cf_ipcity}. Blocking access.")
-            raise HTTPException(
-                status_code=status.HTTP_401_UNAUTHORIZED,
-                detail="Location changed. Please login again for security verification.",
-                headers={"WWW-Authenticate": "Bearer"},
-            )
-            
-    # Note: We do NOT update the DB here (GET request). 
-    # The DB update should happen in the POST /login endpoint.
-
-    # Set the global context variable for logging/auditing
-    _user_id_ctx.set(str(user.id))
-    
+    if user is None:
+        raise credentials_exception
     return user
 ==================== END OF FILE: ./src/security/dependencies.py ====================
 
@@ -33295,272 +33217,150 @@ async def payment_provider_webhook(
 
 ==================== START OF FILE: ./src/routers/auth.py ====================
 # src/routers/auth.py
+import logging
 import random
 import string
-import logging
 from datetime import timedelta, datetime
-from typing import Optional, Dict, Any
 from fastapi import APIRouter, Depends, HTTPException, status, BackgroundTasks
-from fastapi.security import OAuth2PasswordRequestForm, OAuth2PasswordBearer
-from jose import JWTError, jwt
+from fastapi.security import OAuth2PasswordRequestForm
+from jose import jwt
 from sqlalchemy.orm import Session
 from passlib.context import CryptContext
 
-# Internal Imports
 from src.database.session import get_db
-from src.database.models import User, PhoneNumber
+from src.database.models import User, PhoneNumber, PlanTier
 from src.config import settings
 from src.services.email import send_otp_email 
 from src.schemas.user import UserCreate, UserResponse, VerifyOTP
+from src.security.dependencies import get_current_user
 
 router = APIRouter()
-logger = logging.getLogger("AuthSecurity")
+logger = logging.getLogger(\"AuthSecurity\")
+pwd_context = CryptContext(schemes=[\"bcrypt\"], deprecated=\"auto\")
 
-# --- Security Configuration ---
-pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
-oauth2_scheme = OAuth2PasswordBearer(tokenUrl="/api/v1/auth/login")
+def get_hash(password): return pwd_context.hash(password)
+def verify_password(plain, hashed): return pwd_context.verify(plain, hashed)
 
-def verify_password(plain_password, hashed_password):
-    return pwd_context.verify(plain_password, hashed_password)
-
-def get_password_hash(password):
-    return pwd_context.hash(password)
-
-def create_access_token(data: dict, expires_delta: Optional[timedelta] = None):
+def create_access_token(data: dict):
     to_encode = data.copy()
-    if expires_delta:
-        expire = datetime.utcnow() + expires_delta
-    else:
-        expire = datetime.utcnow() + timedelta(minutes=settings.ACCESS_TOKEN_EXPIRE_MINUTES)
-    to_encode.update({"exp": expire})
-    encoded_jwt = jwt.encode(to_encode, settings.SECRET_KEY, algorithm=settings.ALGORITHM)
-    return encoded_jwt
+    expire = datetime.utcnow() + timedelta(minutes=settings.ACCESS_TOKEN_EXPIRE_MINUTES)
+    to_encode.update({\"exp\": expire})
+    return jwt.encode(to_encode, settings.SECRET_KEY, algorithm=settings.ALGORITHM)
 
-def generate_otp(length=6) -> str:
-    return ''.join(random.choices(string.digits, k=length))
-
-# --- Dependency: Authentication ---
-async def get_current_user(token: str = Depends(oauth2_scheme), db: Session = Depends(get_db)) -> User:
-    credentials_exception = HTTPException(
-        status_code=status.HTTP_401_UNAUTHORIZED,
-        detail="Could not validate credentials",
-        headers={"WWW-Authenticate": "Bearer"},
-    )
-    try:
-        payload = jwt.decode(token, settings.SECRET_KEY, algorithms=[settings.ALGORITHM])
-        email: str = payload.get("email") or payload.get("sub")
-        if email is None:
-            raise credentials_exception
-    except JWTError:
-        raise credentials_exception
-    
-    user = db.query(User).filter(User.email == email).first()
-    if user is None:
-        raise credentials_exception
-    
-    return user
-
-# --- Routes ---
-
-@router.get("/me", response_model=UserResponse)
-async def read_users_me(
-    current_user: User = Depends(get_current_user),
-    db: Session = Depends(get_db)
-):
-    """
-    Returns the current user profile including assigned phone number.
-    """
-    phone_record = db.query(PhoneNumber).filter(PhoneNumber.owner_id == current_user.id).first()
-    
-    user_data = current_user.__dict__
-    if phone_record:
-        user_data['assigned_phone'] = phone_record.number
-    else:
-        user_data['assigned_phone'] = None
-        
+@router.get(\"/me\", response_model=UserResponse)
+async def read_users_me(user: User = Depends(get_current_user), db: Session = Depends(get_db)):
+    phone = db.query(PhoneNumber).filter(PhoneNumber.owner_id == user.id).first()
+    user_data = user.__dict__
+    user_data['assigned_phone'] = phone.number if phone else None
     return user_data
 
-@router.post("/register", status_code=status.HTTP_201_CREATED)
-async def register_user(data: UserCreate, db: Session = Depends(get_db)):
+@router.post(\"/register\", status_code=201)
+async def register(data: UserCreate, db: Session = Depends(get_db)):
     if db.query(User).filter(User.email == data.email).first():
-        raise HTTPException(status_code=400, detail="Email already registered")
-
-    hashed_pw = get_password_hash(data.password)
+        raise HTTPException(status_code=400, detail=\"Email registered\")
     
-    # FIX: Map generic plan strings to our DB Enums (STARTER / PRO)
-    raw_plan = (data.plan_tier or "starter").upper()
-    if "PRO" in raw_plan or "PREMIUM" in raw_plan:
-        selected_plan = "PRO"
-    else:
-        selected_plan = "STARTER"
+    tier = PlanTier.PRO if \"PRO\" in (data.plan_tier or \"\").upper() else PlanTier.STARTER
+    new_user = User(
+        email=data.email, hashed_password=get_hash(data.password),
+        name=data.full_name, business_name=data.business_name,
+        business_type=data.business_type, plan_tier=tier, is_active=True
+    )
+    db.add(new_user)
+    db.commit()
+    return {\"status\": \"success\"}
 
-    user_data = {
-        "email": data.email,
-        "hashed_password": hashed_pw,
-        "is_active": True,
-        "name": data.full_name,
-        "business_name": data.business_name,
-        "business_type": data.business_type,
-        # FIX: Changed key from 'plan_type' to 'plan_tier' to match User model
-        "plan_tier": selected_plan, 
-        # Note: We don't set 'subscription_status' manually, it defaults to TRIAL in model
-    }
-
-    try:
-        new_user = User(**user_data)
-        db.add(new_user)
-        db.commit()
-        db.refresh(new_user)
-        return {"status": "success", "message": "User registered successfully"}
-    except Exception as e:
-        db.rollback()
-        logger.error(f"Registration Error: {e}")
-        # Return generic error to client but log specific error above
-        raise HTTPException(status_code=500, detail="Registration failed")
-
-@router.post("/login")
-async def login_step_1(
-    background_tasks: BackgroundTasks, 
-    form_data: OAuth2PasswordRequestForm = Depends(),
-    db: Session = Depends(get_db)
-):
-    user = db.query(User).filter(User.email == form_data.username).first()
+@router.post(\"/login\")
+async def login(bg_tasks: BackgroundTasks, form: OAuth2PasswordRequestForm = Depends(), db: Session = Depends(get_db)):
+    user = db.query(User).filter(User.email == form.username).first()
+    if not user or not verify_password(form.password, user.hashed_password):
+        raise HTTPException(status_code=401, detail=\"Invalid credentials\")
     
-    if not user or not verify_password(form_data.password, user.hashed_password):
-        raise HTTPException(status_code=401, detail="Incorrect email or password")
-    
-    otp = generate_otp()
-    
-    # Safe OTP storage (using setter for encryption defined in model)
-    try:
-        user.otp_code = otp 
-        user.otp_expires_at = datetime.utcnow() + timedelta(minutes=5)
-        db.commit()
-    except Exception as e:
-         logger.error(f"Failed to save OTP: {e}")
-    
-    logger.info(f"📧 Queueing OTP email for {user.email}")
-    background_tasks.add_task(send_otp_email, user.email, otp)
-
-    return {"message": "OTP sent to email", "mfa_required": True, "email": user.email}
-
-@router.post("/verify-otp")
-async def verify_otp_step_2(data: VerifyOTP, db: Session = Depends(get_db)):
-    user = db.query(User).filter(User.email == data.email).first()
-    if not user:
-        raise HTTPException(status_code=404, detail="User not found")
-
-    # Verify OTP (using getter for decryption defined in model)
-    if user.otp_code != data.otp_code:
-         raise HTTPException(status_code=401, detail="Invalid OTP code")
-    
-    # Clear OTP after success
-    user.otp_code = None
+    # Generate OTP
+    otp = ''.join(random.choices(string.digits, k=6))
+    user.otp_code = otp
     db.commit()
     
-    # Get plan for token
-    # FIX: Use plan_tier enum value
-    plan = str(user.plan_tier.value) if hasattr(user.plan_tier, 'value') else str(user.plan_tier)
+    logger.info(f\"📧 OTP for {user.email}: {otp}\")
+    bg_tasks.add_task(send_otp_email, user.email, otp)
+    return {\"message\": \"OTP sent\", \"mfa_required\": True}
+
+@router.post(\"/verify-otp\")
+async def verify_otp(data: VerifyOTP, db: Session = Depends(get_db)):
+    user = db.query(User).filter(User.email == data.email).first()
+    if not user or user.otp_code != data.otp_code:
+        raise HTTPException(status_code=401, detail=\"Invalid OTP\")
     
-    access_token = create_access_token(
-        data={"sub": str(user.id), "email": user.email, "plan": plan}
-    )
-    
-    return {
-        "access_token": access_token, 
-        "token_type": "bearer", 
-        "user_name": user.name
-    }
+    user.otp_code = None
+    db.commit()
+    token = create_access_token({\"sub\": str(user.id), \"email\": user.email})
+    return {\"access_token\": token, \"token_type\": \"bearer\"}
 ==================== END OF FILE: ./src/routers/auth.py ====================
 
 
 ==================== START OF FILE: ./src/routers/phones.py ====================
 # src/routers/phones.py
 import logging
-from typing import List, Optional
-from fastapi import APIRouter, Depends, HTTPException, Query, Body
-from pydantic import BaseModel, Field
+from typing import List
+from fastapi import APIRouter, Depends, HTTPException, Query
+from pydantic import BaseModel
 from sqlalchemy.orm import Session
 
 from src.database.session import get_db
+from src.database.models import User, PhoneNumber, PlanTier
 from src.security.dependencies import get_current_user
-from src.database.models import User, PhoneNumber
-# Import the provider directly
-from src.services.providers.twilio import twilio_provider 
+from src.services.providers.twilio import twilio_provider
 
 router = APIRouter()
-logger = logging.getLogger("PhoneSystem")
-
-# --- Validation Models ---
+logger = logging.getLogger(\"PhoneSystem\")
 
 class PhoneResult(BaseModel):
     number: str
-    friendly_name: Optional[str] = None
-    locality: Optional[str] = None
-    country: str = "IL"
+    country: str = \"IL\"
     price_monthly: float = 1.00
-    capabilities: List[str] = []
-    provider: str = "twilio"
+    provider: str
 
 class PurchaseRequest(BaseModel):
-    phone_number: str = Field(..., min_length=10, max_length=20, description="E.164 format")
-    country_code: str = "IL"
+    phone_number: str
+    country_code: str = \"IL\"
 
-# --- Routes ---
-
-@router.get("/available", response_model=List[PhoneResult])
+@router.get(\"/available\", response_model=List[PhoneResult])
 async def search_available_phones(
-    country_code: str = Query("IL", min_length=2, max_length=2),
-    contains: Optional[str] = Query(None, min_length=2, max_length=10),
+    country_code: str = Query(\"IL\", min_length=2, max_length=2),
     user: User = Depends(get_current_user)
 ):
-    """
-    Returns available numbers from Twilio.
-    """
-    logger.info(f"User {user.id} searching for numbers in {country_code}")
-    
+    results = []
     try:
-        results = twilio_provider.search_numbers(
-            country_code=country_code, 
-            contains=contains
-        )
-        return results
-
+        t_res = twilio_provider.search_numbers(country_code=country_code)
+        for item in t_res:
+            results.append(PhoneResult(
+                number=item.get(\"number\"),
+                country=country_code,
+                price_monthly=item.get(\"price_monthly\", 1.15),
+                provider=\"twilio\"
+            ))
     except Exception as e:
-        logger.error(f"Search failed: {e}")
-        # Return empty list to prevent frontend crash
-        return []
+        logger.error(f\"Search failed: {e}\")
+    return results
 
-@router.post("/purchase")
+@router.post(\"/purchase\")
 async def purchase_phone_number(
     request: PurchaseRequest,
     db: Session = Depends(get_db),
     user: User = Depends(get_current_user)
 ):
-    """
-    Buys a number via Twilio and assigns it to the User in the DB.
-    """
-    # 1. Check if user already has a number
-    existing_phone = db.query(PhoneNumber).filter(PhoneNumber.owner_id == user.id).first()
-    if existing_phone:
-        raise HTTPException(status_code=400, detail="You already have an active phone number.")
+    # 1. SECURITY: Only PRO users can buy
+    if user.plan_tier != PlanTier.PRO:
+        raise HTTPException(status_code=403, detail=\"Phone purchasing is restricted to PRO plan members.\")
 
-    logger.info(f"User {user.id} purchasing {request.phone_number}")
-    
+    # 2. Check Existing
+    if db.query(PhoneNumber).filter(PhoneNumber.owner_id == user.id).first():
+        raise HTTPException(status_code=400, detail=\"User already has a phone number.\")
+
     try:
-        # 2. Execute Purchase on Twilio
-        provider_id = twilio_provider.buy_number(
-            phone_number=request.phone_number,
-            friendly_name=f"LeadFlow_{user.business_name or user.name}"
-        )
-        
-        if not provider_id:
-            raise HTTPException(status_code=500, detail="Failed to purchase number from provider.")
-
-        # 3. Save to Database
+        provider_id = twilio_provider.buy_number(request.phone_number)
         new_phone = PhoneNumber(
             number=request.phone_number,
-            provider="twilio",
+            provider=\"twilio\",
             provider_id=provider_id,
             owner_id=user.id,
             is_active=True,
@@ -33568,12 +33368,8 @@ async def purchase_phone_number(
         )
         db.add(new_phone)
         db.commit()
-        db.refresh(new_phone)
-        
-        return {"status": "success", "phone_number": new_phone.number}
-        
+        return {\"status\": \"success\", \"phone_number\": new_phone.number}
     except Exception as e:
-        logger.error(f"Purchase exception: {e}")
         db.rollback()
         raise HTTPException(status_code=500, detail=str(e))
 ==================== END OF FILE: ./src/routers/phones.py ====================
