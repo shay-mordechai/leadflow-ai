@@ -43,7 +43,8 @@ jobs:
 
       - name: Run Pytest
         env:
-          # Quotes added to prevent YAML syntax errors
+          # --- THE FIX IS HERE (PYTHONPATH) ---
+          PYTHONPATH: .
           APP_ENV: "testing"
           SECRET_KEY: "testing_secret_key_123"
           DATABASE_URL: "sqlite:///:memory:"
