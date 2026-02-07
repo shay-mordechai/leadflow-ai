@@ -5,11 +5,9 @@ from sqlalchemy.orm import sessionmaker, declarative_base, declared_attr, Sessio
 from sqlalchemy.types import TypeDecorator, CHAR
 from src.config import settings
 
-# --- 1. Define GUID Type Locally (Breaks Circular Dependency) ---
+# --- 1. Define GUID Helper (Single Source of Truth) ---
 class GUID(TypeDecorator):
-    """Platform-independent GUID type.
-    Uses PostgreSQL's UUID type, otherwise uses CHAR(32), storing as stringified hex values.
-    """
+    """Platform-independent GUID type."""
     impl = CHAR
     cache_ok = True
 
@@ -38,7 +36,7 @@ class GUID(TypeDecorator):
                 return uuid.UUID(value)
             return value
 
-# --- 2. Define Base ---
+# --- 2. Define Base (Must be here!) ---
 Base = declarative_base()
 
 # --- 3. Engine Configuration ---
@@ -79,14 +77,8 @@ def get_db():
     finally:
         db.close()
 
-# --- 4. Tenant Logic (Uses local GUID and Base) ---
+# --- 4. Tenant Mixin (Uses local GUID) ---
 class TenantAwareMixin:
     @declared_attr
     def tenant_id(cls):
         return Column(GUID(), ForeignKey("tenants.id"), nullable=False, index=True)
-
-    @classmethod
-    def get_query(cls, session: Session):
-        from src.security.tenant import get_tenant_id
-        current_tenant = get_tenant_id()
-        return session.query(cls).filter(cls.tenant_id == current_tenant)

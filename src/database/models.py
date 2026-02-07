@@ -7,7 +7,8 @@ from sqlalchemy import (
 )
 from sqlalchemy.orm import relationship
 
-# --- IMPORT BASE & GUID FROM SESSION (Prevent Circular Dependency) ---
+# --- IMPORT BASE & GUID FROM SESSION ---
+# This is the key fix: We import them, we do NOT redefine them.
 from src.database.session import Base, GUID
 
 # Ensure encryption is imported for securing PII and OTP codes
@@ -54,13 +55,11 @@ class ProcessingStatus(str, enum.Enum):
 class User(Base):
     __tablename__ = "users"
     
-    # Using GUID for cross-DB compatibility
     id = Column(GUID(), primary_key=True, default=uuid.uuid4)
     name = Column(String, nullable=False)
     email = Column(String, unique=True, index=True, nullable=False)
     hashed_password = Column(String, nullable=False)
     
-    # Billing & Plan Info
     plan_tier = Column(Enum(PlanTier), default=PlanTier.STARTER, nullable=False)
     subscription_status = Column(Enum(SubscriptionStatus), default=SubscriptionStatus.TRIAL, nullable=False)
     
@@ -68,33 +67,25 @@ class User(Base):
     created_at = Column(DateTime(timezone=True), server_default=func.now())
     last_login_ip = Column(String, nullable=True)
 
-    # Security & Location Tracking
     last_known_city = Column(String, nullable=True)
     last_known_country = Column(String, nullable=True)
 
-    # --- MFA / OTP SECURITY FIELDS ---
-    # We encrypt the OTP so even DB admins cannot see the codes
     _otp_encrypted = Column("otp_code", String, nullable=True)
     otp_expires_at = Column(DateTime, nullable=True)
-    # ---------------------------------
 
-    # Business Info
-    business_name = Column(String, nullable=True) # Added to match new schema logic
+    business_name = Column(String, nullable=True)
     business_type = Column(String, nullable=True) 
     assigned_phone_number = Column(String, unique=True, index=True, nullable=True)
     personal_whatsapp = Column(String, nullable=True) 
     
-    # AI Settings
     openai_api_key = Column(String, nullable=True)
 
-    # Relationships
     leads = relationship("Lead", back_populates="user", cascade="all, delete-orphan")
     media_files = relationship("MediaInteraction", back_populates="user", cascade="all, delete-orphan")
     integrations = relationship("Integration", back_populates="user", cascade="all, delete-orphan")
     business_profile = relationship("BusinessProfile", uselist=False, back_populates="user", cascade="all, delete-orphan")
     phone_numbers = relationship("PhoneNumber", back_populates="owner", cascade="all, delete-orphan")
 
-    # Property getter/setter for OTP Encryption
     @property
     def otp_code(self):
         return protector.decrypt(self._otp_encrypted) if self._otp_encrypted else None
@@ -104,26 +95,15 @@ class User(Base):
         self._otp_encrypted = protector.encrypt(value) if value else None
 
 class PhoneNumber(Base):
-    """
-    Represents a purchased phone number (Twilio) assigned to a user.
-    """
     __tablename__ = "phone_numbers"
 
     id = Column(GUID(), primary_key=True, default=uuid.uuid4)
-    
-    # The actual E.164 number (e.g., +972501234567)
     number = Column(String, unique=True, index=True, nullable=False)
     country_code = Column(String, default="IL")
-    
-    # Provider Details
     provider = Column(String, default="twilio")
-    provider_id = Column(String, nullable=True) # The SID from the provider
-    
-    # Status
+    provider_id = Column(String, nullable=True)
     is_active = Column(Boolean, default=True)
     created_at = Column(DateTime(timezone=True), server_default=func.now())
-
-    # Link to User (Owner)
     owner_id = Column(GUID(), ForeignKey("users.id"))
     owner = relationship("User", back_populates="phone_numbers")
 
@@ -132,16 +112,13 @@ class BusinessProfile(Base):
     
     id = Column(GUID(), primary_key=True, default=uuid.uuid4)
     user_id = Column(GUID(), ForeignKey("users.id", ondelete="CASCADE"), unique=True, nullable=False)
-    
     business_name = Column(String, nullable=False, default="My Business")
     business_type = Column(String, default="General")
     ai_tone = Column(String, default="Professional")
     products_services = Column(Text, nullable=True)
     custom_instructions = Column(Text, nullable=True)
-    
     created_at = Column(DateTime(timezone=True), server_default=func.now())
     updated_at = Column(DateTime(timezone=True), onupdate=func.now())
-    
     user = relationship("User", back_populates="business_profile")
 
 class Lead(Base):
@@ -150,7 +127,6 @@ class Lead(Base):
     id = Column(GUID(), primary_key=True, default=uuid.uuid4)
     user_id = Column(GUID(), ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True)
     
-    # Internal Encrypted Fields
     _name_encrypted = Column("name", String, nullable=True)
     _phone_encrypted = Column("phone_number", String, nullable=True)
     
@@ -159,7 +135,6 @@ class Lead(Base):
     source = Column(Enum(LeadSource), default=LeadSource.MANUAL, nullable=False)
     status = Column(Enum(LeadStatus), default=LeadStatus.NEW, nullable=False, index=True)
     
-    # AI Analysis Data
     transcription_summary = Column(Text, nullable=True)
     original_transcript = Column(Text, nullable=True)
     coach_feedback = Column(Text, nullable=True)
@@ -170,9 +145,8 @@ class Lead(Base):
     created_at = Column(DateTime(timezone=True), server_default=func.now(), index=True)
     
     user = relationship("User", back_populates="leads")
-    media_files = relationship("MediaInteraction", back_populates="lead") # Fixed relationship name
+    media_files = relationship("MediaInteraction", back_populates="lead")
 
-    # Property getters/setters handle seamless encryption
     @property
     def name(self):
         return protector.decrypt(self._name_encrypted) if self._name_encrypted else None
@@ -218,7 +192,5 @@ class Integration(Base):
     platform_name = Column(String, nullable=False)
     access_token = Column(String, nullable=False)
     webhook_url = Column(String, nullable=True)
-    
     created_at = Column(DateTime(timezone=True), server_default=func.now())
-    
     user = relationship("User", back_populates="integrations")
