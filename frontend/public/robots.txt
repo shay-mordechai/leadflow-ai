@@ -1,0 +1,8 @@
+User-agent: *
+Allow: /
+
+# Optional: Disallow admin/private areas if you have them later
+# Disallow: /admin
+# Disallow: /api/
+
+Sitemap: https://my-leads.app/sitemap.xml
