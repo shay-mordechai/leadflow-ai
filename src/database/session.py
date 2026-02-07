@@ -1,14 +1,48 @@
 # src/database/session.py
-from sqlalchemy import create_engine, event
-from sqlalchemy.orm import sessionmaker, declarative_base
+import uuid
+from sqlalchemy import create_engine, event, Column, ForeignKey
+from sqlalchemy.orm import sessionmaker, declarative_base, declared_attr, Session
+from sqlalchemy.types import TypeDecorator, CHAR
 from src.config import settings
 
-# Determine if we are using SQLite to apply specific configurations
-is_sqlite = settings.DATABASE_URL.startswith("sqlite")
+# --- 1. Define GUID Type Locally (Breaks Circular Dependency) ---
+class GUID(TypeDecorator):
+    """Platform-independent GUID type.
+    Uses PostgreSQL's UUID type, otherwise uses CHAR(32), storing as stringified hex values.
+    """
+    impl = CHAR
+    cache_ok = True
 
-# --- Engine Configuration ---
-# For PostgreSQL: We use pooling for performance.
-# For SQLite: Pooling is handled differently, and we must ensure thread safety.
+    def load_dialect_impl(self, dialect):
+        if dialect.name == "postgresql":
+            from sqlalchemy.dialects.postgresql import UUID
+            return dialect.type_descriptor(UUID())
+        return dialect.type_descriptor(CHAR(32))
+
+    def process_bind_param(self, value, dialect):
+        if value is None:
+            return value
+        elif dialect.name == "postgresql":
+            return str(value)
+        else:
+            if not isinstance(value, uuid.UUID):
+                return "%.32x" % uuid.UUID(value).int
+            else:
+                return "%.32x" % value.int
+
+    def process_result_value(self, value, dialect):
+        if value is None:
+            return value
+        else:
+            if not isinstance(value, uuid.UUID):
+                return uuid.UUID(value)
+            return value
+
+# --- 2. Define Base ---
+Base = declarative_base()
+
+# --- 3. Engine Configuration ---
+is_sqlite = settings.DATABASE_URL.startswith("sqlite")
 connect_args = {"check_same_thread": False} if is_sqlite else {}
 
 engine_kwargs = {
@@ -17,7 +51,6 @@ engine_kwargs = {
 }
 
 if not is_sqlite:
-    # High-concurrency settings for PostgreSQL/MySQL
     engine_kwargs.update({
         "pool_size": 20,
         "max_overflow": 10,
@@ -30,8 +63,6 @@ engine = create_engine(
     **engine_kwargs
 )
 
-# --- SQLite Specific Fixes ---
-# Ensure Foreign Keys are enforced in SQLite (disabled by default)
 if is_sqlite:
     @event.listens_for(engine, "connect")
     def set_sqlite_pragma(dbapi_connection, connection_record):
@@ -39,54 +70,23 @@ if is_sqlite:
         cursor.execute("PRAGMA foreign_keys=ON")
         cursor.close()
 
-# --- ORM Base & Session ---
-
-# CRITICAL FIX: Define Base here so models can inherit from it.
-# This was missing and caused the ImportError in main.py.
-Base = declarative_base()
-
 SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
 
 def get_db():
-    """
-    Dependency generator for database sessions.
-    Ensures that every request gets its own session and closes it after completion.
-    """
     db = SessionLocal()
     try:
         yield db
     finally:
         db.close()
 
-# --- Tenant Isolation Logic ---
-
-from sqlalchemy import Column, ForeignKey
-from sqlalchemy.orm import declared_attr, Session
-# Use the same GUID helper we used in models.py for consistency
-from src.database.models import GUID
-
+# --- 4. Tenant Logic (Uses local GUID and Base) ---
 class TenantAwareMixin:
-    """
-    Mixin to ensure data isolation. Every record is linked to a specific tenant.
-    This architecture prevents cross-tenant data leakage.
-    """
-
     @declared_attr
     def tenant_id(cls):
-        """
-        Foreign Key to the tenants table. 
-        Uses custom GUID type for cross-database compatibility (SQLite/Postgres).
-        """
         return Column(GUID(), ForeignKey("tenants.id"), nullable=False, index=True)
 
     @classmethod
     def get_query(cls, session: Session):
-        """
-        Professional Logic:
-        Automatically filters queries by the current tenant ID extracted from the 
-        security context. Uses deferred import to prevent circular dependency issues.
-        """
         from src.security.tenant import get_tenant_id
-        
         current_tenant = get_tenant_id()
         return session.query(cls).filter(cls.tenant_id == current_tenant)

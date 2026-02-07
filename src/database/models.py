@@ -5,46 +5,13 @@ from datetime import datetime
 from sqlalchemy import (
     Column, String, DateTime, Boolean, Text, ForeignKey, Enum, Integer, func
 )
-# We use GUID as a helper to handle UUIDs across both SQLite and Postgres
-from sqlalchemy.types import TypeDecorator, CHAR
-from sqlalchemy.dialects.postgresql import UUID
-from sqlalchemy.orm import declarative_base, relationship
+from sqlalchemy.orm import relationship
+
+# --- IMPORT BASE & GUID FROM SESSION (Prevent Circular Dependency) ---
+from src.database.session import Base, GUID
 
 # Ensure encryption is imported for securing PII and OTP codes
 from src.security.encryption import protector 
-
-Base = declarative_base()
-
-# --- HELPER FOR CROSS-DB UUID SUPPORT ---
-class GUID(TypeDecorator):
-    """Platform-independent GUID type."""
-    impl = CHAR
-    cache_ok = True
-
-    def load_dialect_impl(self, dialect):
-        if dialect.name == 'postgresql':
-            return dialect.type_descriptor(UUID())
-        else:
-            return dialect.type_descriptor(CHAR(32))
-
-    def process_bind_param(self, value, dialect):
-        if value is None:
-            return value
-        elif dialect.name == 'postgresql':
-            return str(value)
-        else:
-            if not isinstance(value, uuid.UUID):
-                return "%.32x" % uuid.UUID(value).int
-            else:
-                return "%.32x" % value.int
-
-    def process_result_value(self, value, dialect):
-        if value is None:
-            return value
-        else:
-            if not isinstance(value, uuid.UUID):
-                value = uuid.UUID(value)
-            return value
 
 # --- ENUMS ---
 class PlanTier(str, enum.Enum):
@@ -125,7 +92,7 @@ class User(Base):
     media_files = relationship("MediaInteraction", back_populates="user", cascade="all, delete-orphan")
     integrations = relationship("Integration", back_populates="user", cascade="all, delete-orphan")
     business_profile = relationship("BusinessProfile", uselist=False, back_populates="user", cascade="all, delete-orphan")
-    phone_numbers = relationship("PhoneNumber", back_populates="owner", cascade="all, delete-orphan") # Added relationship
+    phone_numbers = relationship("PhoneNumber", back_populates="owner", cascade="all, delete-orphan")
 
     # Property getter/setter for OTP Encryption
     @property
@@ -203,7 +170,7 @@ class Lead(Base):
     created_at = Column(DateTime(timezone=True), server_default=func.now(), index=True)
     
     user = relationship("User", back_populates="leads")
-    media_files = relationship("MediaInteraction", back_populates="lead")
+    media_files = relationship("MediaInteraction", back_populates="lead") # Fixed relationship name
 
     # Property getters/setters handle seamless encryption
     @property
