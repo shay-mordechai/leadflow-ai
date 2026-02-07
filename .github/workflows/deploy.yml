@@ -43,12 +43,12 @@ jobs:
 
       - name: Run Pytest
         env:
-          APP_ENV: testing
-          SECRET_KEY: testing_secret_key_123
-          DATABASE_URL: sqlite:///:memory:
-          AWS_REGION: eu-north-1
+          # Quotes added to prevent YAML syntax errors
+          APP_ENV: "testing"
+          SECRET_KEY: "testing_secret_key_123"
+          DATABASE_URL: "sqlite:///:memory:"
+          AWS_REGION: "eu-north-1"
         run: |
-          # Check where the test file is and run it
           if [ -f "tests/test_flow.py" ]; then
             pytest tests/test_flow.py -v
           elif [ -f "test_flow.py" ]; then
@@ -162,7 +162,7 @@ jobs:
           systemctl --user reset-failed || true
           podman rm -f leadflow-backend leadflow-frontend || true
           
-          # Critical Zombie Kill (Fixes "Address already in use")
+          # Critical Zombie Kill
           sudo fuser -k 8000/tcp || true
           sudo fuser -k 3000/tcp || true
           
