@@ -23,7 +23,7 @@ env:
   AWS_REGION: eu-north-1
 
 jobs:
-  # --- JOB 1: RUN TESTS ---
+  # --- JOB 1: RUN TESTS (With Caching!) ---
   test-backend:
     runs-on: ubuntu-latest
     steps:
@@ -33,17 +33,19 @@ jobs:
       - name: Set up Python
         uses: actions/setup-python@v4
         with:
-          python-version: '3.11' 
+          python-version: '3.11'
+          cache: 'pip' # <--- הוספתי את זה! שומר את ההתקנות לפעם הבאה
 
       - name: Install Dependencies
         run: |
           python -m pip install --upgrade pip
+          # מתקין רק אם הקובץ קיים
           if [ -f requirements.txt ]; then pip install -r requirements.txt; fi
+          # התקנת כלי בדיקה
           pip install pytest httpx sqlalchemy fastapi passlib python-jose multipart
 
       - name: Run Pytest
         env:
-          # --- THE FIX IS HERE (PYTHONPATH) ---
           PYTHONPATH: .
           APP_ENV: "testing"
           SECRET_KEY: "testing_secret_key_123"
