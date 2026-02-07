@@ -1,101 +1,87 @@
 # src/services/providers/twilio.py
 import logging
-from typing import List, Optional
-from fastapi import APIRouter, Depends, HTTPException, Query, Body
-from pydantic import BaseModel, Field
-from sqlalchemy.orm import Session
+from typing import List, Dict, Optional
+from twilio.rest import Client
+from twilio.base.exceptions import TwilioRestException
 
-from src.database.session import get_db
-from src.security.dependencies import get_current_user
-from src.database.models import User, PhoneNumber
-# Import the provider directly
-from src.services.providers.twilio import twilio_provider 
+from src.config import settings
 
-router = APIRouter()
-logger = logging.getLogger("PhoneSystem")
+logger = logging.getLogger("TwilioProvider")
 
-# --- Validation Models ---
-
-class PhoneResult(BaseModel):
-    number: str
-    friendly_name: Optional[str] = None
-    locality: Optional[str] = None
-    country: str = "IL"
-    price_monthly: float = 1.00
-    capabilities: List[str] = []
-    provider: str = "twilio"
-
-class PurchaseRequest(BaseModel):
-    phone_number: str = Field(..., min_length=10, max_length=20, description="E.164 format")
-    country_code: str = "IL"
-
-# --- Routes ---
-
-@router.get("/available", response_model=List[PhoneResult])
-async def search_available_phones(
-    country_code: str = Query("IL", min_length=2, max_length=2),
-    contains: Optional[str] = Query(None, min_length=2, max_length=10),
-    user: User = Depends(get_current_user)
-):
+class TwilioProvider:
     """
-    Returns available numbers from Twilio.
+    Twilio Implementation for searching and buying numbers.
     """
-    logger.info(f"User {user.id} searching for numbers in {country_code}")
-    
-    try:
-        results = twilio_provider.search_numbers(
-            country_code=country_code, 
-            contains=contains
-        )
-        return results
 
-    except Exception as e:
-        logger.error(f"Search failed: {e}")
-        # Return empty list to prevent frontend crash
-        return []
-
-@router.post("/purchase")
-async def purchase_phone_number(
-    request: PurchaseRequest,
-    db: Session = Depends(get_db),
-    user: User = Depends(get_current_user)
-):
-    """
-    Buys a number via Twilio and assigns it to the User in the DB.
-    """
-    # 1. Check if user already has a number
-    existing_phone = db.query(PhoneNumber).filter(PhoneNumber.owner_id == user.id).first()
-    if existing_phone:
-        raise HTTPException(status_code=400, detail="You already have an active phone number.")
-
-    logger.info(f"User {user.id} purchasing {request.phone_number}")
-    
-    try:
-        # 2. Execute Purchase on Twilio
-        provider_id = twilio_provider.buy_number(
-            phone_number=request.phone_number,
-            friendly_name=f"LeadFlow_{user.business_name or user.name}"
-        )
+    def __init__(self):
+        self.client = None
+        if settings.TWILIO_ACCOUNT_SID and settings.TWILIO_AUTH_TOKEN:
+            try:
+                self.client = Client(settings.TWILIO_ACCOUNT_SID, settings.TWILIO_AUTH_TOKEN)
+            except Exception as e:
+                logger.error(f"Twilio Client Init Failed: {e}")
+                self.client = None
         
-        if not provider_id:
-            raise HTTPException(status_code=500, detail="Failed to purchase number from provider.")
+        # Webhook URL for handling incoming messages
+        self.webhook_url = f"{settings.BASE_URL}/webhooks/whatsapp/twilio"
 
-        # 3. Save to Database
-        new_phone = PhoneNumber(
-            number=request.phone_number,
-            provider="twilio",
-            provider_id=provider_id,
-            owner_id=user.id,
-            is_active=True,
-            country_code=request.country_code
-        )
-        db.add(new_phone)
-        db.commit()
-        db.refresh(new_phone)
-        
-        return {"status": "success", "phone_number": new_phone.number}
-        
-    except Exception as e:
-        logger.error(f"Purchase exception: {e}")
-        db.rollback()
-        raise HTTPException(status_code=500, detail=str(e))
+    @property
+    def is_configured(self) -> bool:
+        return self.client is not None
+
+    def search_numbers(self, country_code: str = "IL", area_code: str = None, contains: str = None) -> List[Dict]:
+        if not self.is_configured:
+            logger.warning("Twilio is not configured. Returning empty list.")
+            return []
+
+        try:
+            params = {"limit": 10}
+            if contains:
+                params["contains"] = contains
+            
+            # 1. Try Local Numbers first
+            try:
+                twilio_results = self.client.available_phone_numbers(country_code).local.list(**params)
+                number_type = "local"
+            except TwilioRestException:
+                twilio_results = []
+
+            # 2. If no local numbers found, try Mobile
+            if not twilio_results:
+                twilio_results = self.client.available_phone_numbers(country_code).mobile.list(**params)
+                number_type = "mobile"
+
+            results = []
+            for record in twilio_results:
+                results.append({
+                    "number": record.phone_number,
+                    "friendly_name": record.friendly_name,
+                    "locality": getattr(record, 'locality', 'General'),
+                    "country": country_code,
+                    "capabilities": ["voice", "sms", "mms"] if number_type == "mobile" else ["voice"],
+                    "price_monthly": 1.15 if number_type == "local" else 5.00,
+                    "provider": "twilio"
+                })
+            
+            return results
+
+        except Exception as e:
+            logger.error(f"[Twilio] Search Error: {e}")
+            return []
+
+    def buy_number(self, phone_number: str, friendly_name: str = None) -> Optional[str]:
+        if not self.is_configured: return None
+        try:
+            purchased = self.client.incoming_phone_numbers.create(
+                phone_number=phone_number,
+                friendly_name=friendly_name or "LeadFlow AI Number",
+                voice_url=self.webhook_url, 
+                sms_url=self.webhook_url 
+            )
+            return purchased.sid
+        except Exception as e:
+            logger.error(f"[Twilio] Purchase Error: {e}")
+            raise e
+
+# Singleton instance
+twilio_provider = TwilioProvider()

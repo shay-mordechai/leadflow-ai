@@ -69,6 +69,29 @@ The platform powers a **Smart Business Assistant** capable of:
 * **Automated Documentation:** Generates professional **PDF Meeting Summaries** and receipts automatically using `FPDF`.
 * **Secure Communications:** Asynchronous email notifications (OTP, Receipts) via `fastapi-mail` and WhatsApp integration via Twilio.
 
+## 🔄 SaaS Workflow & Business Logic
+
+The platform implements a complete End-to-End SaaS lifecycle, managing the user journey from registration to AI deployment:
+
+### 1. Onboarding & Identity
+* **Secure Registration:** Users sign up with strict password policies (Bcrypt hashing).
+* **MFA Verification:** A 2-step verification process via Email OTP ensures account integrity before access is granted.
+* **Business Profiling:** Users define their business persona (Tone, Services, Pricing), which dynamically injects context into the AI model.
+
+### 2. Subscription & Billing Engine
+* **Webhook-Driven Payments:** Integration with external payment providers (Mock/Morning/Stripe).
+* **Real-time Upgrades:** Listens for secure payment webhooks to instantly upgrade users from `STARTER` to `PRO` tiers.
+* **Coupon System:** Built-in logic for promotional campaigns and admin overrides.
+
+### 3. Telephony Aggregator Module
+* **Multi-Provider Search:** A smart aggregation layer that queries multiple providers (**Twilio, Vonage, Plivo**) simultaneously.
+* **Cost Optimization:** The system automatically compares rates and presents the user with the most cost-effective phone numbers available in their region (IL/US).
+* **Automated Provisioning:** Once purchased, the number is instantly configured with the correct Webhook URLs to route traffic to the AI Agent.
+
+### 4. The AI Runtime (The "Brain")
+* **Context-Aware Responses:** Incoming WhatsApp messages are analyzed against the user's specific `BusinessProfile`.
+* **RAG-Lite Architecture:** The AI retrieves relevant business context (Hours, Prices) before generating a response using **Gemini 1.5**.
+
 ## 💻 Modern Tech Stack
 
 | Domain | Technologies |

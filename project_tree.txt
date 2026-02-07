@@ -1,0 +1,162 @@
+.
+├── alembic
+│   └── env.py
+├── alembic.ini
+├── cloudflared.rpm
+├── docker-compose.prod.yml
+├── docker-compose.yml
+├── Dockerfile
+├── docs
+│   └── schema_changes.sql
+├── dump_code.py
+├── frontend
+│   ├── actions
+│   │   └── auth.ts
+│   ├── app
+│   │   ├── dashboard
+│   │   │   ├── dashboard-client.tsx
+│   │   │   ├── page.tsx
+│   │   │   └── settings
+│   │   │       ├── page.tsx
+│   │   │       └── settings-form.tsx
+│   │   ├── favicon.ico
+│   │   ├── globals.css
+│   │   ├── layout.tsx
+│   │   ├── login
+│   │   │   ├── login-form.tsx
+│   │   │   └── page.tsx
+│   │   ├── (marketing)
+│   │   │   ├── layout.tsx
+│   │   │   ├── page.tsx
+│   │   │   ├── privacy
+│   │   │   │   └── page.tsx
+│   │   │   └── terms
+│   │   │       └── page.tsx
+│   │   └── register
+│   │       ├── page.tsx
+│   │       └── register-form.tsx
+│   ├── components
+│   │   ├── marketing
+│   │   │   ├── Features.tsx
+│   │   │   ├── Footer.tsx
+│   │   │   ├── Hero.tsx
+│   │   │   ├── Navbar.tsx
+│   │   │   ├── Pricing.tsx
+│   │   │   └── UseCaseExamples.tsx
+│   │   └── ui
+│   │       ├── button.tsx
+│   │       └── input.tsx
+│   ├── Dockerfile
+│   ├── eslint.config.mjs
+│   ├── lib
+│   │   └── utils.ts
+│   ├── next.config.ts
+│   ├── next-env.d.ts
+│   ├── package.json
+│   ├── package-lock.json
+│   ├── postcss.config.mjs
+│   ├── public
+│   │   ├── file.svg
+│   │   ├── globe.svg
+│   │   ├── next.svg
+│   │   ├── vercel.svg
+│   │   └── window.svg
+│   ├── README.md
+│   ├── tree.txt
+│   ├── tsconfig.json
+│   └── types
+│       └── auth.ts
+├── full_codebase.txt
+├── full_project_context.txt
+├── gunicorn_conf.py
+├── hotfix.tar
+├── leads.db
+├── legacy_frontend_archive_20260204_0703
+│   ├── static
+│   │   └── manifest.json
+│   ├── templates
+│   │   ├── base.html
+│   │   ├── contact.html
+│   │   ├── dashboard.html
+│   │   ├── login.html
+│   │   ├── marketing.html
+│   │   ├── payment.html
+│   │   ├── privacy.html
+│   │   ├── register.html
+│   │   ├── schedule.html
+│   │   ├── settings.html
+│   │   └── terms.html
+│   └── ui_router_backup.py
+├── LEGACY_TEMPLATES_FOR_CONVERSION.txt
+├── nginx
+│   └── project.conf
+├── project_tree.txt
+├── qa_interactive.py
+├── README.md
+├── requirements.txt
+├── run_app.sh
+├── run_local.sh
+├── src
+│   ├── config
+│   │   └── policy.py
+│   ├── config.py
+│   ├── database
+│   │   ├── __init__.py
+│   │   ├── mixins.py
+│   │   ├── models.py
+│   │   └── session.py
+│   ├── __init__.py
+│   ├── logging_config.py
+│   ├── main.py
+│   ├── manage_cli.py
+│   ├── middleware
+│   │   └── rate_limit.py
+│   ├── models
+│   │   └── __init__.py
+│   ├── prompts.py
+│   ├── routers
+│   │   ├── auth.py
+│   │   ├── __init__.py
+│   │   ├── leads.py
+│   │   ├── payments.py
+│   │   ├── phones.py
+│   │   ├── sessions.py
+│   │   ├── settings.py
+│   │   └── webhooks.py
+│   ├── schemas
+│   │   └── user.py
+│   ├── scripts
+│   │   ├── init_db.py
+│   │   ├── migrate_json_to_pdf.py
+│   │   ├── reset_db_schema.py
+│   │   └── seed_demo_data.py
+│   ├── security
+│   │   ├── dependencies.py
+│   │   ├── encryption.py
+│   │   ├── hashing.py
+│   │   ├── __init__.py
+│   │   ├── middleware.py
+│   │   └── validation.py
+│   ├── services
+│   │   ├── ai_engine.py
+│   │   ├── audio_processor.py
+│   │   ├── background_processor.py
+│   │   ├── conversation.py
+│   │   ├── email.py
+│   │   ├── __init__.py
+│   │   ├── payment_service.py
+│   │   ├── phone_service.py
+│   │   ├── providers
+│   │   │   ├── base.py
+│   │   │   ├── plivo.py
+│   │   │   ├── twilio.py
+│   │   │   └── vonage.py
+│   │   ├── storage.py
+│   │   ├── transcription.py
+│   │   └── whatsapp_adapter.py
+│   ├── static
+│   └── worker.py
+└── storage
+    └── audio
+
+37 directories, 123 files

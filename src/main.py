@@ -1,146 +1,38 @@
 # src/main.py
-import time
 import logging
-import os
 from contextlib import asynccontextmanager
-from fastapi import FastAPI, Request, Depends, HTTPException
-from fastapi.staticfiles import StaticFiles
-from fastapi.responses import JSONResponse
+from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.middleware.trustedhost import TrustedHostMiddleware
-from sqlalchemy.orm import Session
-from sqlalchemy import text
-
-# Internal Project Imports
 from src.config import settings
-from src.database.session import engine, get_db
-from src.database.models import Base
+from src.database.session import engine, Base
+from src.routers import auth, phones, payments, webhooks, settings as settings_router
 
-# Import Routers
-# Note: 'ui' router has been removed as the frontend is now handled by React (Next.js)
-from src.routers import leads, auth, webhooks, payments, phones, settings as settings_router
-
-# Professional English Comment:
-# Configure Root Logger for centralized logging.
-# In Production, these logs are captured by Podman/Docker logs.
 logging.basicConfig(level=logging.INFO)
-logger = logging.getLogger("LeadFlowSystem")
+logger = logging.getLogger(\"LeadFlowSystem\")
 
-# --- Lifespan Context Manager ---
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    """
-    Handles application startup and shutdown events.
-    Ensures the database is reachable and the schema is initialized.
-    """
-    logger.info(f"🚀 Starting up {settings.APP_NAME} System...")
-
-    try:
-        # Professional English Comment:
-        # metadata.create_all is used here for MVP/Fast deployment.
-        # It checks for table existence before creation to avoid operational errors.
-        Base.metadata.create_all(bind=engine)
-        logger.info("✅ Database schema verified/initialized successfully.")
-    except Exception as e:
-        logger.warning(f"⚠️ Database init skipped (likely initialized by another worker): {e}")
-        # We don't exit here to allow for manual inspection via /health endpoint
-
+    logger.info(\"🚀 Starting System...\")
+    Base.metadata.create_all(bind=engine)
     yield
+    logger.info(\"🛑 Shutting down...\")
 
-    logger.info(f"🛑 Shutting down {settings.APP_NAME} System...")
+app = FastAPI(title=\"LeadFlow AI\", version=\"2.7.0\", lifespan=lifespan)
 
-# Initialize FastAPI Application
-app = FastAPI(
-    title=settings.APP_NAME,
-    version="2.7.0",
-    lifespan=lifespan,
-    # Disable Swagger UI in production unless DEBUG is explicitly enabled
-    docs_url="/docs" if settings.DEBUG else None,
-    redoc_url=None
-)
-
-# --- Middleware Configuration ---
-
-# Ensure the application only responds to allowed domains (Cloudflare/EC2 IP)
-app.add_middleware(TrustedHostMiddleware, allowed_hosts=settings.ALLOWED_HOSTS)
-
-# Cross-Origin Resource Sharing (CORS) Configuration
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"], # In production, replace with specific domain (e.g., localhost:3000) for better security
+    allow_origins=[\"*\"],
     allow_credentials=True,
-    allow_methods=["GET", "POST", "PUT", "DELETE", "OPTIONS"],
-    allow_headers=["*"],
+    allow_methods=[\"*\"],
+    allow_headers=[\"*\"],
 )
 
-@app.middleware("http")
-async def security_headers_middleware(request: Request, call_next):
-    """
-    Custom middleware to inject security headers and measure processing time.
-    """
-    start_time = time.time()
-    try:
-        response = await call_next(request)
-        process_time = time.time() - start_time
+app.include_router(auth.router, prefix=\"/api/v1/auth\", tags=[\"Auth\"])
+app.include_router(phones.router, prefix=\"/api/v1/phones\", tags=[\"Phones\"])
+app.include_router(payments.router, prefix=\"/api/v1/payments\", tags=[\"Payments\"])
+app.include_router(settings_router.router, prefix=\"/api/v1/settings\", tags=[\"Settings\"])
+app.include_router(webhooks.router, prefix=\"/webhooks\", tags=[\"Webhooks\"])
 
-        # Performance & Security Headers
-        response.headers["X-Process-Time"] = f"{process_time:.4f}s"
-        response.headers["X-Frame-Options"] = "DENY"
-        response.headers["X-Content-Type-Options"] = "nosniff"
-
-        # Professional English Comment:
-        # HSTS ensures the browser only communicates over HTTPS.
-        if not settings.DEBUG:
-            response.headers["Strict-Transport-Security"] = "max-age=31536000; includeSubDomains"
-
-        return response
-    except Exception as e:
-        logger.error(f"🔥 Unhandled Middleware Exception: {e}")
-        return JSONResponse(
-            status_code=500,
-            content={"detail": "Internal Server Error", "error_type": "MiddlewareCrash"}
-        )
-
-# --- Static Files Service ---
-# Kept for backward compatibility or serving API assets (like invoices/logs)
-os.makedirs("src/static", exist_ok=True)
-app.mount("/static", StaticFiles(directory="src/static"), name="static")
-
-# --- Router Registration ---
-
-# API v1 Core Routes
-app.include_router(auth.router, prefix="/api/v1/auth", tags=["Authentication"])
-app.include_router(leads.router, prefix="/api/v1/leads", tags=["Leads Management"])
-app.include_router(settings_router.router, prefix="/api/v1/settings", tags=["AI Configuration"])
-app.include_router(webhooks.router, prefix="/webhooks", tags=["Webhooks Integration"])
-app.include_router(payments.router, prefix="/api/v1/payments", tags=["Billing & Subscriptions"])
-
-# 1. Phone System Router (Conditional Load) ---
-if settings.ENABLE_REAL_PHONE_PURCHASE:
-    # Professional English Comment:
-    # Only register phone routes if the feature is explicitly enabled in config.
-    app.include_router(phones.router, prefix="/api/v1/phones", tags=["Phone System"])
-    logger.info("📞 Phone Purchase Module Loaded Successfully.")
-
-# Note: UI Router removed (Legacy HTML Templates).
-# Frontend is now served via Next.js on a separate port.
-
-# --- System & Diagnostic Routes ---
-
-@app.get("/health", tags=["System Maintenance"])
-def health_check(db: Session = Depends(get_db)):
-    """
-    Liveness and Readiness probe to monitor system health.
-    """
-    try:
-        # Verify database connectivity
-        db.execute(text("SELECT 1"))
-        return {
-            "status": "online",
-            "database": "connected",
-            "version": app.version,
-            "mode": "Development" if settings.DEBUG else "Production"
-        }
-    except Exception as e:
-        logger.error(f"System health check failed: {e}")
-        raise HTTPException(status_code=503, detail="Database Connectivity Lost")
+@app.get(\"/health\")
+def health_check():
+    return {\"status\": \"online\", \"mode\": \"Prod\"}

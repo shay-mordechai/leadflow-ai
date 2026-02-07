@@ -112,6 +112,7 @@ class User(Base):
     # ---------------------------------
 
     # Business Info
+    business_name = Column(String, nullable=True) # Added to match new schema logic
     business_type = Column(String, nullable=True) 
     assigned_phone_number = Column(String, unique=True, index=True, nullable=True)
     personal_whatsapp = Column(String, nullable=True) 
@@ -124,6 +125,7 @@ class User(Base):
     media_files = relationship("MediaInteraction", back_populates="user", cascade="all, delete-orphan")
     integrations = relationship("Integration", back_populates="user", cascade="all, delete-orphan")
     business_profile = relationship("BusinessProfile", uselist=False, back_populates="user", cascade="all, delete-orphan")
+    phone_numbers = relationship("PhoneNumber", back_populates="owner", cascade="all, delete-orphan") # Added relationship
 
     # Property getter/setter for OTP Encryption
     @property
@@ -133,6 +135,30 @@ class User(Base):
     @otp_code.setter
     def otp_code(self, value):
         self._otp_encrypted = protector.encrypt(value) if value else None
+
+class PhoneNumber(Base):
+    """
+    Represents a purchased phone number (Twilio) assigned to a user.
+    """
+    __tablename__ = "phone_numbers"
+
+    id = Column(GUID(), primary_key=True, default=uuid.uuid4)
+    
+    # The actual E.164 number (e.g., +972501234567)
+    number = Column(String, unique=True, index=True, nullable=False)
+    country_code = Column(String, default="IL")
+    
+    # Provider Details
+    provider = Column(String, default="twilio")
+    provider_id = Column(String, nullable=True) # The SID from the provider
+    
+    # Status
+    is_active = Column(Boolean, default=True)
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
+
+    # Link to User (Owner)
+    owner_id = Column(GUID(), ForeignKey("users.id"))
+    owner = relationship("User", back_populates="phone_numbers")
 
 class BusinessProfile(Base):
     __tablename__ = "business_profiles"
