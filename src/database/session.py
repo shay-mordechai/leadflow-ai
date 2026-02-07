@@ -1,7 +1,6 @@
 # src/database/session.py
-
 from sqlalchemy import create_engine, event
-from sqlalchemy.orm import sessionmaker
+from sqlalchemy.orm import sessionmaker, declarative_base
 from src.config import settings
 
 # Determine if we are using SQLite to apply specific configurations
@@ -39,6 +38,12 @@ if is_sqlite:
         cursor = dbapi_connection.cursor()
         cursor.execute("PRAGMA foreign_keys=ON")
         cursor.close()
+
+# --- ORM Base & Session ---
+
+# CRITICAL FIX: Define Base here so models can inherit from it.
+# This was missing and caused the ImportError in main.py.
+Base = declarative_base()
 
 SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
 
