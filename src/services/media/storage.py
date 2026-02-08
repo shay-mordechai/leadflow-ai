@@ -1,4 +1,4 @@
-# src/services/storage.py
+# src/services/media/storage.py
 import boto3
 import logging
 from botocore.exceptions import ClientError

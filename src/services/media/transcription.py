@@ -1,8 +1,7 @@
-# src/services/transcription.py
+# src/services/media/transcription.py
 import os
 import logging
 import whisper
-from fpdf import FPDF
 
 # Configure Logger
 logger = logging.getLogger("Transcriber")
@@ -56,42 +55,5 @@ class TranscriberService:
             logger.error(f"🔥 Transcription failed: {e}")
             return {"text": "", "error": str(e)}
 
-class PDFMaker:
-    """
-    Service for generating simple PDF reports (Meeting Summaries / Receipts).
-    """
-    def create_meeting_summary(self, summary_text: str, filename: str) -> str:
-        pdf = FPDF()
-        pdf.add_page()
-        pdf.set_auto_page_break(auto=True, margin=15)
-        
-        # Font handling:
-        # Standard fonts (Arial) don't support Hebrew. 
-        # Ideally, we should load a TTF font like DejaVuSans.
-        # For this MVP, we use standard font and handle encoding gracefully.
-        pdf.set_font("Arial", size=12)
-        
-        pdf.cell(200, 10, txt="Meeting Summary", ln=True, align='C')
-        pdf.ln(10)
-        
-        # Add text content
-        # Note: Hebrew might appear reversed or as ??? without a proper TTF font file.
-        # We encode to latin-1 to prevent crashes on non-ascii characters.
-        safe_text = summary_text.encode('latin-1', 'replace').decode('latin-1')
-        
-        for line in safe_text.split('\n'):
-            pdf.multi_cell(0, 10, txt=line)
-        
-        # Ensure storage directory exists
-        output_dir = "storage/pdfs"
-        os.makedirs(output_dir, exist_ok=True)
-        
-        output_path = os.path.join(output_dir, filename)
-        pdf.output(output_path)
-        
-        logger.info(f"📄 PDF generated: {output_path}")
-        return output_path
-
-# Expose instances for import in webhooks.py
+# Singleton instance
 transcriber = TranscriberService()
-pdf_maker = PDFMaker()
