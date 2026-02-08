@@ -1,3 +1,4 @@
+# src/logging_config.py
 import logging
 from logging.handlers import RotatingFileHandler
 import os
@@ -25,7 +26,7 @@ def setup_logging():
     file_handler.setFormatter(formatter)
     file_handler.setLevel(logging.INFO)
 
-    # 2. Console Handler (for Docker logs)
+    # 2. Console Handler (for Docker/System logs)
     console_handler = logging.StreamHandler()
     console_handler.setFormatter(formatter)
     console_handler.setLevel(logging.INFO)

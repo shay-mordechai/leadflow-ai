@@ -13,6 +13,7 @@ class PlivoProvider(PhoneProviderStrategy):
     """
 
     def __init__(self):
+        # Use getattr to prevent crashes if config is missing
         self.auth_id = getattr(settings, 'PLIVO_AUTH_ID', None)
         self.auth_token = getattr(settings, 'PLIVO_AUTH_TOKEN', None)
         self.client = None
@@ -38,6 +39,7 @@ class PlivoProvider(PhoneProviderStrategy):
             # Plivo types: 'local', 'mobile', 'tollfree'
             p_type = "mobile" if number_type == "mobile" else "local"
 
+            # API call to Plivo
             response = self.client.numbers.search(
                 country_iso=country_code,
                 type=p_type,
@@ -47,12 +49,13 @@ class PlivoProvider(PhoneProviderStrategy):
             results = []
             for num in response:
                 results.append({
-                    "number": "+" + num['number'],
+                    "number": "+" + str(num['number']), # Ensure standard format
+                    "friendly_name": f"Plivo {country_code} Number",
+                    "locality": num.get('country', country_code),
                     "country": num.get('country', country_code),
-                    "capabilities": ["voice", "sms"], # Plivo standard
-                    "cost_price": num.get('monthly_rental_rate', 'Unknown'),
-                    "provider": self.provider_name,
-                    "type": num.get('type', p_type)
+                    "capabilities": ["voice", "sms"],
+                    "price_monthly": float(num.get('monthly_rental_rate', 0.80)), # Standardize key
+                    "provider": "plivo"
                 })
             
             return results
@@ -66,11 +69,10 @@ class PlivoProvider(PhoneProviderStrategy):
 
         try:
             logger.info(f"[Plivo] Buying {phone_number}...")
-            # Plivo requires the number without '+' usually for buying via API object
+            # Plivo requires the number without '+' usually
             response = self.client.numbers.buy(number=phone_number.replace("+", ""))
             
             if response.get('status') == 'fulfilled':
-                 # TODO: Add Webhook configuration here using self.client.numbers.update(...)
                  return phone_number
             return None
 

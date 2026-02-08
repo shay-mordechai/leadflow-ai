@@ -9,8 +9,9 @@ logger = logging.getLogger("VonageProvider")
 
 class VonageProvider(PhoneProviderStrategy):
     def __init__(self):
-        self.api_key = settings.VONAGE_API_KEY
-        self.api_secret = settings.VONAGE_API_SECRET
+        # Use getattr for safety
+        self.api_key = getattr(settings, "VONAGE_API_KEY", None)
+        self.api_secret = getattr(settings, "VONAGE_API_SECRET", None)
         self.base_url = "https://rest.nexmo.com/number"
 
     @property
@@ -27,6 +28,7 @@ class VonageProvider(PhoneProviderStrategy):
             return []
 
         try:
+            # Map number types to Vonage API format
             v_type = "mobile-lvn" if number_type == "mobile" else "landline"
             
             params = {
@@ -41,7 +43,6 @@ class VonageProvider(PhoneProviderStrategy):
             response = requests.get(f"{self.base_url}/search", params=params)
             data = response.json()
             
-            # DEBUG: Print error if exists
             if 'error-code' in data:
                  logger.error(f"❌ [Vonage] API Error: {data}")
             
@@ -49,11 +50,14 @@ class VonageProvider(PhoneProviderStrategy):
             if 'numbers' in data:
                 for num in data['numbers']:
                     results.append({
-                        "phone_number": "+" + num['msisdn'], # FIX: Key matches compare script
+                        # Standardized Keys for Frontend
+                        "number": "+" + num['msisdn'], 
+                        "friendly_name": f"Vonage {num.get('type', 'Unknown')}",
                         "locality": num.get('type', 'unknown'),
-                        "price": num.get('cost', 'Unknown'),
+                        "country": country_code,
+                        "price_monthly": float(num.get('cost', 1.25)), # Normalize to price_monthly
                         "currency": "EUR",
-                        "provider": self.provider_name
+                        "provider": "vonage"
                     })
             
             return results

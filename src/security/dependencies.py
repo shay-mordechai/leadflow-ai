@@ -8,17 +8,19 @@ from src.database.session import get_db
 from src.database.models import User
 from src.config import settings
 
-oauth2_scheme = OAuth2PasswordBearer(tokenUrl=\"/api/v1/auth/login\")
+# Fixed syntax: Removed backslashes from string quotes
+oauth2_scheme = OAuth2PasswordBearer(tokenUrl="/api/v1/auth/login")
 
 async def get_current_user(token: str = Depends(oauth2_scheme), db: Session = Depends(get_db)):
     credentials_exception = HTTPException(
         status_code=status.HTTP_401_UNAUTHORIZED,
-        detail=\"Could not validate credentials\",
-        headers={\"WWW-Authenticate\": \"Bearer\"},
+        detail="Could not validate credentials",
+        headers={"WWW-Authenticate": "Bearer"},
     )
     try:
         payload = jwt.decode(token, settings.SECRET_KEY, algorithms=[settings.ALGORITHM])
-        email: str = payload.get(\"email\") or payload.get(\"sub\")
+        # Support both 'email' and 'sub' claims for flexibility
+        email: str = payload.get("email") or payload.get("sub")
         if email is None:
             raise credentials_exception
     except JWTError:

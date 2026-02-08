@@ -1,25 +1,26 @@
+# src/middleware/rate)limit.py
 import time
 from collections import defaultdict
-from fastapi import Request, Response
+from fastapi import Request
 from starlette.middleware.base import BaseHTTPMiddleware
 from starlette.responses import JSONResponse
 
 class RateLimitMiddleware(BaseHTTPMiddleware):
     """
     In-Memory Rate Limiter.
-    Limits requests based on IP address.
-    Config: 100 requests per minute.
+    Limits requests based on IP address to prevent abuse.
+    Default Config: 100 requests per minute per IP.
     """
     def __init__(self, app, max_requests: int = 100, window_seconds: int = 60):
         super().__init__(app)
         self.max_requests = max_requests
         self.window_seconds = window_seconds
-        # Dict to store request timestamps: {ip: [timestamp1, timestamp2]}
+        # Dictionary to store request timestamps: {ip: [timestamp1, timestamp2]}
         self.clients = defaultdict(list)
 
     async def dispatch(self, request: Request, call_next):
-        # Bypass for static files to reduce overhead
-        if request.url.path.startswith("/static"):
+        # Bypass rate limiting for static files and health checks to reduce overhead
+        if request.url.path.startswith("/static") or request.url.path == "/health":
             return await call_next(request)
 
         client_ip = request.client.host
@@ -28,18 +29,21 @@ class RateLimitMiddleware(BaseHTTPMiddleware):
         # Get client history
         request_history = self.clients[client_ip]
 
-        # Filter out requests older than the window
+        # Filter out requests older than the defined window
+        # This keeps the memory usage low by removing stale timestamps
         valid_requests = [t for t in request_history if current_time - t < self.window_seconds]
+        
+        # Update the history with only valid requests
         self.clients[client_ip] = valid_requests
 
-        # Check limit
+        # Check if limit is reached
         if len(valid_requests) >= self.max_requests:
             return JSONResponse(
                 status_code=429,
                 content={"detail": "Rate limit exceeded. Please try again later."}
             )
 
-        # Add current request
+        # Record the current request timestamp
         self.clients[client_ip].append(current_time)
 
         response = await call_next(request)

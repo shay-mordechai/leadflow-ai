@@ -67,11 +67,13 @@ class SecurityValidator:
         # Remove common separators (dashes, spaces)
         clean_num = re.sub(r'[\s\-]', '', phone)
 
+        # Check against regex
+        # Note: The regex assumes the cleaned number format
+        if clean_num.startswith('+972'):
+             clean_num = '0' + clean_num[4:]
+
         match = SecurityValidator.ISRAEL_PHONE_REGEX.match(clean_num)
         if match:
-            # Normalize to 05X format for DB consistency
-            if clean_num.startswith('+972'):
-                clean_num = '0' + clean_num[4:]
             return True, clean_num
 
         return False, ""

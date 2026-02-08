@@ -10,20 +10,25 @@ logger = logging.getLogger("TwilioProvider")
 
 class TwilioProvider:
     """
-    Twilio Implementation for searching and buying numbers.
+    Twilio Implementation.
     """
 
     def __init__(self):
         self.client = None
-        if settings.TWILIO_ACCOUNT_SID and settings.TWILIO_AUTH_TOKEN:
+        # Check if keys exist before initializing
+        sid = getattr(settings, "TWILIO_ACCOUNT_SID", None)
+        token = getattr(settings, "TWILIO_AUTH_TOKEN", None)
+        
+        if sid and token:
             try:
-                self.client = Client(settings.TWILIO_ACCOUNT_SID, settings.TWILIO_AUTH_TOKEN)
+                self.client = Client(sid, token)
             except Exception as e:
                 logger.error(f"Twilio Client Init Failed: {e}")
                 self.client = None
         
-        # Webhook URL for handling incoming messages
-        self.webhook_url = f"{settings.BASE_URL}/webhooks/whatsapp/twilio"
+        # Webhook URL (Fallbacks to a default if BASE_URL is missing)
+        base_url = getattr(settings, "BASE_URL", "https://my-leads.app")
+        self.webhook_url = f"{base_url}/webhooks/whatsapp/twilio"
 
     @property
     def is_configured(self) -> bool:
@@ -41,6 +46,7 @@ class TwilioProvider:
             
             # 1. Try Local Numbers first
             try:
+                # Note: Twilio API sometimes fails on 'local' for certain countries, so we catch it
                 twilio_results = self.client.available_phone_numbers(country_code).local.list(**params)
                 number_type = "local"
             except TwilioRestException:
@@ -48,8 +54,11 @@ class TwilioProvider:
 
             # 2. If no local numbers found, try Mobile
             if not twilio_results:
-                twilio_results = self.client.available_phone_numbers(country_code).mobile.list(**params)
-                number_type = "mobile"
+                try:
+                    twilio_results = self.client.available_phone_numbers(country_code).mobile.list(**params)
+                    number_type = "mobile"
+                except TwilioRestException:
+                    twilio_results = []
 
             results = []
             for record in twilio_results:
@@ -59,7 +68,7 @@ class TwilioProvider:
                     "locality": getattr(record, 'locality', 'General'),
                     "country": country_code,
                     "capabilities": ["voice", "sms", "mms"] if number_type == "mobile" else ["voice"],
-                    "price_monthly": 1.15 if number_type == "local" else 5.00,
+                    "price_monthly": 1.15 if number_type == "local" else 5.00, # Standardize Key
                     "provider": "twilio"
                 })
             

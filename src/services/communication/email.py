@@ -4,12 +4,11 @@ import logging
 from typing import List, Optional
 from fastapi_mail import FastMail, MessageSchema, ConnectionConfig, MessageType
 from pydantic import EmailStr
-from src.config import settings  # Configuration populated from AWS SSM
+from src.config import settings
 
 logger = logging.getLogger("EmailService")
 
 # --- Configuration Loading ---
-# Retrieve SMTP settings from the global settings object
 MAIL_USERNAME = settings.MAIL_USERNAME
 MAIL_PASSWORD = settings.MAIL_PASSWORD
 MAIL_FROM = settings.MAIL_FROM or "noreply@leadflow.ai"
@@ -20,7 +19,7 @@ MAIL_SERVER = settings.MAIL_SERVER
 USE_CREDENTIALS = bool(MAIL_USERNAME and MAIL_PASSWORD)
 
 if not USE_CREDENTIALS:
-    logger.warning("⚠️ MAIL_USERNAME or MAIL_PASSWORD missing in SSM. Emails will NOT be sent (Log only).")
+    logger.warning("⚠️ SMTP Credentials missing. Emails will NOT be sent (Log only).")
 
 # FastAPI-Mail Connection Object
 conf = None
@@ -128,6 +127,6 @@ class EmailService:
 email_service = EmailService()
 
 # --- Hotfix Proxy Function ---
-# This ensures that 'from src.services.email import send_otp_email' works in auth.py
+# This ensures that 'from src.services.communication.email import send_otp_email' works easily
 async def send_otp_email(email: str, otp_code: str):
     await email_service.send_otp_email(email, otp_code)

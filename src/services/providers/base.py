@@ -19,7 +19,7 @@ class PhoneProviderStrategy(ABC):
         pass
 
     @abstractmethod
-    def search_numbers(self, country_code: str, number_type: str, limit: int = 5) -> List[Dict]:
+    def search_numbers(self, country_code: str, number_type: str = "local", limit: int = 5) -> List[Dict]:
         """Returns a standardized list of available numbers."""
         pass
 
