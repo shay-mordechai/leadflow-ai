@@ -8,52 +8,53 @@ from unittest.mock import patch
 # --- IMPORTS ---
 from src.main import app
 from src.database.session import Base, get_db
-# CRITICAL: Import models so Base.metadata knows about them!
 import src.database.models 
 
 # --- CONFIG FOR TESTING ---
-# Use StaticPool to keep in-memory DB alive across multiple requests
+# Use StaticPool to keep in-memory DB alive, but reset per test function
 SQLALCHEMY_DATABASE_URL = "sqlite:///:memory:"
 
-engine = create_engine(
-    SQLALCHEMY_DATABASE_URL, 
-    connect_args={"check_same_thread": False},
-    poolclass=StaticPool 
-)
-
-TestingSessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
-
-def override_get_db():
-    db = TestingSessionLocal()
-    try:
-        yield db
-    finally:
-        db.close()
-
-app.dependency_overrides[get_db] = override_get_db
-
-@pytest.fixture(scope="module")
-def client():
-    # 1. Create Tables
+@pytest.fixture(scope="function")
+def db_engine():
+    """
+    Creates a fresh in-memory database engine for each test function.
+    """
+    engine = create_engine(
+        SQLALCHEMY_DATABASE_URL, 
+        connect_args={"check_same_thread": False},
+        poolclass=StaticPool
+    )
     Base.metadata.create_all(bind=engine)
-    
-    # 2. Yield Client
-    with TestClient(app) as c:
-        yield c
-    
-    # 3. Cleanup (Drop Tables)
+    yield engine
     Base.metadata.drop_all(bind=engine)
 
 @pytest.fixture(scope="function")
-def db_session():
+def db_session(db_engine):
     """
-    Creates a fresh session for each test to interact with the DB directly.
+    Creates a fresh session for each test.
     """
+    TestingSessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=db_engine)
     db = TestingSessionLocal()
     try:
         yield db
     finally:
         db.close()
+
+@pytest.fixture(scope="function")
+def client(db_session):
+    """
+    Overrides the get_db dependency to use the fresh test session.
+    """
+    def override_get_db():
+        try:
+            yield db_session
+        finally:
+            pass # Session closed by fixture
+
+    app.dependency_overrides[get_db] = override_get_db
+    with TestClient(app) as c:
+        yield c
+    app.dependency_overrides.clear()
 
 # --- TESTS ---
 
@@ -73,15 +74,13 @@ def test_auth_flow(client):
     assert reg_response.status_code == 201
 
     # 2. Login (Trigger OTP)
-    # Patching the correct path where send_otp_email is imported in auth.py
     with patch("src.routers.auth.send_otp_email") as mock_email:
         login_response = client.post("/api/v1/auth/login", data={"username": "test@user.com", "password": "StrongPassword123!"})
         
         assert login_response.status_code == 200
-        assert mock_email.called
+        assert mock_email.called, "OTP Email should be called on login"
         
-        # Extract OTP from mock arguments
-        args = mock_email.call_args[0] # (email, otp)
+        args = mock_email.call_args[0]
         otp_code = args[1]
 
     # 3. Verify OTP
@@ -93,10 +92,8 @@ def test_auth_flow(client):
     assert verify_response.status_code == 200
     token = verify_response.json().get("access_token")
     assert token is not None
-    
-    return token
 
-def test_security_purchase_gate(client, db_session):
+def test_security_purchase_gate(client):
     """
     Ensures that users on STARTER plan cannot access PRO features (Phone Purchase).
     """
@@ -104,18 +101,22 @@ def test_security_purchase_gate(client, db_session):
     email = "starter@gate.com"
     client.post("/api/v1/auth/register", json={
         "email": email, "password": "Pass123!", "full_name": "Gate",
-        "business_name": "B", "business_type": "T", "plan_tier": "starter"
+        "business_name": "B", "business_type": "T", "plan_tier": "STARTER" # Ensure case matches enum if sensitive
     })
 
     # Login Flow Helper
     with patch("src.routers.auth.send_otp_email") as mock:
-        client.post("/api/v1/auth/login", data={"username": email, "password": "Pass123!"})
+        # Note: We must await or ensure the background task is triggered.
+        # TestClient runs synchronous, so background tasks run after the response.
+        login_res = client.post("/api/v1/auth/login", data={"username": email, "password": "Pass123!"})
+        assert login_res.status_code == 200, f"Login failed: {login_res.text}"
         
         assert mock.called, "OTP Email was not triggered"
         otp = mock.call_args[0][1]
 
     # Verify & Get Token
     verify = client.post("/api/v1/auth/verify-otp", json={"email": email, "otp_code": otp})
+    assert verify.status_code == 200
     token = verify.json()["access_token"]
 
     # Attempt to buy phone number (Should Fail - 403 Forbidden)
@@ -126,3 +127,4 @@ def test_security_purchase_gate(client, db_session):
     
     # Assert
     assert response.status_code == 403
+    assert "restricted to PRO" in response.json()["detail"]
