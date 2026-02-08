@@ -4,12 +4,12 @@ import os
 from typing import Optional
 from fastapi import APIRouter, Form, Response, BackgroundTasks
 
-# Services
-from src.services.whatsapp_adapter import whatsapp_adapter
-from src.services.ai_engine import ai_engine
-# Note: Ensure these services are created in src/services/
-from src.services.transcription import transcriber, pdf_maker 
-from src.services.email import email_service
+# Services - CORRECTED PATHS
+from src.services.communication.whatsapp_adapter import whatsapp_adapter
+from src.services.ai.engine import ai_engine
+from src.services.media.transcription import transcriber 
+from src.services.media.pdf_maker import pdf_maker 
+from src.services.communication.email import email_service
 
 # Twilio TwiML
 from twilio.twiml.messaging_response import MessagingResponse
@@ -39,32 +39,31 @@ async def process_audio_pipeline(media_url: str, sender_phone: str):
             return
 
         # 2. Transcribe (Heavy CPU)
-        # Using the local Whisper instance we verified on the server
         transcription_result = transcriber.transcribe_audio(local_audio_path)
-        raw_text = transcription_result["text"]
+        raw_text = transcription_result.get("text", "")
+        
+        if not raw_text:
+            logger.warning("Empty transcription result.")
+            return
+
         logger.info(f"📝 Transcribed: {raw_text[:30]}...")
 
         # 3. Summarize
         summary_text = ai_engine.generate_meeting_summary(raw_text)
 
         # 4. Generate PDF
-        # We assume phone number is safe for filename
         safe_phone = sender_phone.replace("+", "")
         pdf_filename = f"summary_{safe_phone}.pdf"
         pdf_path = pdf_maker.create_meeting_summary(summary_text, pdf_filename)
 
-        # 5. Email (Send to hardcoded admin for MVP, later DB user)
-        # Replace with your actual test email or fetch from DB
+        # 5. Email
         admin_email = "shay.mordechai@proton.me" 
         
-        await email_service.send_receipt_with_pdf(
-            email=admin_email,
-            pdf_path=pdf_path,
-            amount=0.0 # Reusing the receipt function structure
+        await email_service.send_payment_receipt(
+            to_email=admin_email,
+            pdf_path=pdf_path
         )
 
-        # 6. Notify User (Optional)
-        # whatsapp_adapter.send_message(sender_phone, "✅ Meeting summary sent to your email!")
         logger.info("✅ Pipeline completed successfully.")
 
     except Exception as e:
@@ -94,28 +93,23 @@ async def whatsapp_webhook(
     sender_phone = From.replace("whatsapp:", "")
     logger.info(f"📩 WhatsApp from {sender_phone}")
 
-    # Initialize TwiML Response
     resp = MessagingResponse()
 
     # Context for AI
     user_context = {"name": "Client", "business_type": "Consulting"}
 
     try:
-        # A. Handle Audio (Voice Note) 🎤
+        # A. Handle Audio (Voice Note)
         if int(NumMedia) > 0 and MediaUrl0 and "audio" in (MediaContentType0 or ""):
             logger.info(f"🎤 Voice Note Detected. URL: {MediaUrl0}")
             
-            # Immediate Response to avoid Timeout
             resp.message("🎧 קיבלתי את ההקלטה. אני מתמלל ומסכם... זה ייקח דקה.")
-            
-            # Offload heavy lifting to background
             background_tasks.add_task(process_audio_pipeline, MediaUrl0, sender_phone)
             
             return Response(content=str(resp), media_type="application/xml")
 
-        # B. Handle Text Message 💬
+        # B. Handle Text Message
         elif Body:
-            # Standard Gemini Chat
             ai_response = await ai_engine.analyze_interaction(
                 text_input=Body, 
                 user_context=user_context

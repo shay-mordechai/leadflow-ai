@@ -11,10 +11,9 @@ from sqlalchemy.orm import Session
 from src.database.session import get_db
 from src.database.models import User, PhoneNumber, PlanTier
 from src.config import settings
-from src.services.email import send_otp_email 
+from src.services.communication.email import send_otp_email 
 from src.schemas.user import UserCreate, UserResponse, VerifyOTP
 from src.security.dependencies import get_current_user
-# Security Fix: Use centralized hashing
 from src.security.hashing import get_hash, verify_hash
 
 router = APIRouter()
@@ -40,7 +39,6 @@ async def register(data: UserCreate, db: Session = Depends(get_db)):
     
     tier = PlanTier.PRO if "PRO" in (data.plan_tier or "").upper() else PlanTier.STARTER
     
-    # Use centralized get_hash (SHA256 + Bcrypt)
     secure_hash = get_hash(data.password)
     
     new_user = User(
@@ -60,7 +58,6 @@ async def register(data: UserCreate, db: Session = Depends(get_db)):
 async def login(bg_tasks: BackgroundTasks, form: OAuth2PasswordRequestForm = Depends(), db: Session = Depends(get_db)):
     user = db.query(User).filter(User.email == form.username).first()
     
-    # Use centralized verify_hash
     if not user or not verify_hash(form.password, user.hashed_password):
         raise HTTPException(status_code=401, detail="Invalid credentials")
     

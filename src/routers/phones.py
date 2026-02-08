@@ -8,6 +8,7 @@ from sqlalchemy.orm import Session
 from src.database.session import get_db
 from src.database.models import User, PhoneNumber, PlanTier
 from src.security.dependencies import get_current_user
+# CORRECT IMPORT PATH
 from src.services.providers.twilio import twilio_provider
 
 router = APIRouter()
