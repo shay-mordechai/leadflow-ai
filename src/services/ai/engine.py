@@ -27,10 +27,12 @@ class AIEngine:
         # We use 'gemini-2.0-flash' for speed and cost efficiency.
         self.model_name = "gemini-2.0-flash"
         
+        # Model optimized for JSON output
         self.json_model = genai.GenerativeModel(
             self.model_name,
             generation_config={"response_mime_type": "application/json"}
         )
+        # Model optimized for free text (summaries)
         self.text_model = genai.GenerativeModel(self.model_name)
 
     def _clean_json_text(self, text: str) -> str:
