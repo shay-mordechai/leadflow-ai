@@ -23,7 +23,7 @@ env:
   AWS_REGION: eu-north-1
 
 jobs:
-  # --- JOB 1: RUN TESTS (With Caching!) ---
+  # --- JOB 1: RUN TESTS ---
   test-backend:
     runs-on: ubuntu-latest
     steps:
@@ -34,14 +34,12 @@ jobs:
         uses: actions/setup-python@v4
         with:
           python-version: '3.11'
-          cache: 'pip' # <--- הוספתי את זה! שומר את ההתקנות לפעם הבאה
+          cache: 'pip'
 
       - name: Install Dependencies
         run: |
           python -m pip install --upgrade pip
-          # מתקין רק אם הקובץ קיים
           if [ -f requirements.txt ]; then pip install -r requirements.txt; fi
-          # התקנת כלי בדיקה
           pip install pytest httpx sqlalchemy fastapi passlib python-jose multipart
 
       - name: Run Pytest
@@ -54,10 +52,8 @@ jobs:
         run: |
           if [ -f "tests/test_flow.py" ]; then
             pytest tests/test_flow.py -v
-          elif [ -f "test_flow.py" ]; then
-            pytest test_flow.py -v
           else
-            echo "⚠️ Test file not found! Skipping tests but allowing build to proceed."
+            echo "⚠️ Test file not found! Skipping tests."
           fi
 
   # --- JOB 2: BUILD BACKEND ---
@@ -84,7 +80,7 @@ jobs:
           context: .
           file: ./Dockerfile
           push: true
-          tags: ${{ env.REGISTRY }}/${{ env.IMAGE_BACKEND }}:${{ github.sha }}
+          tags: ${{ env.REGISTRY }}/${{ env.IMAGE_BACKEND }}:${{ github.sha }},${{ env.REGISTRY }}/${{ env.IMAGE_BACKEND }}:latest
 
   # --- JOB 3: BUILD FRONTEND ---
   build-frontend:
@@ -109,105 +105,138 @@ jobs:
           context: ./frontend
           file: ./frontend/Dockerfile
           push: true
-          tags: ${{ env.REGISTRY }}/${{ env.IMAGE_FRONTEND }}:${{ github.sha }}
+          tags: ${{ env.REGISTRY }}/${{ env.IMAGE_FRONTEND }}:${{ github.sha }},${{ env.REGISTRY }}/${{ env.IMAGE_FRONTEND }}:latest
 
   # --- JOB 4: DEPLOY ---
   deploy:
     needs: [build-backend, build-frontend]
     runs-on: ubuntu-latest
     steps:
-      - name: Install Cloudflared & Config SSH
+      # --- 1. SETUP SSH TUNNEL (CLOUDFLARE) ---
+      - name: Setup SSH & Cloudflared
         run: |
-          curl -L --output cloudflared.deb https://github.com/cloudflare/cloudflared/releases/latest/download/cloudflared-linux-amd64.deb
-          sudo dpkg -i cloudflared.deb
+          # Install Cloudflared
+          wget -q https://github.com/cloudflare/cloudflared/releases/latest/download/cloudflared-linux-amd64.deb
+          sudo dpkg -i cloudflared-linux-amd64.deb
+          
+          # Setup SSH Key
           mkdir -p ~/.ssh/
           echo "${{ secrets.EC2_SSH_KEY }}" > ~/.ssh/id_rsa
           chmod 600 ~/.ssh/id_rsa
+          
+          # Configure SSH Config
           cat > ~/.ssh/config <<EOF
           Host production
             HostName ${{ secrets.CF_SSH_HOSTNAME }}
             User ec2-user
             IdentityFile ~/.ssh/id_rsa
             StrictHostKeyChecking no
+            UserKnownHostsFile /dev/null
             ProxyCommand /usr/local/bin/cloudflared access ssh --hostname %h --id ${{ secrets.CF_SERVICE_ID }} --secret ${{ secrets.CF_SERVICE_SECRET }}
           EOF
 
-      - name: Create Deployment Script
+      # --- 2. GENERATE DEPLOY SCRIPT ---
+      - name: Generate Deploy Script
         run: |
-          cat <<EOF > deploy_script.sh
+          cat <<'EOF' > deploy.sh
           #!/bin/bash
           set -e
-
-          TAG="${{ github.sha }}"
-          IMG_BACKEND="${{ env.REGISTRY }}/${{ env.IMAGE_BACKEND }}:\$TAG"
-          IMG_FRONTEND="${{ env.REGISTRY }}/${{ env.IMAGE_FRONTEND }}:\$TAG"
           
-          # Enable user persistence
-          sudo loginctl enable-linger ec2-user
-
-          # 1. Prepare Host Directories
-          mkdir -p ~/leadflow-ai/storage
-          touch ~/leadflow-ai/leads.db 
-
-          # 2. Login & Clean
+          # Variables
+          BACKEND_IMG="${{ env.REGISTRY }}/${{ env.IMAGE_BACKEND }}:latest"
+          FRONTEND_IMG="${{ env.REGISTRY }}/${{ env.IMAGE_FRONTEND }}:latest"
+          SYSTEMD_DIR="$HOME/.config/systemd/user"
+          
+          echo "🚀 Starting Deployment on Production..."
+          
+          # 1. Login to Registry
           echo "${{ secrets.GITHUB_TOKEN }}" | podman login ghcr.io -u ${{ github.actor }} --password-stdin
-          podman image prune -a -f --filter "until=1h" || true
           
-          # 3. Pull New Images
-          echo "⬇️ Pulling Images..."
-          podman pull \$IMG_BACKEND
-          podman pull \$IMG_FRONTEND
-
-          # 4. Stop Old Services & CLEANUP
-          echo "🔄 Stopping old services..."
-          systemctl --user stop container-leadflow-backend || true
-          systemctl --user stop container-leadflow-frontend || true
-          systemctl --user reset-failed || true
-          podman rm -f leadflow-backend leadflow-frontend || true
+          # 2. Pull Latest Images
+          echo "⬇️ Pulling latest images..."
+          podman pull "$BACKEND_IMG"
+          podman pull "$FRONTEND_IMG"
           
-          # Critical Zombie Kill
-          sudo fuser -k 8000/tcp || true
-          sudo fuser -k 3000/tcp || true
+          # 3. Stop Old Services (Gracefully)
+          echo "🛑 Stopping old services..."
+          systemctl --user stop container-leadflow-backend 2>/dev/null || true
+          systemctl --user stop container-leadflow-frontend 2>/dev/null || true
+          podman rm -f leadflow-backend leadflow-frontend 2>/dev/null || true
           
-          # 5. DNS Fix
-          echo 'nameserver 8.8.8.8' > /tmp/resolv.conf.override
-
-          # 6. Run BACKEND
-          echo "🚀 Starting Backend..."
-          podman run -d \\
-            --name leadflow-backend \\
-            --network host \\
-            -v /tmp/resolv.conf.override:/etc/resolv.conf:Z \\
-            --restart always \\
-            -e AWS_REGION=${{ env.AWS_REGION }} \\
-            -e APP_ENV=production \\
-            -v ~/leadflow-ai/storage:/app/storage:Z \\
-            -v ~/leadflow-ai/leads.db:/app/leads.db:Z \\
-            \$IMG_BACKEND
-
-          # 7. Run FRONTEND
-          echo "🚀 Starting Frontend..."
-          podman run -d \\
-            --name leadflow-frontend \\
-            --network host \\
-            -v /tmp/resolv.conf.override:/etc/resolv.conf:Z \\
-            --restart always \\
-            -e NEXT_PUBLIC_API_URL=https://my-leads.app \\
-            -e INTERNAL_API_URL=http://127.0.0.1:8000 \\
-            \$IMG_FRONTEND
-
-          # 8. Persistence
-          mkdir -p ~/.config/systemd/user/
-          podman generate systemd --new --files --name leadflow-backend > ~/.config/systemd/user/container-leadflow-backend.service
-          podman generate systemd --new --files --name leadflow-frontend > ~/.config/systemd/user/container-leadflow-frontend.service
+          # 4. Prepare Directories
+          mkdir -p ~/leadflow-ai/storage
+          mkdir -p "$SYSTEMD_DIR"
+          
+          # 5. Run Backend Container
+          echo "🔥 Starting Backend..."
+          podman run -d \
+            --name leadflow-backend \
+            --network host \
+            --env APP_ENV=production \
+            --env AWS_REGION=${{ env.AWS_REGION }} \
+            -v ~/leadflow-ai/storage:/app/storage:Z \
+            -v ~/leadflow-ai/leads.db:/app/leads.db:Z \
+            "$BACKEND_IMG"
+            
+          # 6. Run Frontend Container
+          echo "🔥 Starting Frontend..."
+          podman run -d \
+            --name leadflow-frontend \
+            --network host \
+            --env NEXT_PUBLIC_API_URL=https://my-leads.app \
+            "$FRONTEND_IMG"
+            
+          # 7. Generate Systemd Services (MANUALLY FIXING THE ISSUE)
+          echo "⚙️ Generating Systemd Services..."
+          cd "$SYSTEMD_DIR"
+          
+          # Backend Service
+          cat <<SERVICE > container-leadflow-backend.service
+          [Unit]
+          Description=LeadFlow Backend Container
+          After=network-online.target
+          
+          [Service]
+          Restart=always
+          ExecStart=/usr/bin/podman start -a leadflow-backend
+          ExecStop=/usr/bin/podman stop -t 10 leadflow-backend
+          KillMode=control-group
+          
+          [Install]
+          WantedBy=default.target
+          SERVICE
+          
+          # Frontend Service
+          cat <<SERVICE > container-leadflow-frontend.service
+          [Unit]
+          Description=LeadFlow Frontend Container
+          After=network-online.target
+          
+          [Service]
+          Restart=always
+          ExecStart=/usr/bin/podman start -a leadflow-frontend
+          ExecStop=/usr/bin/podman stop -t 10 leadflow-frontend
+          KillMode=control-group
+          
+          [Install]
+          WantedBy=default.target
+          SERVICE
+          
+          # 8. Reload & Enable
+          echo "🔄 Reloading Systemd..."
           systemctl --user daemon-reload
           systemctl --user enable --now container-leadflow-backend.service
           systemctl --user enable --now container-leadflow-frontend.service
-
-          echo "✅ Deployment Successful!"
+          
+          # 9. Health Check
+          echo "✅ Deployment Complete! Checking status..."
+          sleep 5
+          systemctl --user status container-leadflow-backend --no-pager
           EOF
 
-      - name: Execute Deployment
+      # --- 3. EXECUTE DEPLOYMENT ---
+      - name: Execute on Production
         run: |
-          scp deploy_script.sh production:~/deploy.sh
-          ssh production "chmod +x ~/deploy.sh && ~/deploy.sh"
+          chmod +x deploy.sh
+          scp deploy.sh production:~/deploy.sh
+          ssh production "~/deploy.sh"
