@@ -8,7 +8,6 @@ from sqlalchemy import (
 from sqlalchemy.orm import relationship
 
 # --- IMPORT BASE & GUID FROM SESSION ---
-# This is the key fix: We import them, we do NOT redefine them.
 from src.database.session import Base, GUID
 
 # Ensure encryption is imported for securing PII and OTP codes
@@ -50,6 +49,12 @@ class ProcessingStatus(str, enum.Enum):
     COMPLETED = "COMPLETED"
     FAILED = "FAILED"
 
+class SessionStatus(str, enum.Enum):
+    QUEUED = "QUEUED"
+    PROCESSING = "PROCESSING"
+    COMPLETED = "COMPLETED"
+    FAILED = "FAILED"
+
 # --- MODELS ---
 
 class User(Base):
@@ -85,6 +90,9 @@ class User(Base):
     integrations = relationship("Integration", back_populates="user", cascade="all, delete-orphan")
     business_profile = relationship("BusinessProfile", uselist=False, back_populates="user", cascade="all, delete-orphan")
     phone_numbers = relationship("PhoneNumber", back_populates="owner", cascade="all, delete-orphan")
+    
+    # Relationship to CoachingSession
+    coaching_sessions = relationship("CoachingSession", back_populates="user", cascade="all, delete-orphan")
 
     @property
     def otp_code(self):
@@ -146,6 +154,9 @@ class Lead(Base):
     
     user = relationship("User", back_populates="leads")
     media_files = relationship("MediaInteraction", back_populates="lead")
+    
+    # Relationship to CoachingSession
+    sessions = relationship("CoachingSession", back_populates="lead")
 
     @property
     def name(self):
@@ -194,3 +205,22 @@ class Integration(Base):
     webhook_url = Column(String, nullable=True)
     created_at = Column(DateTime(timezone=True), server_default=func.now())
     user = relationship("User", back_populates="integrations")
+
+# --- ADDED MISSING CLASS: CoachingSession ---
+class CoachingSession(Base):
+    __tablename__ = "coaching_sessions"
+
+    id = Column(GUID(), primary_key=True, default=uuid.uuid4)
+    
+    user_id = Column(GUID(), ForeignKey("users.id"), nullable=False)
+    user = relationship("User", back_populates="coaching_sessions")
+
+    lead_id = Column(GUID(), ForeignKey("leads.id"), nullable=True)
+    lead = relationship("Lead", back_populates="sessions")
+    
+    audio_file_path = Column(String, nullable=False)
+    status = Column(Enum(SessionStatus), default=SessionStatus.QUEUED)
+    transcript = Column(Text, nullable=True)
+    summary = Column(Text, nullable=True)
+    
+    created_at = Column(DateTime(timezone=True), server_default=func.now())

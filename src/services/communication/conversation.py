@@ -1,4 +1,4 @@
-# src/services/conversation.py
+# src/services/communication/conversation.py
 # Handles bi-directional communication logic between the AI Bot and the Lead.
 
 from src.database.models import Lead

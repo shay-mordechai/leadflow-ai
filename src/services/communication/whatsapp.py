@@ -1,4 +1,4 @@
-# src/services/whatsapp_adapter.py
+# src/services/communication/whatsapp.py
 import logging
 import requests
 import uuid

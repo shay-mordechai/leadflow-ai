@@ -1,4 +1,4 @@
-# src/services/email.py
+# src/services/communication/email.py
 import os
 import logging
 from typing import List, Optional
@@ -8,50 +8,52 @@ from src.config import settings
 
 logger = logging.getLogger("EmailService")
 
-# --- Configuration Loading ---
-MAIL_USERNAME = settings.MAIL_USERNAME
-MAIL_PASSWORD = settings.MAIL_PASSWORD
-MAIL_FROM = settings.MAIL_FROM or "noreply@leadflow.ai"
-MAIL_PORT = int(settings.MAIL_PORT) if settings.MAIL_PORT else 587
-MAIL_SERVER = settings.MAIL_SERVER
-
-# Safety Check: Verify if SMTP credentials exist to prevent runtime crashes
-USE_CREDENTIALS = bool(MAIL_USERNAME and MAIL_PASSWORD)
-
-if not USE_CREDENTIALS:
-    logger.warning("⚠️ SMTP Credentials missing. Emails will NOT be sent (Log only).")
-
-# FastAPI-Mail Connection Object
-conf = None
-if USE_CREDENTIALS:
-    conf = ConnectionConfig(
-        MAIL_USERNAME=MAIL_USERNAME,
-        MAIL_PASSWORD=MAIL_PASSWORD,
-        MAIL_FROM=MAIL_FROM,
-        MAIL_PORT=MAIL_PORT,
-        MAIL_SERVER=MAIL_SERVER,
-        MAIL_STARTTLS=True,      # Standard for Port 587 (Gmail/Outlook)
-        MAIL_SSL_TLS=False,      # Standard for Port 465
-        USE_CREDENTIALS=USE_CREDENTIALS,
-        VALIDATE_CERTS=True
-    )
-
 class EmailService:
     """
     Asynchronous email service handler using fastapi-mail.
     Supports OTP delivery and automated PDF attachments.
+    Robust handling for Brevo/Sendinblue and Gmail.
     """
+    def __init__(self):
+        self.conf = self._create_config()
+
+    def _create_config(self) -> Optional[ConnectionConfig]:
+        """
+        Safely creates the connection configuration.
+        Returns None if credentials are missing.
+        """
+        username = settings.MAIL_USERNAME
+        password = settings.MAIL_PASSWORD
+        
+        if not username or not password:
+            logger.warning("⚠️ SMTP Credentials missing in Config. Emails will NOT be sent (Log only).")
+            return None
+
+        try:
+            return ConnectionConfig(
+                MAIL_USERNAME=username,
+                MAIL_PASSWORD=password,
+                MAIL_FROM=settings.MAIL_FROM or "noreply@leadflow.ai",
+                MAIL_PORT=int(settings.MAIL_PORT or 587),
+                MAIL_SERVER=settings.MAIL_SERVER or "smtp-relay.brevo.com",
+                MAIL_STARTTLS=True,
+                MAIL_SSL_TLS=False,
+                USE_CREDENTIALS=True,
+                VALIDATE_CERTS=True
+            )
+        except Exception as e:
+            logger.error(f"❌ Failed to configure SMTP: {e}")
+            return None
 
     async def send_otp_email(self, to_email: EmailStr, otp_code: str):
         """
         Sends a security OTP code for MFA verification.
         """
         # Fallback to logging if SMTP is not configured
-        if not USE_CREDENTIALS or not conf:
+        if not self.conf:
             logger.info(f"🛑 [MOCK EMAIL] To: {to_email} | OTP: {otp_code}")
             return
 
-        # Modern HTML Template for OTP
         html_content = f"""
         <html>
           <body style="font-family: Arial, sans-serif; padding: 20px; color: #333;">
@@ -65,10 +67,6 @@ class EmailService:
                     </span>
                 </div>
                 <p>This code is valid for <b>5 minutes</b>.</p>
-                <hr style="border: none; border-top: 1px solid #eee; margin: 20px 0;">
-                <p style="font-size: 11px; color: #6B7280; text-align: center;">
-                    If you did not request this code, please ignore this email or contact support.
-                </p>
             </div>
           </body>
         </html>
@@ -82,7 +80,7 @@ class EmailService:
                 subtype=MessageType.html
             )
 
-            fm = FastMail(conf)
+            fm = FastMail(self.conf)
             await fm.send_message(message)
             logger.info(f"✅ OTP Email sent successfully to {to_email}")
 
@@ -90,10 +88,7 @@ class EmailService:
             logger.error(f"❌ Failed to send OTP email: {e}")
 
     async def send_payment_receipt(self, to_email: EmailStr, pdf_path: str):
-        """
-        Sends a payment receipt or summary with a PDF attachment.
-        """
-        if not USE_CREDENTIALS or not conf:
+        if not self.conf:
             logger.info(f"🛑 [MOCK RECEIPT] To: {to_email} | File: {pdf_path}")
             return
             
@@ -101,11 +96,7 @@ class EmailService:
             logger.error(f"❌ Attachment not found: {pdf_path}")
             return
 
-        html_content = """
-        <p>Hello,</p>
-        <p>Your requested document (meeting summary or receipt) is attached to this email.</p>
-        <p>Best regards,<br><b>LeadFlow AI Team</b></p>
-        """
+        html_content = "<p>Your requested document is attached.</p>"
 
         try:
             message = MessageSchema(
@@ -116,17 +107,17 @@ class EmailService:
                 attachments=[pdf_path]
             )
 
-            fm = FastMail(conf)
+            fm = FastMail(self.conf)
             await fm.send_message(message)
             logger.info(f"✅ Receipt sent successfully to {to_email}")
 
         except Exception as e:
             logger.error(f"❌ Failed to send receipt: {e}")
 
-# Singleton instance for easy import
+# Singleton Instance
 email_service = EmailService()
 
-# --- Hotfix Proxy Function ---
-# This ensures that 'from src.services.communication.email import send_otp_email' works easily
-async def send_otp_email(email: str, otp_code: str):
-    await email_service.send_otp_email(email, otp_code)
+# --- BACKWARD COMPATIBILITY WRAPPER ---
+# This function allows 'from ... import send_otp_email' to keep working
+async def send_otp_email(to_email: str, otp_code: str):
+    await email_service.send_otp_email(to_email, otp_code)

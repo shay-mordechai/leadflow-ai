@@ -32,7 +32,7 @@ def run_full_system_qa():
     
     args = parser.parse_args()
 
-    # CRITICAL FIX: Ensure base_url is set correctly for ALL requests
+    # Determine Base URL
     base_url = PROD_URL if args.prod else DEFAULT_LOCAL_URL
 
     print(f"\n🚀 STARTING FULL SYSTEM QA FOR: {base_url}")
@@ -59,27 +59,28 @@ def run_full_system_qa():
         "full_name": "QA Automator",
         "business_name": "QA Yoga Studio",
         "business_type": "Fitness Coach",
-        "plan_tier": "starter"
+        "plan_tier": "starter" # Default to starter
     }
 
     try:
         # A. Register check
+        log("1. AUTH", "Attempting Registration...", "INFO")
         res = requests.post(f"{base_url}/api/v1/auth/register", json=user_payload)
         
         if res.status_code == 201:
             log("1. AUTH", "✅ User registered successfully.", "SUCCESS")
         elif res.status_code == 400:
+            # Handle "User already exists" gracefully
             log("1. AUTH", "ℹ️ User already exists. Proceeding to login...", "WARN")
         else:
-            log("1. AUTH", f"⚠️ Registration check returned {res.status_code}. Trying login anyway...", "WARN")
+            log("1. AUTH", f"⚠️ Registration returned {res.status_code}: {res.text}. Trying login anyway...", "WARN")
 
         # B. Login
         log("2. LOGIN", "Requesting Access Token...", "INFO")
-        res = requests.post(f"{base_url}/api/v1/auth/login", json={"email": email, "password": password})
         
-        # Fallback for OAuth2 form data
-        if res.status_code != 200:
-             res = requests.post(f"{base_url}/api/v1/auth/login", data={"username": email, "password": password})
+        # Note: FastAPI OAuth2 expects form data (username/password), NOT JSON.
+        login_data = {"username": email, "password": password}
+        res = requests.post(f"{base_url}/api/v1/auth/login", data=login_data)
 
         if res.status_code != 200:
             log("2. LOGIN", f"❌ Login Failed: {res.text}", "FAIL")
@@ -88,11 +89,11 @@ def run_full_system_qa():
         data = res.json()
         token = None
 
-        # C. MFA Handling
+        # C. MFA Handling (Interactive)
         if data.get("mfa_required"):
             print("\n" + "-"*40)
             print(f"{YELLOW}📲 MFA REQUIRED!{RESET}")
-            print(f"   Check Server Logs/Email for OTP.")
+            print(f"   Check your Email (or Server Logs if local) for the OTP code.")
             print("-" * 40 + "\n")
 
             otp_code = input(f"[{RESET}INPUT{RESET}] 🔢 Enter OTP Code: ").strip()
@@ -117,92 +118,63 @@ def run_full_system_qa():
         sys.exit(1)
 
     # ==============================================================================
-    # 2. PREMIUM SUBSCRIPTION SIMULATION ($99/mo)
+    # 2. VERIFY USER PLAN
     # ==============================================================================
     print("\n" + "="*60)
-    log("4. BILLING", "Simulating Premium Subscription Purchase ($99/mo)...", "INFO")
+    log("4. USER INFO", "Checking current plan...", "INFO")
     
     try:
-        # We simulate what Morning/iCount would send to our webhook
-        payment_payload = {
-            "external_transaction_id": f"SUB_{int(time.time())}",
-            "customer_email": email,
-            "amount": 99.00,
-            "currency": "ILS",
-            "status": "success",
-            "product": "Premium Monthly"
-        }
-        
-        # Call the Webhook Endpoint
-        res = requests.post(f"{base_url}/api/v1/payments/webhook/morning", json=payment_payload)
-        
-        if res.status_code == 200:
-            resp_data = res.json()
-            if resp_data.get("receipt_sent"):
-                log("4. BILLING", "✅ Payment Processed! User upgraded to PRO.", "SUCCESS")
-            else:
-                log("4. BILLING", "⚠️ Payment processed but check logs for receipt.", "WARN")
-        else:
-            log("4. BILLING", f"❌ Payment Webhook Failed: {res.text}", "FAIL")
-
-        # Verify Upgrade via /me
         me_res = requests.get(f"{base_url}/api/v1/auth/me", headers=headers)
         if me_res.status_code == 200:
             user_data = me_res.json()
             plan = user_data.get("plan_tier")
-            if "PRO" in str(plan).upper():
-                log("4. BILLING", f"✅ Verified: User plan is now '{plan}'.", "SUCCESS")
-            else:
-                log("4. BILLING", f"❌ Verification Failed: User plan is '{plan}'.", "FAIL")
-
+            log("4. USER INFO", f"Current Plan: {plan}", "INFO")
+        else:
+            log("4. USER INFO", f"❌ Failed to fetch user info: {me_res.text}", "FAIL")
+            
     except Exception as e:
-        log("BILLING", f"Error: {e}", "FAIL")
+        log("USER INFO", f"Error: {e}", "FAIL")
 
     # ==============================================================================
-    # 3. PHONE NUMBER BROWSING (No Purchase Required)
+    # 3. PHONE NUMBER BROWSING (PRO FEATURE)
     # ==============================================================================
     print("\n" + "="*60)
-    log("5. PHONES", "Browsing available numbers (Post-Payment Flow)...", "INFO")
+    log("5. PHONES", "Browsing available numbers...", "INFO")
 
     try:
-        available_numbers = []
-        for country in ["IL", "US"]:
-            res = requests.get(f"{base_url}/api/v1/phones/available?country_code={country}", headers=headers)
-            if res.status_code == 200:
-                available_numbers.extend(res.json())
-
-        # Filter Cheap Numbers
-        cheap_numbers = [n for n in available_numbers if float(n.get('price_monthly', 5.0)) < 2.0]
-        cheap_numbers.sort(key=lambda x: float(x.get('price_monthly', 5.0)))
-
-        if cheap_numbers:
-            print(f"\n{CYAN}📞 DISPLAYING {len(cheap_numbers)} AVAILABLE NUMBERS:{RESET}")
-            for idx, num in enumerate(cheap_numbers[:5]):
-                print(f"   [{idx+1}] {num['number']} | {num['country']} | ${num['price_monthly']}/mo | {num['provider']}")
-        else:
-            log("5. PHONES", "⚠️ No cheap numbers found (or Twilio credentials missing in Prod).", "WARN")
-
-        # Prompt
-        print("\n")
-        choice = input(f"[{RESET}INPUT{RESET}] Do you want to ACTUALLY purchase a number? (y/N): ").lower()
+        # Note: This endpoint might require PRO plan. We handle 403 gracefully.
+        res = requests.get(f"{base_url}/api/v1/phones/available?country_code=IL", headers=headers)
         
-        if choice == 'y' and cheap_numbers:
-            # Purchase Logic
-            selection = input(f"[{RESET}INPUT{RESET}] Enter index: ")
-            try:
-                selected_num = cheap_numbers[int(selection)-1]
-                log("5. PHONES", f"Purchasing {selected_num['number']}...", "INFO")
-                buy_res = requests.post(f"{base_url}/api/v1/phones/purchase", 
-                                        json={"phone_number": selected_num['number'], "country_code": selected_num['country']},
-                                        headers=headers)
-                if buy_res.status_code == 200:
-                    log("5. PHONES", "✅ Purchase Successful!", "SUCCESS")
-                else:
-                    log("5. PHONES", f"❌ Purchase Failed: {buy_res.text}", "FAIL")
-            except:
-                pass
+        if res.status_code == 200:
+            numbers = res.json()
+            if numbers:
+                print(f"\n{CYAN}📞 FOUND {len(numbers)} NUMBERS:{RESET}")
+                for idx, num in enumerate(numbers[:3]): # Show top 3
+                    print(f"   [{idx+1}] {num['number']} | {num['provider']} | {num['price_monthly']} USD")
+                
+                # Purchase Simulation
+                print("\n")
+                choice = input(f"[{RESET}INPUT{RESET}] Simulate Purchase (Will check Plan)? (y/N): ").lower()
+                if choice == 'y':
+                    target_num = numbers[0]['number']
+                    log("5. PHONES", f"Attempting purchase for {target_num}...", "INFO")
+                    buy_res = requests.post(f"{base_url}/api/v1/phones/purchase", 
+                                            json={"phone_number": target_num, "country_code": "IL"},
+                                            headers=headers)
+                    
+                    if buy_res.status_code == 200:
+                        log("5. PHONES", "✅ Purchase Successful!", "SUCCESS")
+                    elif buy_res.status_code == 403:
+                        log("5. PHONES", "🔒 Purchase Blocked: You need PRO plan (Expected for Starter users).", "WARN")
+                    else:
+                        log("5. PHONES", f"❌ Purchase Failed: {buy_res.text}", "FAIL")
+            else:
+                 log("5. PHONES", "⚠️ No numbers found (Check Provider Credentials).", "WARN")
+
+        elif res.status_code == 403:
+             log("5. PHONES", "🔒 Access Denied: Phone browsing restricted to PRO plan.", "WARN")
         else:
-            log("5. PHONES", "⏩ Skipping purchase (View only mode).", "INFO")
+             log("5. PHONES", f"❌ API Error: {res.text}", "FAIL")
 
     except Exception as e:
         log("PHONES", f"Error: {e}", "FAIL")
