@@ -63,9 +63,12 @@ def test_auth_flow(client):
     Tests the full registration -> login -> OTP flow.
     """
     # 1. Register
+    # Using a password > 12 chars to pass validation
+    password = "YourPassword123!" 
+    
     reg_response = client.post("/api/v1/auth/register", json={
         "email": "test@user.com",
-        "password": "StrongPassword123!",
+        "password": password,
         "full_name": "Test User",
         "business_name": "Test Biz",
         "business_type": "Tech",
@@ -75,7 +78,7 @@ def test_auth_flow(client):
 
     # 2. Login (Trigger OTP)
     with patch("src.routers.auth.send_otp_email") as mock_email:
-        login_response = client.post("/api/v1/auth/login", data={"username": "test@user.com", "password": "StrongPassword123!"})
+        login_response = client.post("/api/v1/auth/login", data={"username": "test@user.com", "password": password})
         
         assert login_response.status_code == 200, f"Login failed: {login_response.text}"
         assert mock_email.called, "OTP Email should be called on login"
@@ -99,17 +102,23 @@ def test_security_purchase_gate(client):
     """
     # Setup: Create Starter User
     email = "starter@gate.com"
-    # Note: Changed "STARTER" to "starter" to satisfy potential Pydantic strict enum validation
+    # Using a password > 12 chars to pass validation
+    password = "YourPassword123!"
+    
     reg_res = client.post("/api/v1/auth/register", json={
-        "email": email, "password": "Pass123!", "full_name": "Gate",
-        "business_name": "B", "business_type": "T", "plan_tier": "starter" 
+        "email": email, 
+        "password": password, 
+        "full_name": "Gate",
+        "business_name": "B", 
+        "business_type": "T", 
+        "plan_tier": "starter" 
     })
-    # CRITICAL: Assert registration success before trying to login
+    # Assert registration success before trying to login
     assert reg_res.status_code == 201, f"Starter registration failed: {reg_res.text}"
 
     # Login Flow Helper
     with patch("src.routers.auth.send_otp_email") as mock:
-        login_res = client.post("/api/v1/auth/login", data={"username": email, "password": "Pass123!"})
+        login_res = client.post("/api/v1/auth/login", data={"username": email, "password": password})
         assert login_res.status_code == 200, f"Login failed: {login_res.text}"
         
         assert mock.called, "OTP Email was not triggered"
