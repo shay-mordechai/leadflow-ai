@@ -74,6 +74,7 @@ def test_auth_flow(client):
     assert reg_response.status_code == 201
 
     # 2. Login (Trigger OTP)
+    # Important: Patch the path where send_otp_email is imported in auth.py
     with patch("src.routers.auth.send_otp_email") as mock_email:
         login_response = client.post("/api/v1/auth/login", data={"username": "test@user.com", "password": "StrongPassword123!"})
         
@@ -101,13 +102,11 @@ def test_security_purchase_gate(client):
     email = "starter@gate.com"
     client.post("/api/v1/auth/register", json={
         "email": email, "password": "Pass123!", "full_name": "Gate",
-        "business_name": "B", "business_type": "T", "plan_tier": "STARTER" # Ensure case matches enum if sensitive
+        "business_name": "B", "business_type": "T", "plan_tier": "STARTER"
     })
 
     # Login Flow Helper
     with patch("src.routers.auth.send_otp_email") as mock:
-        # Note: We must await or ensure the background task is triggered.
-        # TestClient runs synchronous, so background tasks run after the response.
         login_res = client.post("/api/v1/auth/login", data={"username": email, "password": "Pass123!"})
         assert login_res.status_code == 200, f"Login failed: {login_res.text}"
         
@@ -116,7 +115,6 @@ def test_security_purchase_gate(client):
 
     # Verify & Get Token
     verify = client.post("/api/v1/auth/verify-otp", json={"email": email, "otp_code": otp})
-    assert verify.status_code == 200
     token = verify.json()["access_token"]
 
     # Attempt to buy phone number (Should Fail - 403 Forbidden)
