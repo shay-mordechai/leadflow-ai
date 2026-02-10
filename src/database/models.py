@@ -10,7 +10,7 @@ from sqlalchemy.orm import relationship
 # --- IMPORT BASE & GUID FROM SESSION ---
 from src.database.session import Base, GUID
 
-# Ensure encryption is imported for securing PII and OTP codes
+# Security: Encryption wrapper for PII and OTPs
 from src.security.encryption import protector 
 
 # --- ENUMS ---
@@ -63,6 +63,8 @@ class User(Base):
     id = Column(GUID(), primary_key=True, default=uuid.uuid4)
     name = Column(String, nullable=False)
     email = Column(String, unique=True, index=True, nullable=False)
+    
+    # Security: Never query this column directly in responses. Use Pydantic to exclude it.
     hashed_password = Column(String, nullable=False)
     
     plan_tier = Column(Enum(PlanTier), default=PlanTier.STARTER, nullable=False)
@@ -75,6 +77,7 @@ class User(Base):
     last_known_city = Column(String, nullable=True)
     last_known_country = Column(String, nullable=True)
 
+    # Security: OTP is encrypted at rest
     _otp_encrypted = Column("otp_code", String, nullable=True)
     otp_expires_at = Column(DateTime, nullable=True)
 
@@ -85,13 +88,12 @@ class User(Base):
     
     openai_api_key = Column(String, nullable=True)
 
+    # Relationships with Cascade Delete (GDPR: Delete user = Delete all their data)
     leads = relationship("Lead", back_populates="user", cascade="all, delete-orphan")
     media_files = relationship("MediaInteraction", back_populates="user", cascade="all, delete-orphan")
     integrations = relationship("Integration", back_populates="user", cascade="all, delete-orphan")
     business_profile = relationship("BusinessProfile", uselist=False, back_populates="user", cascade="all, delete-orphan")
     phone_numbers = relationship("PhoneNumber", back_populates="owner", cascade="all, delete-orphan")
-    
-    # Relationship to CoachingSession
     coaching_sessions = relationship("CoachingSession", back_populates="user", cascade="all, delete-orphan")
 
     @property
@@ -133,8 +135,10 @@ class Lead(Base):
     __tablename__ = "leads"
     
     id = Column(GUID(), primary_key=True, default=uuid.uuid4)
+    # Security: Indexed user_id for fast IDOR-safe queries
     user_id = Column(GUID(), ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True)
     
+    # Security: Encrypted PII Fields
     _name_encrypted = Column("name", String, nullable=True)
     _phone_encrypted = Column("phone_number", String, nullable=True)
     
@@ -154,10 +158,9 @@ class Lead(Base):
     
     user = relationship("User", back_populates="leads")
     media_files = relationship("MediaInteraction", back_populates="lead")
-    
-    # Relationship to CoachingSession
     sessions = relationship("CoachingSession", back_populates="lead")
 
+    # Security: Encryption Getters/Setters
     @property
     def name(self):
         return protector.decrypt(self._name_encrypted) if self._name_encrypted else None
@@ -206,7 +209,6 @@ class Integration(Base):
     created_at = Column(DateTime(timezone=True), server_default=func.now())
     user = relationship("User", back_populates="integrations")
 
-# --- ADDED MISSING CLASS: CoachingSession ---
 class CoachingSession(Base):
     __tablename__ = "coaching_sessions"
 

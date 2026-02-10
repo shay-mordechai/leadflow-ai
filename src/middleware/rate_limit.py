@@ -19,21 +19,23 @@ class RateLimitMiddleware(BaseHTTPMiddleware):
         self.clients = defaultdict(list)
 
     async def dispatch(self, request: Request, call_next):
-        # Bypass rate limiting for static files and health checks to reduce overhead
+        # Bypass rate limiting for static files and health checks
         if request.url.path.startswith("/static") or request.url.path == "/health":
             return await call_next(request)
 
-        client_ip = request.client.host
+        # SECURITY FIX: Get the Real IP from Cloudflare
+        # If running locally without CF, fallback to client.host
+        client_ip = request.headers.get("CF-Connecting-IP", request.client.host)
+        
         current_time = time.time()
 
         # Get client history
         request_history = self.clients[client_ip]
 
         # Filter out requests older than the defined window
-        # This keeps the memory usage low by removing stale timestamps
         valid_requests = [t for t in request_history if current_time - t < self.window_seconds]
         
-        # Update the history with only valid requests
+        # Update the history
         self.clients[client_ip] = valid_requests
 
         # Check if limit is reached
