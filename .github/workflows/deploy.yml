@@ -39,8 +39,13 @@ jobs:
 
       - name: Install Dependencies
         run: |
-          python -m pip install --upgrade pip
-          if [ -f requirements.txt ]; then pip install -r requirements.txt; fi
+          # Upgrade pip, setuptools, and wheel to ensure build tools are available
+          python -m pip install --upgrade pip setuptools wheel
+          
+          # Install requirements with --no-build-isolation to fix 'pkg_resources' error in openai-whisper
+          if [ -f requirements.txt ]; then pip install --no-build-isolation -r requirements.txt; fi
+          
+          # Install test dependencies
           pip install pytest httpx sqlalchemy fastapi passlib python-jose multipart
 
       - name: Run Pytest
