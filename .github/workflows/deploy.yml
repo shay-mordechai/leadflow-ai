@@ -4,13 +4,7 @@
 # Target Server OS: Amazon Linux 2023
 # Container Runtime: PODMAN
 # Architecture: Zero Trust (Cloudflare Tunnel)
-#
-# CRITICAL NOTE ON DEPLOYMENT LOGIC:
-# The Cloudflare Tunnel runs as a SYSTEM service (container-cloudflared_host).
-# This deployment script manages the APP service (leadflow-ai) as a USER service.
-# We must NEVER stop the tunnel, or SSH access will be lost immediately.
 # ==============================================================================
-# --- JOB 4: DEPLOY ---
 name: LeadFlow Production Deploy
 
 on:
@@ -39,13 +33,15 @@ jobs:
 
       - name: Install Dependencies
         run: |
-          # Upgrade pip, setuptools, and wheel to ensure build tools are available
-          python -m pip install --upgrade pip setuptools wheel
+          # 1. Force downgrade setuptools to allow 'pkg_resources' (required by whisper 2023)
+          python -m pip install --upgrade pip "setuptools<70" wheel
           
-          # Install requirements with --no-build-isolation to fix 'pkg_resources' error in openai-whisper
+          # 2. Install requirements using --no-build-isolation
+          # This forces pip to use the downgraded setuptools we just installed
+          # instead of creating a new environment with the latest (broken) setuptools.
           if [ -f requirements.txt ]; then pip install --no-build-isolation -r requirements.txt; fi
           
-          # Install test dependencies
+          # 3. Install test dependencies
           pip install pytest httpx sqlalchemy fastapi passlib python-jose multipart
 
       - name: Run Pytest
@@ -187,8 +183,7 @@ jobs:
             --env NEXT_PUBLIC_API_URL=https://my-leads.app \
             "$FRONTEND_IMG"
             
-          # 5. STOP Containers (CRITICAL FIX)
-          # We stop them so Systemd can take over via 'ExecStart=podman start'
+          # 5. STOP Containers (Handover to Systemd)
           echo "⏸️  Handing over to Systemd..."
           podman stop leadflow-backend
           podman stop leadflow-frontend
