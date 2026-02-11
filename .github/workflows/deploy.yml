@@ -37,12 +37,11 @@ jobs:
           python -m pip install --upgrade pip "setuptools<70" wheel
           
           # 2. Install requirements using --no-build-isolation
-          # This forces pip to use the downgraded setuptools we just installed
-          # instead of creating a new environment with the latest (broken) setuptools.
           if [ -f requirements.txt ]; then pip install --no-build-isolation -r requirements.txt; fi
           
           # 3. Install test dependencies
-          pip install pytest httpx sqlalchemy fastapi passlib python-jose multipart
+          # FIX: changed 'multipart' to 'python-multipart' to fix FastAPI error
+          pip install pytest httpx sqlalchemy fastapi passlib python-jose python-multipart
 
       - name: Run Pytest
         env:
