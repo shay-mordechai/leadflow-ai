@@ -44,5 +44,5 @@ slowapi==0.1.9
 
 # --- Telephony Providers ---
 twilio==9.10.1              # FIXED: Was 8.13.0 (CRITICAL Vuln)
-plivo==4.36.0
+plivo>=4.36.0
 vonage==3.14.0
