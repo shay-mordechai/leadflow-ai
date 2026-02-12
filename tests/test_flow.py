@@ -44,6 +44,7 @@ def db_session(db_engine):
 def client(db_session):
     """
     Overrides the get_db dependency to use the fresh test session.
+    Configures base_url to pass TrustedHostMiddleware checks.
     """
     def override_get_db():
         try:
@@ -52,8 +53,12 @@ def client(db_session):
             pass # Session closed by fixture
 
     app.dependency_overrides[get_db] = override_get_db
-    with TestClient(app) as c:
+    
+    # FIX: Added base_url="http://localhost" to satisfy TrustedHostMiddleware
+    # Without this, TestClient sends 'testserver' which gets blocked by the middleware.
+    with TestClient(app, base_url="http://localhost") as c:
         yield c
+        
     app.dependency_overrides.clear()
 
 # --- TESTS ---
