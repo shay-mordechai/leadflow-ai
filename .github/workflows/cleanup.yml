@@ -1,0 +1,37 @@
+name: Cleanup Registry Storage
+
+# TRIGGER: This workflow runs automatically AFTER 'LeadFlow Production Deploy' completes.
+# It runs regardless of whether the deploy succeeded or failed.
+on:
+  workflow_run:
+    workflows: ["LeadFlow Production Deploy"]
+    types:
+      - completed
+  
+  # Allow manual trigger as well
+  workflow_dispatch:
+
+jobs:
+  prune-images:
+    runs-on: ubuntu-latest
+    permissions:
+      packages: write
+    steps:
+      - name: Prune Backend Images
+        uses: actions/delete-package-versions@v4
+        with:
+          package-name: 'leadflow-backend'
+          package-type: 'container'
+          # CRITICAL: Keep only the last 2 versions to save storage.
+          # If a build fails, the broken image might be here, but it will be
+          # pushed out by the next successful build.
+          min-versions-to-keep: 2
+          delete-only-untagged-versions: 'false'
+
+      - name: Prune Frontend Images
+        uses: actions/delete-package-versions@v4
+        with:
+          package-name: 'leadflow-frontend'
+          package-type: 'container'
+          min-versions-to-keep: 2
+          delete-only-untagged-versions: 'false'
