@@ -18,7 +18,7 @@ env:
   AWS_REGION: eu-north-1
 
 jobs:
-  # --- JOB 1: RUN TESTS ---
+  # --- JOB 1: RUN TESTS (Running in Parallel) ---
   test-backend:
     runs-on: ubuntu-latest
     steps:
@@ -56,9 +56,10 @@ jobs:
             echo "⚠️ Test file not found! Skipping tests."
           fi
 
-  # --- JOB 2: BUILD BACKEND ---
+  # --- JOB 2: BUILD BACKEND (Running in Parallel) ---
   build-backend:
-    needs: [test-backend]
+    # OPTIMIZATION: Removed 'needs: [test-backend]'. 
+    # This runs immediately. If tests fail later, Deploy will be skipped.
     runs-on: ubuntu-latest
     permissions:
       contents: read
@@ -82,7 +83,7 @@ jobs:
           push: true
           tags: ${{ env.REGISTRY }}/${{ env.IMAGE_BACKEND }}:${{ github.sha }},${{ env.REGISTRY }}/${{ env.IMAGE_BACKEND }}:latest
 
-  # --- JOB 3: BUILD FRONTEND ---
+  # --- JOB 3: BUILD FRONTEND (Running in Parallel) ---
   build-frontend:
     runs-on: ubuntu-latest
     permissions:
@@ -107,9 +108,11 @@ jobs:
           push: true
           tags: ${{ env.REGISTRY }}/${{ env.IMAGE_FRONTEND }}:${{ github.sha }},${{ env.REGISTRY }}/${{ env.IMAGE_FRONTEND }}:latest
 
-  # --- JOB 4: DEPLOY ---
+  # --- JOB 4: DEPLOY (The Gatekeeper) ---
   deploy:
-    needs: [build-backend, build-frontend]
+    # CRITICAL: This job waits for ALL previous jobs to succeed.
+    # If test-backend fails, this job will be SKIPPED, protecting production.
+    needs: [test-backend, build-backend, build-frontend]
     runs-on: ubuntu-latest
     steps:
       # --- 1. SETUP SSH TUNNEL (CLOUDFLARE) ---
