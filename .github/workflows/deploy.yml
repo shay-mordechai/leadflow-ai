@@ -40,7 +40,6 @@ jobs:
           if [ -f requirements.txt ]; then pip install --no-build-isolation -r requirements.txt; fi
           
           # 3. Install test dependencies
-          # FIX: changed 'multipart' to 'python-multipart' to fix FastAPI error
           pip install pytest httpx sqlalchemy fastapi passlib python-jose python-multipart
 
       - name: Run Pytest
@@ -157,21 +156,26 @@ jobs:
           podman rm -f leadflow-backend leadflow-frontend 2>/dev/null || true
           
           # 3. Create Directories
+          # FIX: Create data directory for SQLite to allow journal file creation
           mkdir -p ~/leadflow-ai/storage
+          mkdir -p ~/leadflow-ai/data
           mkdir -p "$SYSTEMD_DIR"
           
           # 4. Run Containers (Initial Creation)
           echo "🔥 Creating Containers..."
           
           # Backend
+          # FIX: Mounted /data folder instead of single file to fix 'readonly database' error
+          # FIX: Added DATABASE_URL env var to point to the new location
           podman run -d \
             --name leadflow-backend \
             --network host \
             --replace \
             --env APP_ENV=production \
             --env AWS_REGION=${{ env.AWS_REGION }} \
+            --env DATABASE_URL=sqlite:////app/data/leads.db \
             -v ~/leadflow-ai/storage:/app/storage:Z \
-            -v ~/leadflow-ai/leads.db:/app/leads.db:Z \
+            -v ~/leadflow-ai/data:/app/data:Z \
             "$BACKEND_IMG"
 
           # Frontend
