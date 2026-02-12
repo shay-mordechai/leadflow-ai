@@ -58,8 +58,6 @@ jobs:
 
   # --- JOB 2: BUILD BACKEND (Running in Parallel) ---
   build-backend:
-    # OPTIMIZATION: Removed 'needs: [test-backend]'. 
-    # This runs immediately. If tests fail later, Deploy will be skipped.
     runs-on: ubuntu-latest
     permissions:
       contents: read
@@ -110,8 +108,6 @@ jobs:
 
   # --- JOB 4: DEPLOY (The Gatekeeper) ---
   deploy:
-    # CRITICAL: This job waits for ALL previous jobs to succeed.
-    # If test-backend fails, this job will be SKIPPED, protecting production.
     needs: [test-backend, build-backend, build-frontend]
     runs-on: ubuntu-latest
     steps:
@@ -147,29 +143,34 @@ jobs:
           
           echo "🚀 Starting Deployment on Production..."
           
-          # 1. Login & Pull
-          echo "${{ secrets.GITHUB_TOKEN }}" | podman login ghcr.io -u ${{ github.actor }} --password-stdin
-          podman pull "$BACKEND_IMG"
-          podman pull "$FRONTEND_IMG"
+          # FIX: Reordered deployment logic. Stop & Clean happens FIRST
+          # to free up disk space before pulling new images.
           
-          # 2. Stop & Clean Old State
+          # 1. Stop & Clean Old State
           echo "🛑 Stopping old services..."
           systemctl --user stop container-leadflow-backend 2>/dev/null || true
           systemctl --user stop container-leadflow-frontend 2>/dev/null || true
           podman rm -f leadflow-backend leadflow-frontend 2>/dev/null || true
           
-          # 3. Create Directories
-          # FIX: Create data directory for SQLite to allow journal file creation
+          # 2. Free up disk space (Solves 'no space left on device')
+          echo "🧹 Cleaning up unused Podman images and containers..."
+          podman system prune -a -f
+          
+          # 3. Login & Pull (Now there is guaranteed space for the pull)
+          echo "⬇️ Pulling latest images..."
+          echo "${{ secrets.GITHUB_TOKEN }}" | podman login ghcr.io -u ${{ github.actor }} --password-stdin
+          podman pull "$BACKEND_IMG"
+          podman pull "$FRONTEND_IMG"
+          
+          # 4. Create Directories
           mkdir -p ~/leadflow-ai/storage
           mkdir -p ~/leadflow-ai/data
           mkdir -p "$SYSTEMD_DIR"
           
-          # 4. Run Containers (Initial Creation)
+          # 5. Run Containers (Initial Creation)
           echo "🔥 Creating Containers..."
           
           # Backend
-          # FIX: Mounted /data folder instead of single file to fix 'readonly database' error
-          # FIX: Added DATABASE_URL env var to point to the new location
           podman run -d \
             --name leadflow-backend \
             --network host \
@@ -189,12 +190,12 @@ jobs:
             --env NEXT_PUBLIC_API_URL=https://my-leads.app \
             "$FRONTEND_IMG"
             
-          # 5. STOP Containers (Handover to Systemd)
+          # 6. STOP Containers (Handover to Systemd)
           echo "⏸️  Handing over to Systemd..."
           podman stop leadflow-backend
           podman stop leadflow-frontend
             
-          # 6. Generate Systemd Services
+          # 7. Generate Systemd Services
           echo "⚙️ Generating Systemd Files..."
           cd "$SYSTEMD_DIR"
           
@@ -230,13 +231,13 @@ jobs:
           WantedBy=default.target
           SERVICE
           
-          # 7. Enable & Start via Systemd
+          # 8. Enable & Start via Systemd
           echo "🔄 Reloading Systemd..."
           systemctl --user daemon-reload
           systemctl --user enable --now container-leadflow-backend.service
           systemctl --user enable --now container-leadflow-frontend.service
           
-          # 8. Verify
+          # 9. Verify
           echo "✅ Deployment Complete! Status:"
           sleep 3
           systemctl --user status container-leadflow-backend --no-pager
