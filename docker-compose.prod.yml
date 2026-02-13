@@ -2,39 +2,32 @@
 version: '3.8'
 
 services:
-  # --- Main Application Service ---
+  # --- Main Backend Application ---
   app:
-    # Uses dynamic tag from GitHub Actions, falls back to 'latest' if manual
-    image: ghcr.io/shay-mordechai/leadflow-ai:${IMAGE_TAG:-latest}
-    container_name: leadflow-ai
+    image: ghcr.io/shay-mordechai/leadflow-backend:latest
+    container_name: leadflow-backend
     restart: always
     
-    # NETWORK CONFIGURATION:
-    # We expose port 8000 to the Host OS.
-    # The system-level Cloudflare Tunnel connects to localhost:8000.
-    ports:
-      - "8000:8000"
+    # Using host network to simplify Cloudflare Tunnel integration
+    network_mode: "host"
     
-    # --- CRITICAL ENVIRONMENT OVERRIDES ---
-    # These settings enforce the fixes we discovered during debugging.
     environment:
-      - WEB_CONCURRENCY=1               # Limit to 1 worker to save RAM on t3.micro
-      - ENABLE_REAL_PHONE_PURCHASE=true # Forces the phone module to load
-      - ACCESS_TOKEN_EXPIRE_MINUTES=1440
-      - ALGORITHM=HS256                 # Required for JWT encoding
       - APP_ENV=production
+      - AWS_REGION=eu-north-1
+      # CRITICAL: Absolute path ensures SQLite uses the mounted Volume
+      - DATABASE_URL=sqlite:////app/data/leads.db
+      - WEB_CONCURRENCY=1               
+      - ENABLE_REAL_PHONE_PURCHASE=true 
+      - ACCESS_TOKEN_EXPIRE_MINUTES=1440
+      - ALGORITHM=HS256
 
     volumes:
-      # The ':Z' flag is crucial for Podman/SELinux permissions
+      # Use ':Z' for SELinux compatibility on Amazon Linux/Fedora
       - ./storage:/app/storage:Z
-      - ./leads.db:/app/leads.db:Z
+      - ./data:/app/data:Z
       - ./private.key:/app/private.key:Z
     
-    # Load additional secrets (AWS keys, etc.) from .env file
-    env_file:
-      - .env
-
-    # Command updated to use 1 worker explicitly for stability
+    # Explicitly enforce 1 worker to prevent SQLAlchemy race conditions during migrations
     command: >
       gunicorn src.main:app
       --workers 1
@@ -45,6 +38,5 @@ services:
       --error-logfile -
       --log-level info
 
-  # --- SIDE NOTE ---
-  # The 'tunnel' service has been removed.
-  # We are now using the Host's systemd-managed tunnel for both SSH and HTTP.
+  # --- Note: Frontend is usually deployed as a separate container or via Next.js Vercel/Standalone ---
+  # If you include frontend here, ensure it also uses network_mode: "host"
