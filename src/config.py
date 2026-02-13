@@ -76,7 +76,7 @@ class Settings(BaseSettings):
     DATABASE_URL: str # Will be populated from SSM
     
     # --- Infrastructure ---
-    S3_BUCKET_NAME: str = "leadflow-user-assets-prod"
+    S3_BUCKET_NAME: str = "leadflow-user-assets-shay"
     
     # --- Security ---
     ENCRYPTION_KEY: str = "" 

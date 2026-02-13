@@ -16,6 +16,7 @@ services:
       - AWS_REGION=eu-north-1
       # CRITICAL: Absolute path ensures SQLite uses the mounted Volume
       - DATABASE_URL=sqlite:////app/data/leads.db
+      - S3_BUCKET_NAME=leadflow-user-assets-prod # Updated to correct bucket name
       - WEB_CONCURRENCY=1               
       - ENABLE_REAL_PHONE_PURCHASE=true 
       - ACCESS_TOKEN_EXPIRE_MINUTES=1440
@@ -37,6 +38,3 @@ services:
       --access-logfile -
       --error-logfile -
       --log-level info
-
-  # --- Note: Frontend is usually deployed as a separate container or via Next.js Vercel/Standalone ---
-  # If you include frontend here, ensure it also uses network_mode: "host"
