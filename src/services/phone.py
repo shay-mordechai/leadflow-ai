@@ -63,6 +63,7 @@ class TelephonyService:
     async def search_best_numbers(self, country_code: str, area_code: str = None) -> List[Dict]:
         """
         Aggregates available numbers from ALL active providers.
+        Includes a filter to ensure numbers match the requested country code.
         """
         results = []
 
@@ -126,8 +127,20 @@ class TelephonyService:
             except Exception as e:
                 logger.warning(f"⚠️ SignalWire Search Failed: {e}")
 
-        logger.info(f"🏁 Found total {len(results)} numbers across {len(self.providers)} providers.")
-        return results
+        # --- D. Filter Results (Strict Region Check) ---
+        # Some providers (like SignalWire) might return US numbers if IL is requested but not found.
+        filtered_results = []
+        for res in results:
+            num = str(res.get("number", ""))
+            
+            # If searching for Israel, ensure it starts with +972
+            if country_code == "IL" and not num.startswith("+972"):
+                continue
+                
+            filtered_results.append(res)
+
+        logger.info(f"🏁 Found total {len(filtered_results)} valid numbers (filtered from {len(results)}) across providers.")
+        return filtered_results
 
     async def purchase_number(self, provider: str, phone_number: str, user_id: str) -> Dict[str, Any]:
         """

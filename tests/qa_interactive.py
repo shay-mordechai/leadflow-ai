@@ -148,9 +148,20 @@ def run_full_system_qa():
         if res.status_code == 200:
             numbers = res.json()
             if numbers:
-                print(f"\n{CYAN}📞 FOUND {len(numbers)} NUMBERS:{RESET}")
-                for idx, num in enumerate(numbers[:3]): # Show top 3
-                    print(f"   [{idx+1}] {num['number']} | {num['provider']} | {num['price_monthly']} USD")
+                # Calculate Summary
+                israeli_nums = [n for n in numbers if n['number'].startswith('+972')]
+                foreign_nums = [n for n in numbers if not n['number'].startswith('+972')]
+
+                print(f"\n{CYAN}📞 RESULTS SUMMARY:{RESET}")
+                print(f"   🇮🇱 Israeli Numbers Found: {len(israeli_nums)}")
+                print(f"   🌎 Foreign Numbers Found: {len(foreign_nums)}")
+                print("-" * 30)
+
+                # Show numbers with visual flags
+                print(f"{CYAN}📞 SHOWING TOP RESULTS:{RESET}")
+                for idx, num in enumerate(numbers[:20]): # Show top 20
+                    prefix = "🇮🇱" if num['number'].startswith('+972') else "🌎"
+                    print(f"   [{idx+1}] {prefix} {num['number']} | {num['provider']} | {num['price_monthly']} USD")
                 
                 # Purchase Simulation
                 print("\n")
