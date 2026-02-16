@@ -21,8 +21,8 @@ on:
       - '.github/workflows/production.yml'
 
 env:
-  # UPDATE THIS with your AWS Account ID! (Get it from the CLI output earlier)
-  AWS_ACCOUNT_ID: "123456789012" 
+  # Pulled dynamically from GitHub Secrets
+  AWS_ACCOUNT_ID: "${{ secrets.AWS_ACCOUNT_ID }}" 
   AWS_REGION: "eu-north-1"
   ECR_REGISTRY: "${{ secrets.AWS_ACCOUNT_ID }}.dkr.ecr.eu-north-1.amazonaws.com"
   IMAGE_BACKEND: "leadflow-backend"
