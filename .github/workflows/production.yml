@@ -109,7 +109,7 @@ jobs:
 
       - name: Login to Amazon ECR
         id: login-ecr
-        uses: aws-actions/amazon-ecr-login@v1
+        uses: aws-actions/amazon-ecr-login@v2
 
       - name: Build, tag, and push image to Amazon ECR
         env:
@@ -137,7 +137,7 @@ jobs:
 
       - name: Login to Amazon ECR
         id: login-ecr
-        uses: aws-actions/amazon-ecr-login@v1
+        uses: aws-actions/amazon-ecr-login@v2
 
       - name: Build, tag, and push image to Amazon ECR
         env:
@@ -159,6 +159,14 @@ jobs:
       needs.build-frontend.result != 'failure'
     runs-on: ubuntu-latest
     steps:
+      # We authenticate the Runner first so we can grab the short-lived ECR token
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v2
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: ${{ env.AWS_REGION }}
+
       - name: Setup SSH & Cloudflared
         run: |
           wget -q https://github.com/cloudflare/cloudflared/releases/latest/download/cloudflared-linux-amd64.deb
@@ -181,20 +189,22 @@ jobs:
           UPDATE_BACKEND: ${{ needs.detect-changes.outputs.backend }}
           UPDATE_FRONTEND: ${{ needs.detect-changes.outputs.frontend }}
         run: |
+          # Fetch a temporary, 12-hour valid ECR authentication token using GitHub's credentials
+          ECR_TEMP_TOKEN=$(aws ecr get-login-password --region ${{ env.AWS_REGION }})
+          
           cat <<EOF > deploy.sh
           #!/bin/bash
           set -e
           
           AWS_REGION="${{ env.AWS_REGION }}"
-          # Since EC2 has an IAM Role attached, it can log into ECR automatically
-          echo "🔐 Logging into AWS ECR..."
-          aws ecr get-login-password --region \$AWS_REGION | podman login --username AWS --password-stdin ${{ secrets.AWS_ACCOUNT_ID }}.dkr.ecr.eu-north-1.amazonaws.com
-          
           BACKEND_IMG="${{ secrets.AWS_ACCOUNT_ID }}.dkr.ecr.eu-north-1.amazonaws.com/${{ env.IMAGE_BACKEND }}:latest"
           FRONTEND_IMG="${{ secrets.AWS_ACCOUNT_ID }}.dkr.ecr.eu-north-1.amazonaws.com/${{ env.IMAGE_FRONTEND }}:latest"
           SYSTEMD_DIR="\$HOME/.config/systemd/user"
           
-          # Setup Persistence Folders (always ensure they exist)
+          echo "🔐 Logging into AWS ECR using temporary CI token..."
+          echo "${ECR_TEMP_TOKEN}" | podman login --username AWS --password-stdin ${{ secrets.AWS_ACCOUNT_ID }}.dkr.ecr.eu-north-1.amazonaws.com
+          
+          # Setup Persistence Folders
           mkdir -p ~/leadflow-ai/storage ~/leadflow-ai/data "\$SYSTEMD_DIR"
           
           # ------------------------------------------------------------------
@@ -248,7 +258,6 @@ jobs:
               echo "⏭️ Frontend code unchanged. Skipping frontend deploy."
           fi
           
-          # Cleanup: Remove old, dangling images from the EC2 to save space
           echo "🧹 Cleaning up old images..."
           podman image prune -a -f
           
@@ -259,4 +268,5 @@ jobs:
         run: |
           chmod +x deploy.sh
           scp deploy.sh production:~/deploy.sh
-          ssh production "~/deploy.sh"
+          # Execute the script, and DELETE it immediately afterwards so no tokens remain on disk
+          ssh production "~/deploy.sh && rm -f ~/deploy.sh"
