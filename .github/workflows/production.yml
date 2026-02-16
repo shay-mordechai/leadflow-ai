@@ -4,21 +4,62 @@
 # Target Server OS: Amazon Linux 2023
 # Container Runtime: PODMAN
 # Architecture: Zero Trust (Cloudflare Tunnel)
+# Registry: AWS ECR (Replaced GHCR)
 # ==============================================================================
 name: LeadFlow Production Deploy
 
 on:
   push:
     branches: [ main ]
+    # Workflow triggers ONLY if files in these paths change
+    paths:
+      - 'src/**'
+      - 'tests/**'
+      - 'frontend/**'
+      - 'Dockerfile'
+      - 'requirements.txt'
+      - '.github/workflows/production.yml'
 
 env:
-  REGISTRY: ghcr.io
-  IMAGE_BACKEND: shay-mordechai/leadflow-backend
-  IMAGE_FRONTEND: shay-mordechai/leadflow-frontend
-  AWS_REGION: eu-north-1
+  # UPDATE THIS with your AWS Account ID! (Get it from the CLI output earlier)
+  AWS_ACCOUNT_ID: "123456789012" 
+  AWS_REGION: "eu-north-1"
+  ECR_REGISTRY: "${{ secrets.AWS_ACCOUNT_ID }}.dkr.ecr.eu-north-1.amazonaws.com"
+  IMAGE_BACKEND: "leadflow-backend"
+  IMAGE_FRONTEND: "leadflow-frontend"
 
 jobs:
+  # --- JOB 0: DETECT CHANGES ---
+  # This job figures out what changed to decide which jobs to run next.
+  detect-changes:
+    runs-on: ubuntu-latest
+    outputs:
+      backend: ${{ steps.filter.outputs.backend }}
+      frontend: ${{ steps.filter.outputs.frontend }}
+    steps:
+      - uses: actions/checkout@v3
+        with:
+          fetch-depth: 2 # Required to compare current with previous commit
+      
+      - name: Check for changed paths
+        id: filter
+        uses: dorny/paths-filter@v2
+        with:
+          filters: |
+            backend:
+              - 'src/**'
+              - 'tests/**'
+              - 'Dockerfile'
+              - 'requirements.txt'
+              - '.github/workflows/production.yml'
+            frontend:
+              - 'frontend/**'
+              - '.github/workflows/production.yml'
+
+  # --- JOB 1: TEST BACKEND ---
   test-backend:
+    needs: detect-changes
+    if: ${{ needs.detect-changes.outputs.backend == 'true' }}
     runs-on: ubuntu-latest
     steps:
       - name: Checkout code
@@ -50,52 +91,72 @@ jobs:
             echo "⚠️ Test file not found! Skipping tests."
           fi
 
+  # --- JOB 2: BUILD BACKEND ---
   build-backend:
+    needs: [detect-changes, test-backend]
+    if: ${{ needs.detect-changes.outputs.backend == 'true' }}
     runs-on: ubuntu-latest
-    permissions:
-      contents: read
-      packages: write
     steps:
       - name: Checkout code
         uses: actions/checkout@v3
-      - name: Log in to Registry
-        uses: docker/login-action@v2
-        with:
-          registry: ${{ env.REGISTRY }}
-          username: ${{ github.actor }}
-          password: ${{ secrets.GITHUB_TOKEN }}
-      - name: Build and Push Backend
-        uses: docker/build-push-action@v4
-        with:
-          context: .
-          file: ./Dockerfile
-          push: true
-          tags: ${{ env.REGISTRY }}/${{ env.IMAGE_BACKEND }}:${{ github.sha }},${{ env.REGISTRY }}/${{ env.IMAGE_BACKEND }}:latest
 
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v2
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: Login to Amazon ECR
+        id: login-ecr
+        uses: aws-actions/amazon-ecr-login@v1
+
+      - name: Build, tag, and push image to Amazon ECR
+        env:
+          ECR_REGISTRY: ${{ steps.login-ecr.outputs.registry }}
+          IMAGE_TAG: ${{ github.sha }}
+        run: |
+          docker build -t $ECR_REGISTRY/$IMAGE_BACKEND:$IMAGE_TAG -t $ECR_REGISTRY/$IMAGE_BACKEND:latest .
+          docker push $ECR_REGISTRY/$IMAGE_BACKEND --all-tags
+
+  # --- JOB 3: BUILD FRONTEND ---
   build-frontend:
+    needs: detect-changes
+    if: ${{ needs.detect-changes.outputs.frontend == 'true' }}
     runs-on: ubuntu-latest
-    permissions:
-      contents: read
-      packages: write
     steps:
       - name: Checkout code
         uses: actions/checkout@v3
-      - name: Log in to Registry
-        uses: docker/login-action@v2
-        with:
-          registry: ${{ env.REGISTRY }}
-          username: ${{ github.actor }}
-          password: ${{ secrets.GITHUB_TOKEN }}
-      - name: Build and Push Frontend
-        uses: docker/build-push-action@v4
-        with:
-          context: ./frontend
-          file: ./frontend/Dockerfile
-          push: true
-          tags: ${{ env.REGISTRY }}/${{ env.IMAGE_FRONTEND }}:${{ github.sha }},${{ env.REGISTRY }}/${{ env.IMAGE_FRONTEND }}:latest
 
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v2
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: Login to Amazon ECR
+        id: login-ecr
+        uses: aws-actions/amazon-ecr-login@v1
+
+      - name: Build, tag, and push image to Amazon ECR
+        env:
+          ECR_REGISTRY: ${{ steps.login-ecr.outputs.registry }}
+          IMAGE_TAG: ${{ github.sha }}
+        run: |
+          docker build -t $ECR_REGISTRY/$IMAGE_FRONTEND:$IMAGE_TAG -t $ECR_REGISTRY/$IMAGE_FRONTEND:latest ./frontend
+          docker push $ECR_REGISTRY/$IMAGE_FRONTEND --all-tags
+
+  # --- JOB 4: DEPLOY ---
+  # Runs only if at least one build job ran OR if the workflow file itself changed.
   deploy:
-    needs: [test-backend, build-backend, build-frontend]
+    needs: [detect-changes, build-backend, build-frontend]
+    # 'always()' ensures it runs even if a skipped build job is treated as "successful"
+    if: |
+      always() && 
+      (needs.detect-changes.outputs.backend == 'true' || needs.detect-changes.outputs.frontend == 'true') &&
+      needs.build-backend.result != 'failure' && 
+      needs.build-frontend.result != 'failure'
     runs-on: ubuntu-latest
     steps:
       - name: Setup SSH & Cloudflared
@@ -116,86 +177,82 @@ jobs:
           EOF
 
       - name: Generate Deploy Script
+        env:
+          UPDATE_BACKEND: ${{ needs.detect-changes.outputs.backend }}
+          UPDATE_FRONTEND: ${{ needs.detect-changes.outputs.frontend }}
         run: |
-          cat <<'EOF' > deploy.sh
+          cat <<EOF > deploy.sh
           #!/bin/bash
           set -e
           
-          BACKEND_IMG="${{ env.REGISTRY }}/${{ env.IMAGE_BACKEND }}:latest"
-          FRONTEND_IMG="${{ env.REGISTRY }}/${{ env.IMAGE_FRONTEND }}:latest"
-          SYSTEMD_DIR="$HOME/.config/systemd/user"
+          AWS_REGION="${{ env.AWS_REGION }}"
+          # Since EC2 has an IAM Role attached, it can log into ECR automatically
+          echo "🔐 Logging into AWS ECR..."
+          aws ecr get-login-password --region \$AWS_REGION | podman login --username AWS --password-stdin ${{ secrets.AWS_ACCOUNT_ID }}.dkr.ecr.eu-north-1.amazonaws.com
           
-          echo "🚀 Starting Deployment on Production..."
+          BACKEND_IMG="${{ secrets.AWS_ACCOUNT_ID }}.dkr.ecr.eu-north-1.amazonaws.com/${{ env.IMAGE_BACKEND }}:latest"
+          FRONTEND_IMG="${{ secrets.AWS_ACCOUNT_ID }}.dkr.ecr.eu-north-1.amazonaws.com/${{ env.IMAGE_FRONTEND }}:latest"
+          SYSTEMD_DIR="\$HOME/.config/systemd/user"
           
-          # 1. Stop & Clean Old State (Free up disk space)
-          systemctl --user stop container-leadflow-backend 2>/dev/null || true
-          systemctl --user stop container-leadflow-frontend 2>/dev/null || true
-          podman rm -f leadflow-backend leadflow-frontend 2>/dev/null || true
-          podman system prune -a -f
+          # Setup Persistence Folders (always ensure they exist)
+          mkdir -p ~/leadflow-ai/storage ~/leadflow-ai/data "\$SYSTEMD_DIR"
           
-          # 2. Login & Pull
-          echo "${{ secrets.GITHUB_TOKEN }}" | podman login ghcr.io -u ${{ github.actor }} --password-stdin
-          podman pull "$BACKEND_IMG"
-          podman pull "$FRONTEND_IMG"
+          # ------------------------------------------------------------------
+          # SELECTIVE DEPLOYMENT LOGIC
+          # ------------------------------------------------------------------
           
-          # 3. Setup Persistence
-          mkdir -p ~/leadflow-ai/storage
-          mkdir -p ~/leadflow-ai/data
-          mkdir -p "$SYSTEMD_DIR"
+          if [ "${UPDATE_BACKEND}" == "true" ]; then
+              echo "🔄 Updating Backend..."
+              podman pull \$BACKEND_IMG
+              systemctl --user stop container-leadflow-backend 2>/dev/null || true
+              podman rm -f leadflow-backend 2>/dev/null || true
+              
+              podman run -d \
+                --name leadflow-backend \
+                --network host \
+                --replace \
+                --env APP_ENV=production \
+                --env AWS_REGION=\$AWS_REGION \
+                --env DATABASE_URL=sqlite:////app/data/leads.db \
+                -v ~/leadflow-ai/storage:/app/storage:Z \
+                -v ~/leadflow-ai/data:/app/data:Z \
+                \$BACKEND_IMG \
+                gunicorn src.main:app --workers 1 --worker-class uvicorn.workers.UvicornWorker --bind 0.0.0.0:8000
+                
+              # Reload via systemd
+              podman stop leadflow-backend
+              systemctl --user daemon-reload
+              systemctl --user enable --now container-leadflow-backend.service
+          else
+              echo "⏭️ Backend code unchanged. Skipping backend deploy."
+          fi
           
-          # 4. Run Containers
-          # FIX: Enforced absolute path for DATABASE_URL to ensure Volume usage
-          # FIX: Explicitly set 1 worker to prevent 'Table already exists' during Startup
-          podman run -d \
-            --name leadflow-backend \
-            --network host \
-            --replace \
-            --env APP_ENV=production \
-            --env AWS_REGION=${{ env.AWS_REGION }} \
-            --env DATABASE_URL=sqlite:////app/data/leads.db \
-            -v ~/leadflow-ai/storage:/app/storage:Z \
-            -v ~/leadflow-ai/data:/app/data:Z \
-            "$BACKEND_IMG" \
-            gunicorn src.main:app --workers 1 --worker-class uvicorn.workers.UvicornWorker --bind 0.0.0.0:8000
-
-          podman run -d \
-            --name leadflow-frontend \
-            --network host \
-            --replace \
-            --env NEXT_PUBLIC_API_URL=https://my-leads.app \
-            "$FRONTEND_IMG"
-            
-          podman stop leadflow-backend leadflow-frontend
-            
-          # 5. Generate/Update Systemd Files
-          cd "$SYSTEMD_DIR"
-          cat <<SERVICE > container-leadflow-backend.service
-          [Unit]
-          Description=LeadFlow Backend Container
-          [Service]
-          Restart=always
-          ExecStart=/usr/bin/podman start -a leadflow-backend
-          ExecStop=/usr/bin/podman stop -t 10 leadflow-backend
-          [Install]
-          WantedBy=default.target
-          SERVICE
+          if [ "${UPDATE_FRONTEND}" == "true" ]; then
+              echo "🔄 Updating Frontend..."
+              podman pull \$FRONTEND_IMG
+              systemctl --user stop container-leadflow-frontend 2>/dev/null || true
+              podman rm -f leadflow-frontend 2>/dev/null || true
+              
+              podman run -d \
+                --name leadflow-frontend \
+                --network host \
+                --replace \
+                --env NEXT_PUBLIC_API_URL=https://my-leads.app \
+                \$FRONTEND_IMG
+                
+              # Reload via systemd
+              podman stop leadflow-frontend
+              systemctl --user daemon-reload
+              systemctl --user enable --now container-leadflow-frontend.service
+          else
+              echo "⏭️ Frontend code unchanged. Skipping frontend deploy."
+          fi
           
-          cat <<SERVICE > container-leadflow-frontend.service
-          [Unit]
-          Description=LeadFlow Frontend Container
-          [Service]
-          Restart=always
-          ExecStart=/usr/bin/podman start -a leadflow-frontend
-          ExecStop=/usr/bin/podman stop -t 10 leadflow-frontend
-          [Install]
-          WantedBy=default.target
-          SERVICE
+          # Cleanup: Remove old, dangling images from the EC2 to save space
+          echo "🧹 Cleaning up old images..."
+          podman image prune -a -f
           
-          systemctl --user daemon-reload
-          systemctl --user enable --now container-leadflow-backend.service
-          systemctl --user enable --now container-leadflow-frontend.service
-          
-          echo "✅ Deployment Complete!"
+          echo "✅ Deployment Process Finished!"
           EOF
 
       - name: Execute on Production
