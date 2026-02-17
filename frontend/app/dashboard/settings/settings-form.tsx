@@ -63,7 +63,7 @@ export default function SettingsForm({ initialData, token }: SettingsFormProps) 
             delete (payload as any).other_business_type;
 
             // Send to Server (FastAPI) via standard client-side API call
-            const res = await fetch("/api/v1/settings/", {
+            const res = await fetch("/api/v1/settings", {
                 method: "POST",
                 headers: {
                     "Content-Type": "application/json",

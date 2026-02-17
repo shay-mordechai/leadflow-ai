@@ -5,14 +5,18 @@ import SettingsForm from "./settings-form"; // Import the client form
 import { Store } from "lucide-react";
 
 async function getSettings() {
-    const cookieStore = cookies();
+    // FIX 1: Next.js 15+ requires cookies() to be awaited
+    const cookieStore = await cookies();
     const token = cookieStore.get("access_token");
 
     if (!token) return null;
 
+    // FIX 2: Use Environment Variable instead of Docker Hostname 'backend'
+    const apiUrl = process.env.NEXT_PUBLIC_API_URL || "http://127.0.0.1:8000";
+
     try {
-        // Internal Docker call to FastAPI
-        const res = await fetch("http://backend:8000/api/v1/settings/", {
+        // FIX 3: Removed trailing slash to match FastAPI exactly (no / at the end)
+        const res = await fetch(`${apiUrl}/api/v1/settings`, {
             headers: {
                 Authorization: `Bearer ${token.value}`,
             },
@@ -30,7 +34,10 @@ async function getSettings() {
 
 export default async function SettingsPage() {
     const settingsData = await getSettings();
-    const token = cookies().get("access_token")?.value;
+    
+    // FIX 4: Await cookies() here as well for Next.js 15+
+    const cookieStore = await cookies();
+    const token = cookieStore.get("access_token")?.value;
 
     if (!settingsData || !token) {
         redirect("/login");

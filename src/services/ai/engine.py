@@ -7,7 +7,6 @@ from typing import Dict, Any, Optional
 from fastapi.concurrency import run_in_threadpool
 
 from src.config import settings
-from src.services.ai.personas import get_persona_config
 
 logger = logging.getLogger("AI_Engine")
 
@@ -91,39 +90,31 @@ class AIEngine:
             logger.error(f"Summary generation failed: {e}")
             return "Failed to generate summary."
 
-    async def analyze_interaction(self, text_input: str = None, audio_path: str = None, user_context: Dict = None) -> Dict[str, Any]:
+    async def analyze_interaction(self, system_prompt: str, text_input: str = None, audio_path: str = None, sender_name: str = "Guest") -> Dict[str, Any]:
         """
         High-level flow for Chatbot Personas.
-        Constructs the persona prompt and calls the generic generator asynchronously.
+        Takes the dynamic system_prompt (from the DB) and calls the generic generator asynchronously.
         """
-        if not user_context: user_context = {}
+        # Construct the final prompt injected with the user's specific instructions
+        final_prompt = f"""
+        {system_prompt}
         
-        # 1. Get Persona Config
-        business_type = user_context.get("business_type", "General Business")
-        custom_data = {
-            "business_name": user_context.get("business_name", "My Business"),
-            "location": user_context.get("location", "Israel"),
-        }
-        persona_config = get_persona_config(business_type, custom_data)
+        Current User Talking to you: {sender_name}
+        User Message: {text_input if text_input else 'Audio Message (Transcribed separately)'}
         
-        # 2. Construct System Prompt
-        system_prompt = f"""
-        {persona_config['role_prompt']}
-        User Name: {user_context.get('name', 'Guest')}
-        User Message: {text_input if text_input else 'Audio Message'}
-        
-        Task: Analyze the input and return a valid JSON object with:
+        Task: You must respond in the character defined above. 
+        Return a valid JSON object strictly matching this format:
         {{
-            "intent": "cancel" | "reschedule" | "info" | "greeting" | "purchase",
-            "reply_text": "Hebrew reply based on the persona rules",
-            "suggested_actions": []
+            "intent": "general_inquiry" | "booking" | "support" | "greeting" | "other",
+            "reply_text": "Your response to the user in the correct tone and language.",
+            "needs_human_escalation": boolean
         }}
         """
 
-        # 3. Execute via generic method (Non-blocking)
+        # Execute via generic method (Non-blocking)
         return await run_in_threadpool(
             self.generate_raw_analysis,
-            prompt=system_prompt,
+            prompt=final_prompt,
             media_path=audio_path
         )
 
