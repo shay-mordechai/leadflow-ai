@@ -3,7 +3,7 @@ import { Metadata } from "next";
 import LoginForm from "./login-form";
 
 export const metadata: Metadata = {
-  title: "Login - LeadFlow AI",
+  title: "Login - MyLeads AI",
   description: "Secure login to your dashboard",
 };
 

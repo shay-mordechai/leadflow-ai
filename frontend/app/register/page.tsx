@@ -4,7 +4,7 @@ import RegisterForm from "./register-form";
 
 // Server-side Metadata for SEO
 export const metadata: Metadata = {
-    title: "Sign Up - LeadFlow AI",
+    title: "Sign Up - MyLeads AI",
     description: "Create your account and start automating calls.",
 };
 

@@ -137,10 +137,20 @@ async def whatsapp_event_listener(request: Request):
                     sender_name=sender_name
                 )
                 
-                logger.info(f"🤖 AI Generated Reply: {ai_response.get('reply_text')}")
+                reply_text = ai_response.get('reply_text', "I'm sorry, I encountered an error processing your request.")
+                logger.info(f"🤖 AI Generated Reply: {reply_text}")
                 
-                # TODO: Send the 'reply_text' back to the user via WhatsApp Graph API
-                # await send_whatsapp_message(sender_id, ai_response.get('reply_text'))
+                # --- SEND REPLY BACK TO CUSTOMER ---
+                # Meta requires the 'to' number to be purely numeric without the '+' sign
+                clean_sender_id = sender_id.replace("+", "")
+                
+                # Use the WhatsAppAdapter to send the actual HTTP POST to Facebook Graph API
+                success = whatsapp_adapter.send_message(to_phone=clean_sender_id, text=reply_text)
+                
+                if success:
+                    logger.info(f"✅ Reply sent successfully to {clean_sender_id}")
+                else:
+                    logger.error(f"❌ Failed to send reply to {clean_sender_id}")
 
             elif msg_type == "audio":
                 audio_id = message["audio"]["id"]

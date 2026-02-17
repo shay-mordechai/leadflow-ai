@@ -40,7 +40,7 @@ export default function DashboardClient({ user }: DashboardClientProps) {
             {/* Sidebar */}
             <aside className="w-64 bg-white dark:bg-gray-800 border-r border-gray-200 dark:border-gray-700 hidden md:flex flex-col">
                 <div className="p-6">
-                    <h1 className="text-2xl font-bold text-blue-600 dark:text-blue-400">LeadFlow AI</h1>
+                    <h1 className="text-2xl font-bold text-blue-600 dark:text-blue-400">MyLeads AI</h1>
                 </div>
 
                 <nav className="flex-1 px-4 space-y-2">
