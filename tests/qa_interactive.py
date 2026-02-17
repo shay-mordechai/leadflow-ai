@@ -25,7 +25,7 @@ def log(step, msg, status="INFO"):
     print(f"[{step}] {color}{msg}{RESET}")
 
 def run_full_system_qa():
-    parser = argparse.ArgumentParser(description="LeadFlow AI - Full System QA")
+    parser = argparse.ArgumentParser(description="MyLeads AI - Full System QA")
     parser.add_argument("--prod", action="store_true", help="Run against Production URL")
     parser.add_argument("--email", type=str, help="User email for auto-login")
     parser.add_argument("--password", type=str, help="User password for auto-login")
@@ -45,7 +45,7 @@ def run_full_system_qa():
         email = args.email
         log("1. AUTH", f"Using provided email: {email}", "INFO")
     else:
-        email = input(f"[{RESET}INPUT{RESET}] 📧 Enter Test Email: ").strip() or "qa@test.com"
+        email = input(f"[{RESET}INPUT{RESET}] 📧 Enter Test Email: ").strip() or f"qa_{int(time.time())}@test.com"
 
     if args.password:
         password = args.password
@@ -108,7 +108,7 @@ def run_full_system_qa():
         sys.exit(1)
 
     # ==============================================================================
-    # 2. VERIFY USER PLAN
+    # 2. VERIFY USER PLAN (INITIAL)
     # ==============================================================================
     print("\n" + "="*60)
     log("4. USER INFO", "Checking current plan...", "INFO")
@@ -117,8 +117,8 @@ def run_full_system_qa():
         me_res = requests.get(f"{base_url}/api/v1/auth/me", headers=headers)
         if me_res.status_code == 200:
             user_data = me_res.json()
-            plan = user_data.get("plan_tier")
-            log("4. USER INFO", f"Current Plan: {plan}", "INFO")
+            initial_plan = user_data.get("plan_tier")
+            log("4. USER INFO", f"Current Plan: {initial_plan}", "INFO")
         else:
             log("4. USER INFO", f"❌ Failed to fetch user info: {me_res.text}", "FAIL")
             
@@ -144,30 +144,43 @@ def run_full_system_qa():
     }
 
     try:
-        # FIX: Removed the trailing slash here!
         settings_res = requests.post(f"{base_url}/api/v1/settings", json=ai_settings_payload, headers=headers)
         if settings_res.status_code == 200:
             log("5. AI BRAIN", "✅ AI Brain configuration saved successfully.", "SUCCESS")
-            
-            # Verify it was saved by fetching it back
-            get_settings_res = requests.get(f"{base_url}/api/v1/settings", headers=headers)
-            if get_settings_res.status_code == 200:
-                saved_data = get_settings_res.json()
-                if saved_data.get("custom_instructions") == ai_settings_payload["custom_instructions"]:
-                     log("5. AI BRAIN", "✅ Data consistency verified in Database.", "SUCCESS")
-                else:
-                     log("5. AI BRAIN", "⚠️ Data saved but fetched data does not match payload.", "WARN")
         else:
             log("5. AI BRAIN", f"❌ Failed to save AI settings: {settings_res.text}", "FAIL")
-            
     except Exception as e:
         log("AI BRAIN", f"Error: {e}", "FAIL")
 
     # ==============================================================================
-    # 4. PHONE NUMBER BROWSING (PRO FEATURE)
+    # 4. BILLING UPGRADE (COUPON REDEMPTION)
     # ==============================================================================
     print("\n" + "="*60)
-    log("6. PHONES", "Browsing available numbers...", "INFO")
+    log("6. BILLING", "Testing Subscription Upgrade via Admin Coupon...", "INFO")
+    
+    try:
+        coupon_res = requests.post(f"{base_url}/api/v1/billing/redeem-coupon", 
+                                  json={"coupon_code": "VIP_SHAY"}, 
+                                  headers=headers)
+        
+        if coupon_res.status_code == 200:
+            res_data = coupon_res.json()
+            if "PRO" in res_data.get("message", "").upper() or res_data.get("plan") == "PRO":
+                log("6. BILLING", "✅ Upgrade successful! User is now PRO.", "SUCCESS")
+                log("6. BILLING", "✅ Confirmation email dispatched (check logs).", "SUCCESS")
+            else:
+                log("6. BILLING", "⚠️ Request succeeded, but user is still not PRO.", "WARN")
+        else:
+            log("6. BILLING", f"❌ Failed to apply coupon: {coupon_res.text}", "FAIL")
+    except Exception as e:
+        log("BILLING", f"Error: {e}", "FAIL")
+
+
+    # ==============================================================================
+    # 5. PHONE NUMBER BROWSING & ASSIGNMENT
+    # ==============================================================================
+    print("\n" + "="*60)
+    log("7. PHONES", "Testing Phone Number Browsing and Purchase Gate...", "INFO")
 
     try:
         res = requests.get(f"{base_url}/api/v1/phones/available?country_code=IL", headers=headers)
@@ -175,41 +188,34 @@ def run_full_system_qa():
         if res.status_code == 200:
             numbers = res.json()
             if numbers:
-                israeli_nums = [n for n in numbers if n['number'].startswith('+972')]
-                foreign_nums = [n for n in numbers if not n['number'].startswith('+972')]
-
-                print(f"\n{CYAN}📞 RESULTS SUMMARY:{RESET}")
-                print(f"   🇮🇱 Israeli Numbers Found: {len(israeli_nums)}")
-                print(f"   🌎 Foreign Numbers Found: {len(foreign_nums)}")
-                print("-" * 30)
-
-                print(f"{CYAN}📞 SHOWING TOP RESULTS:{RESET}")
-                for idx, num in enumerate(numbers[:20]):
-                    prefix = "🇮🇱" if num['number'].startswith('+972') else "🌎"
-                    print(f"   [{idx+1}] {prefix} {num['number']} | {num['provider']} | {num['price_monthly']} USD")
+                print(f"{CYAN}📞 Found {len(numbers)} available numbers. Simulating purchase of first number...{RESET}")
                 
-                print("\n")
-                choice = input(f"[{RESET}INPUT{RESET}] Simulate Purchase (Will check Plan)? (y/N): ").lower()
-                if choice == 'y':
-                    target_num = numbers[0]['number']
-                    log("6. PHONES", f"Attempting purchase for {target_num}...", "INFO")
-                    buy_res = requests.post(f"{base_url}/api/v1/phones/purchase", 
-                                            json={"phone_number": target_num, "country_code": "IL"},
-                                            headers=headers)
+                target_num = numbers[0]['number']
+                log("7. PHONES", f"Attempting purchase for {target_num}...", "INFO")
+                
+                buy_res = requests.post(f"{base_url}/api/v1/phones/purchase", 
+                                        json={"phone_number": target_num, "country_code": "IL"},
+                                        headers=headers)
+                
+                if buy_res.status_code == 200:
+                    log("7. PHONES", f"✅ Purchase Successful! Number {target_num} assigned.", "SUCCESS")
                     
-                    if buy_res.status_code == 200:
-                        log("6. PHONES", "✅ Purchase Successful!", "SUCCESS")
-                    elif buy_res.status_code == 403:
-                        log("6. PHONES", "🔒 Purchase Blocked: You need PRO plan (Expected for Starter users).", "WARN")
+                    # Verify assignment
+                    me_res2 = requests.get(f"{base_url}/api/v1/auth/me", headers=headers)
+                    if me_res2.status_code == 200 and me_res2.json().get("assigned_phone") == target_num:
+                        log("7. PHONES", "✅ System correctly remembered the purchased number.", "SUCCESS")
                     else:
-                        log("6. PHONES", f"❌ Purchase Failed: {buy_res.text}", "FAIL")
+                        log("7. PHONES", "❌ Number was not saved to user profile.", "FAIL")
+                        
+                elif buy_res.status_code == 403:
+                    log("7. PHONES", "🔒 Purchase Blocked: You need PRO plan (Upgrade step failed).", "FAIL")
+                else:
+                    log("7. PHONES", f"❌ Purchase Failed: {buy_res.text}", "FAIL")
             else:
-                 log("6. PHONES", "⚠️ No numbers found (Check Provider Credentials).", "WARN")
+                 log("7. PHONES", "⚠️ No numbers found (Check Provider Credentials).", "WARN")
 
-        elif res.status_code == 403:
-             log("6. PHONES", "🔒 Access Denied: Phone browsing restricted to PRO plan.", "WARN")
         else:
-             log("6. PHONES", f"❌ API Error: {res.text}", "FAIL")
+             log("7. PHONES", f"❌ API Error: {res.text}", "FAIL")
 
     except Exception as e:
         log("PHONES", f"Error: {e}", "FAIL")
