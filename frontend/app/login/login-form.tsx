@@ -21,10 +21,21 @@ export default function LoginForm() {
   const [step, setStep] = useState<'credentials' | 'otp'>('credentials');
   const [email, setEmail] = useState('');
 
+  // --- NEW: Intercept form submission to capture the email instantly ---
+  const handleLoginSubmit = (formData: FormData) => {
+    // 1. Capture what the user typed before it goes to the server
+    const submittedEmail = formData.get("email")?.toString() || "";
+    setEmail(submittedEmail);
+    
+    // 2. Trigger the actual server action
+    loginAction(formData);
+  };
+
   // Effect to handle transition from Step 1 to Step 2
   useEffect(() => {
     if (loginState.success && loginState.data?.mfa_required) {
-      setEmail(loginState.data.email);
+      // REMOVED: setEmail(loginState.data.email) because it was undefined.
+      // We already have the email safely stored from handleLoginSubmit!
       setStep('otp');
     }
   }, [loginState]);
@@ -58,7 +69,8 @@ export default function LoginForm() {
         
         {/* STEP 1: CREDENTIALS */}
         {step === 'credentials' && (
-          <form action={loginAction} className="space-y-6">
+          // Use our custom handler instead of calling loginAction directly
+          <form action={handleLoginSubmit} className="space-y-6">
             {loginState.error && (
               <div className="rounded-lg bg-red-500/10 border border-red-500/20 p-3 text-sm text-red-400 text-center">
                 {loginState.error}
@@ -99,6 +111,7 @@ export default function LoginForm() {
               </div>
             )}
 
+            {/* This hidden field will now correctly carry the email */}
             <input type="hidden" name="email" value={email} />
             
             <div className="space-y-4">
