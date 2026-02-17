@@ -8,10 +8,9 @@ from src.database.models import User, BusinessProfile, AIAgent
 from src.security.dependencies import get_current_user
 from src.schemas.user import AISettingsSchema, AIAgentSchema
 
-router = APIRouter(prefix="/settings", tags=["AI Configuration"])
-
-# FIX: Removed the trailing slash "/" from the route paths.
-# The URL will now be exactly "/api/v1/settings"
+# FIX: Removed prefix="/settings" to avoid double-prefixing.
+# main.py already maps this router to "/api/v1/settings"
+router = APIRouter(tags=["AI Configuration"])
 
 @router.get("", response_model=AISettingsSchema)
 def get_settings(
