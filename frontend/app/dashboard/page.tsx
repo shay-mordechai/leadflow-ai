@@ -5,17 +5,19 @@ import DashboardClient from "./dashboard-client"; // Importing the UI
 
 // This function runs on the Next.js Server
 async function getUserData() {
-    // FIX: Next.js 15+ requires cookies() to be awaited
+    // FIX 1: Next.js 15+ requires cookies() to be awaited
     const cookieStore = await cookies();
     const token = cookieStore.get("access_token");
 
     // If no token exists, the user is not logged in
     if (!token) return null;
 
+    // FIX 2: Use NEXT_PUBLIC_API_URL or fallback to localhost (Host Network Mode)
+    // We do NOT use 'backend' hostname anymore since containers share the EC2 network.
+    const apiUrl = process.env.NEXT_PUBLIC_API_URL || "http://127.0.0.1:8000";
+
     try {
-        // Communicate internally with FastAPI within the Docker network
-        // Note: Using 'backend' hostname instead of localhost because we are in Docker
-        const res = await fetch("http://backend:8000/api/v1/auth/me", {
+        const res = await fetch(`${apiUrl}/api/v1/auth/me`, {
             headers: {
                 "Authorization": `Bearer ${token.value}`,
                 "Content-Type": "application/json",
@@ -24,13 +26,13 @@ async function getUserData() {
         });
 
         if (!res.ok) {
-            console.error("❌ Failed to fetch user data:", res.status);
+            console.error("❌ Failed to fetch user data. Status:", res.status);
             return null;
         }
 
         return await res.json();
     } catch (error) {
-        console.error("❌ Error connecting to FastAPI:", error);
+        console.error("❌ Error connecting to FastAPI via", apiUrl, ":", error);
         return null;
     }
 }
