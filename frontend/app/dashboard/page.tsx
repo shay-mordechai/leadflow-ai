@@ -5,7 +5,8 @@ import DashboardClient from "./dashboard-client"; // Importing the UI
 
 // This function runs on the Next.js Server
 async function getUserData() {
-    const cookieStore = cookies();
+    // FIX: Next.js 15+ requires cookies() to be awaited
+    const cookieStore = await cookies();
     const token = cookieStore.get("access_token");
 
     // If no token exists, the user is not logged in
