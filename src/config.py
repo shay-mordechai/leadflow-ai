@@ -2,41 +2,81 @@
 import os
 import boto3
 import logging
+import requests
 from pydantic_settings import BaseSettings
 from botocore.exceptions import ClientError
 from typing import List, Dict
 
 logger = logging.getLogger("Configuration")
 
-# --- 1. Load Secrets Function ---
-def load_ssm_secrets():
-    if os.getenv("APP_ENV") != "production":
+# --- 1. Load AWS Configuration Logic ---
+def load_aws_configurations():
+    """
+    Attempts to load configuration and secrets from AWS SSM Parameter Store.
+    Uses IMDSv2 to detect if running on EC2 and fetch the region automatically.
+    """
+    # Fast fail if explicitly set to development to save boot time locally
+    if os.getenv("APP_ENV") == "development":
         return
 
-    region = os.getenv("AWS_REGION", "eu-north-1")
-    path = "/leadflow/prod/"
-    
-    logger.info(f"🔄 Attempting to load SSM secrets from {region}...")
-
     try:
-        ssm = boto3.client("ssm", region_name=region)
-        paginator = ssm.get_paginator('get_parameters_by_path')
-        page_iterator = paginator.paginate(Path=path, Recursive=True, WithDecryption=True)
+        # Step 1: Request IMDSv2 Token (1-second timeout to fail fast locally)
+        token_url = "http://169.254.169.254/latest/api/token"
+        headers = {"X-aws-ec2-metadata-token-ttl-seconds": "21600"}
+        token_response = requests.put(token_url, headers=headers, timeout=1)
         
+        if token_response.status_code != 200:
+            return # Not on AWS EC2
+            
+        # Sanitize response to remove trailing newlines
+        token = token_response.text.strip()
+
+        # Step 2: Get Current Region using the Token
+        region_url = "http://169.254.169.254/latest/meta-data/placement/region"
+        region_headers = {"X-aws-ec2-metadata-token": token}
+        region_response = requests.get(region_url, headers=region_headers, timeout=1)
+        region = region_response.text.strip()
+
+        logger.info(f"☁️ Detected AWS Environment (Region: {region}). Initializing SSM...")
+
+        # Step 3: Initialize Boto3 SSM Client
+        ssm = boto3.client('ssm', region_name=region)
+        
+        # Step 4: Determine Path prefix (Configurable for staging/prod)
+        ssm_path = os.getenv("SSM_PATH_PREFIX", "/leadflow/prod/")
+        if not ssm_path.endswith("/"):
+            ssm_path += "/"
+
+        # Step 5: Fetch Parameters with Pagination
+        paginator = ssm.get_paginator('get_parameters_by_path')
+        page_iterator = paginator.paginate(
+            Path=ssm_path,
+            Recursive=True,
+            WithDecryption=True
+        )
+
         count = 0
         for page in page_iterator:
             for param in page.get("Parameters", []):
+                # Extract the clean environment variable name from the path
                 key = param["Name"].split("/")[-1]
                 os.environ[key] = param["Value"]
                 count += 1
         
         if count > 0:
-            logger.info(f"✅ Successfully loaded {count} secrets from SSM.")
+            logger.info(f"✅ Successfully loaded {count} secrets from AWS SSM Path: {ssm_path}")
+
+    except requests.exceptions.RequestException:
+        # Network error implies we are local and the IMDSv2 endpoint is unreachable
+        logger.info("ℹ️ Local environment detected. Skipping AWS SSM load.")
+    except ClientError as e:
+        logger.error(f"⛔ AWS SSM Client Error (Check IAM Policies): {e}")
     except Exception as e:
-        logger.warning(f"⚠ Failed to load SSM secrets: {e}")
+        logger.warning(f"⚠️ Unexpected error loading SSM secrets: {e}. Falling back to local env.")
 
 # --- 2. Execute Loading Logic ---
-load_ssm_secrets()
+# This runs before the Settings class is instantiated so Pydantic can read the injected os.environ
+load_aws_configurations()
 
 # --- 3. Define Settings Class ---
 class Settings(BaseSettings):

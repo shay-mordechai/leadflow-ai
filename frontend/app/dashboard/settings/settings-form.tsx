@@ -3,7 +3,7 @@
 
 import { useState } from "react";
 import { useForm } from "react-hook-form";
-import { Save, Store, Theater, Lightbulb, Loader2 } from "lucide-react";
+import { Save, Store, Theater, Lightbulb, Loader2, BrainCircuit } from "lucide-react";
 import { useRouter } from "next/navigation";
 
 interface SettingsFormData {
@@ -12,6 +12,7 @@ interface SettingsFormData {
     other_business_type?: string;
     ai_tone: "Formal" | "Friendly" | "Sales";
     products_services: string;
+    custom_instructions: string; // NEW: The Brain instructions
 }
 
 // Data received from the Server Component
@@ -25,7 +26,6 @@ export default function SettingsForm({ initialData, token }: SettingsFormProps) 
     const [isSaving, setIsSaving] = useState(false);
 
     // Logic to handle "Other" business type on initialization
-    // If the data from DB isn't one of the standard types, set select to "Other" and input to the value
     const standardTypes = ["Real Estate Agent", "Fitness Coach", "Sales", "Consulting"];
     let defaultType = initialData.business_type;
     let defaultOther = "";
@@ -44,6 +44,7 @@ export default function SettingsForm({ initialData, token }: SettingsFormProps) 
             other_business_type: defaultOther,
             ai_tone: initialData.ai_tone || "Friendly",
             products_services: initialData.products_services || "",
+            custom_instructions: initialData.custom_instructions || "", // NEW
         },
     });
 
@@ -55,7 +56,6 @@ export default function SettingsForm({ initialData, token }: SettingsFormProps) 
             // Prepare payload for submission
             const payload = {
                 ...data,
-                // If "Other" is selected, use the custom input value
                 business_type:
                     data.business_type === "Other" ? data.other_business_type : data.business_type,
             };
@@ -178,6 +178,29 @@ export default function SettingsForm({ initialData, token }: SettingsFormProps) 
                         className="w-full p-3 bg-slate-50 rounded-xl border border-slate-200 focus:ring-2 focus:ring-blue-500 outline-none text-sm transition resize-none"
                         placeholder={`למשל:\n- אימון אישי: 250 ש״ח\n- מנוי חודשי: 400 ש״ח\n- שעות פתיחה: 08:00 עד 20:00`}
                     ></textarea>
+                </div>
+            </div>
+
+            {/* NEW: AI Brain Configuration */}
+            <div className="bg-white p-5 rounded-2xl shadow-sm border border-slate-100 space-y-4">
+                <div className="flex items-center gap-2 border-b border-slate-50 pb-2 mb-2">
+                    <BrainCircuit className="w-5 h-5 text-emerald-500" />
+                    <h2 className="font-bold text-slate-800 text-sm">מוח ה-AI (הנחיות אישיות)</h2>
+                </div>
+
+                <div>
+                    <label className="block text-xs font-bold text-slate-500 mb-1.5">
+                        איך תרצה שהבוט יתנהג? (טקסט חופשי)
+                    </label>
+                    <textarea
+                        {...register("custom_instructions")}
+                        rows={6}
+                        className="w-full p-3 bg-slate-50 rounded-xl border border-slate-200 focus:ring-2 focus:ring-blue-500 outline-none text-sm transition resize-none"
+                        placeholder={`כתוב כאן כל הנחיה חופשית לבוט...\nלמשל: 'לעולם אל תבטיח הנחות. אם לקוח שואל על מחיר, תשאל קודם כמה חדרים יש בדירה.'`}
+                    ></textarea>
+                    <p className="text-[10px] text-slate-400 mt-2">
+                        * המערכת תנתח את הטקסט ותהפוך אותו לפרומפט מקצועי מאחורי הקלעים.
+                    </p>
                 </div>
             </div>
 

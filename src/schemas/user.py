@@ -90,34 +90,49 @@ class UserResponse(BaseModel):
     It defines exactly what data is allowed to leave the API.
     Sensitive fields (password_hash, otp_code, etc.) are strictly excluded.
     """
-    # Fix: Changed type from 'int' to 'UUID' to match the PostgreSQL database schema
     id: UUID
     email: EmailStr
     
-    # Mapping: DB 'name' -> API 'full_name'
     full_name: str = Field(..., alias="name") 
-    name: Optional[str] = None # Support for older Frontend logic
+    name: Optional[str] = None 
     
     business_name: Optional[str] = None
     business_type: Optional[str] = None
     
-    # Mapping: DB 'plan_type' -> API 'plan_tier'
     plan_tier: str = Field(default="free", alias="plan_type") 
     
-    # S3 Integration: URL for profile image stored in AWS S3
     profile_image_url: Optional[str] = None
-    
-    # Twilio Integration: Check if user has purchased a number
     assigned_phone: Optional[str] = None
-    
     is_active: bool
 
     @model_validator(mode='after')
     def sync_name_fields(self):
-        # Ensure 'name' field is populated from 'full_name' alias if missing
         if not self.name:
             self.name = self.full_name
         return self
 
-    # Pydantic V2 Configuration to work with SQLAlchemy ORM
     model_config = ConfigDict(from_attributes=True, populate_by_name=True)
+
+
+# --- Schemas for AI Settings (Dashboard) ---
+class AIAgentSchema(BaseModel):
+    system_prompt: Optional[str] = None
+    voice_id: str = "default_voice_1"
+    language: str = "he-IL"
+    is_active: bool = True
+
+class AISettingsSchema(BaseModel):
+    """
+    Input/Output schema for the Settings page.
+    Combines BusinessProfile data and AIAgent data.
+    """
+    business_name: str
+    business_type: str
+    ai_tone: str
+    products_services: Optional[str] = None
+    custom_instructions: Optional[str] = None
+    
+    # Optional nested agent info if it exists
+    ai_agent: Optional[AIAgentSchema] = None
+
+    model_config = ConfigDict(from_attributes=True)

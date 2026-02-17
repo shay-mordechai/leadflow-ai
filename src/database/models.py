@@ -93,6 +93,8 @@ class User(Base):
     media_files = relationship("MediaInteraction", back_populates="user", cascade="all, delete-orphan")
     integrations = relationship("Integration", back_populates="user", cascade="all, delete-orphan")
     business_profile = relationship("BusinessProfile", uselist=False, back_populates="user", cascade="all, delete-orphan")
+    # NEW: Relationship to the AI Agent (The bot's brain)
+    ai_agent = relationship("AIAgent", uselist=False, back_populates="user", cascade="all, delete-orphan")
     phone_numbers = relationship("PhoneNumber", back_populates="owner", cascade="all, delete-orphan")
     coaching_sessions = relationship("CoachingSession", back_populates="user", cascade="all, delete-orphan")
 
@@ -130,6 +132,35 @@ class BusinessProfile(Base):
     created_at = Column(DateTime(timezone=True), server_default=func.now())
     updated_at = Column(DateTime(timezone=True), onupdate=func.now())
     user = relationship("User", back_populates="business_profile")
+
+# --- NEW MODEL: AI Agent ---
+class AIAgent(Base):
+    """
+    Stores the compiled 'Brain' of the AI for a specific user.
+    Generated from the BusinessProfile's custom_instructions via Google AI Studio.
+    """
+    __tablename__ = "ai_agents"
+    
+    id = Column(GUID(), primary_key=True, default=uuid.uuid4)
+    user_id = Column(GUID(), ForeignKey("users.id", ondelete="CASCADE"), unique=True, nullable=False)
+    
+    # The actual optimized prompt that will be fed to the LLM
+    system_prompt = Column(Text, nullable=True)
+    
+    # Voice configuration
+    voice_id = Column(String, default="default_voice_1")
+    language = Column(String, default="he-IL")
+    
+    # Optional connection to a virtual phone number
+    phone_number_id = Column(GUID(), ForeignKey("phone_numbers.id", ondelete="SET NULL"), nullable=True)
+    
+    is_active = Column(Boolean, default=True)
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
+    updated_at = Column(DateTime(timezone=True), onupdate=func.now())
+    
+    user = relationship("User", back_populates="ai_agent")
+    phone_number = relationship("PhoneNumber")
+
 
 class Lead(Base):
     __tablename__ = "leads"
