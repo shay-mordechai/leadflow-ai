@@ -1,226 +1,212 @@
-// app/dashboard/settings/settings-form.tsx
+// frontend/app/dashboard/settings/settings-form.tsx
 "use client";
 
 import { useState } from "react";
-import { useForm } from "react-hook-form";
-import { Save, Store, Theater, Lightbulb, Loader2, BrainCircuit } from "lucide-react";
 import { useRouter } from "next/navigation";
+import { Loader2, Info } from "lucide-react";
 
-interface SettingsFormData {
-    business_name: string;
-    business_type: string;
-    other_business_type?: string;
-    ai_tone: "Formal" | "Friendly" | "Sales";
-    products_services: string;
-    custom_instructions: string; // NEW: The Brain instructions
-}
-
-// Data received from the Server Component
-interface SettingsFormProps {
-    initialData: Partial<SettingsFormData>;
-    token: string; // Token required for authenticated client-side requests
-}
-
-export default function SettingsForm({ initialData, token }: SettingsFormProps) {
+export default function SettingsForm({ initialData, token }: { initialData: any, token: string }) {
     const router = useRouter();
-    const [isSaving, setIsSaving] = useState(false);
+    const [isLoading, setIsLoading] = useState(false);
+    
+    // Custom state for Bot Name (we'll merge it into custom_instructions behind the scenes)
+    const [botName, setBotName] = useState("מיכל");
 
-    // Logic to handle "Other" business type on initialization
-    const standardTypes = ["Real Estate Agent", "Fitness Coach", "Sales", "Consulting"];
-    let defaultType = initialData.business_type;
-    let defaultOther = "";
-
-    if (defaultType && !standardTypes.includes(defaultType)) {
-        defaultType = "Other";
-        defaultOther = initialData.business_type as string;
-    } else if (!defaultType) {
-        defaultType = "Other";
-    }
-
-    const { register, handleSubmit, watch } = useForm<SettingsFormData>({
-        defaultValues: {
-            business_name: initialData.business_name || "",
-            business_type: defaultType,
-            other_business_type: defaultOther,
-            ai_tone: initialData.ai_tone || "Friendly",
-            products_services: initialData.products_services || "",
-            custom_instructions: initialData.custom_instructions || "", // NEW
-        },
+    const [formData, setFormData] = useState({
+        business_name: initialData.business_name || "",
+        business_type: initialData.business_type || "אחר",
+        ai_tone: initialData.ai_tone || "חברי",
+        products_services: initialData.products_services || "",
+        custom_instructions: initialData.custom_instructions || ""
     });
 
-    const selectedBusinessType = watch("business_type");
+    const handleChange = (e: any) => {
+        setFormData({ ...formData, [e.target.name]: e.target.value });
+    };
 
-    const onSubmit = async (data: SettingsFormData) => {
-        setIsSaving(true);
+    // Dynamic Tone Preview
+    const getTonePreview = (tone: string) => {
+        switch(tone) {
+            case "רשמי": return "התנהגות המערכת: אתה נציג שירות רשמי ומכובד. השתמש בשפה גבוהה, אל תשתמש בסלנג או אימוג'ים. פנה ללקוח בצורה מקצועית וישירה.";
+            case "חברי": return "התנהגות המערכת: אתה נציג שירות חברותי, חם ואמפתי. דבר בגובה העיניים, השתמש באימוג'י במידה, ותן ללקוח תחושה שהוא מדבר עם בן אדם.";
+            case "מכירתי": return "התנהגות המערכת: אתה איש מכירות כריזמטי. המטרה שלך היא להניע את הלקוח לפעולה (קביעת פגישה/רכישה). הדגש את הערך של המוצר וצור תחושת דחיפות קלה.";
+            default: return "התנהגות סטנדרטית.";
+        }
+    };
+
+    const handleSubmit = async (e: React.FormEvent) => {
+        e.preventDefault();
+        setIsLoading(true);
+
+        // Inject the bot name into the instructions dynamically
+        const finalInstructions = `קוראים לך ${botName}. ${formData.custom_instructions}`;
+
+        const payload = {
+            ...formData,
+            custom_instructions: finalInstructions,
+            ai_agent: {
+                voice_id: "female_calm_1",
+                language: "he-IL"
+            }
+        };
+
         try {
-            // Prepare payload for submission
-            const payload = {
-                ...data,
-                business_type:
-                    data.business_type === "Other" ? data.other_business_type : data.business_type,
-            };
-            // Clean up the temporary field before sending
-            delete (payload as any).other_business_type;
-
-            // Send to Server (FastAPI) via standard client-side API call
             const res = await fetch("/api/v1/settings", {
                 method: "POST",
                 headers: {
                     "Content-Type": "application/json",
-                    "Authorization": `Bearer ${token}`, // Pass the token for authentication
+                    "Authorization": `Bearer ${token}`
                 },
-                body: JSON.stringify(payload),
+                body: JSON.stringify(payload)
             });
 
             if (res.ok) {
-                alert("✅ Settings saved successfully!");
-                router.refresh(); // Refresh the Server Component to reflect changes
+                alert("✅ ההגדרות נשמרו בהצלחה! מוח ה-AI עודכן.");
+                router.refresh();
             } else {
-                alert("❌ Failed to save settings.");
+                alert("❌ שגיאה בשמירת ההגדרות.");
             }
         } catch (error) {
-            alert("❌ Network error.");
+            alert("❌ שגיאת תקשורת.");
         } finally {
-            setIsSaving(false);
+            setIsLoading(false);
         }
     };
 
     return (
-        <form onSubmit={handleSubmit(onSubmit)} className="space-y-6">
-            {/* Identity Section */}
-            <div className="bg-white p-5 rounded-2xl shadow-sm border border-slate-100 space-y-4">
-                <div className="flex items-center gap-2 border-b border-slate-50 pb-2 mb-2">
-                    <Store className="w-5 h-5 text-blue-500" />
-                    <h2 className="font-bold text-slate-800 text-sm">זהות העסק</h2>
-                </div>
-
-                <div>
-                    <label className="block text-xs font-bold text-slate-500 mb-1.5">
-                        שם העסק (כפי שיוצג ללקוח)
-                    </label>
-                    <input
-                        {...register("business_name")}
-                        type="text"
-                        className="w-full px-4 py-3 bg-slate-50 rounded-xl border border-slate-200 focus:ring-2 focus:ring-blue-500 outline-none text-sm font-medium transition"
-                        placeholder="למשל: דני כהן נדל״ן"
-                    />
-                </div>
-
-                <div>
-                    <label className="block text-xs font-bold text-slate-500 mb-1.5">תחום עיסוק</label>
-                    <select
-                        {...register("business_type")}
-                        className="w-full px-4 py-3 bg-slate-50 rounded-xl border border-slate-200 outline-none text-sm focus:ring-2 focus:ring-blue-500 transition"
-                    >
-                        <option value="Real Estate Agent">נדל"ן</option>
-                        <option value="Fitness Coach">כושר ובריאות</option>
-                        <option value="Sales">מכירות כללי</option>
-                        <option value="Consulting">ייעוץ</option>
-                        <option value="Other">אחר</option>
-                    </select>
-                </div>
-
-                {selectedBusinessType === "Other" && (
-                    <div>
-                        <label className="block text-xs font-bold text-slate-500 mb-1.5">פרט את התחום</label>
+        <form onSubmit={handleSubmit} className="space-y-6">
+            
+            {/* Section 1: Identity */}
+            <div className="bg-white p-6 rounded-2xl shadow-sm border border-slate-100 space-y-4">
+                <h2 className="font-bold text-slate-800 border-b border-slate-100 pb-2">זהות העסק והנציג</h2>
+                
+                <div className="grid grid-cols-2 gap-4">
+                    <div className="space-y-1">
+                        <label className="text-xs font-bold text-slate-500">שם העסק (כפי שיוצג ללקוח)</label>
                         <input
-                            {...register("other_business_type")}
                             type="text"
-                            className="w-full px-4 py-3 bg-slate-50 rounded-xl border border-slate-200 focus:ring-2 focus:ring-blue-500 outline-none text-sm font-medium transition animate-in fade-in slide-in-from-top-1"
-                            placeholder="למשל: אינסטלטור, מורה לפסנתר..."
+                            name="business_name"
+                            value={formData.business_name}
+                            onChange={handleChange}
+                            className="w-full px-4 py-2 bg-slate-50 rounded-xl border border-slate-200 focus:ring-2 focus:ring-blue-500 outline-none text-sm"
+                            required
                         />
                     </div>
-                )}
-            </div>
-
-            {/* Tone Section */}
-            <div className="bg-white p-5 rounded-2xl shadow-sm border border-slate-100 space-y-4">
-                <div className="flex items-center gap-2 border-b border-slate-50 pb-2 mb-2">
-                    <Theater className="w-5 h-5 text-purple-500" />
-                    <h2 className="font-bold text-slate-800 text-sm">סגנון דיבור</h2>
+                    <div className="space-y-1">
+                        <label className="text-xs font-bold text-slate-500">תחום עיסוק</label>
+                        <select
+                            name="business_type"
+                            value={formData.business_type}
+                            onChange={handleChange}
+                            className="w-full px-4 py-2 bg-slate-50 rounded-xl border border-slate-200 focus:ring-2 focus:ring-blue-500 outline-none text-sm"
+                        >
+                            <option value="נדלן">נדל"ן</option>
+                            <option value="כושר ובריאות">כושר ובריאות</option>
+                            <option value="מכירות כללי">מכירות כללי</option>
+                            <option value="ייעוץ">ייעוץ</option>
+                            <option value="אחר">אחר</option>
+                        </select>
+                    </div>
                 </div>
 
-                <div className="grid grid-cols-3 gap-3">
-                    {/* Tone Options */}
-                    {["Formal", "Friendly", "Sales"].map((tone) => (
-                        <label key={tone} className="cursor-pointer relative group">
-                            <input
-                                type="radio"
-                                value={tone}
-                                {...register("ai_tone" as any)}
-                                className="peer sr-only"
-                            />
-                            <div className="p-3 text-center rounded-xl border border-slate-200 bg-slate-50 peer-checked:bg-slate-800 peer-checked:text-white peer-checked:border-slate-800 transition hover:bg-slate-100 group-active:scale-95">
-                                <div className="text-xl mb-1">
-                                    {tone === "Formal" ? "👔" : tone === "Friendly" ? "👋" : "🔥"}
-                                </div>
-                                <span className="text-xs font-bold">
-                                    {tone === "Formal" ? "רשמי" : tone === "Friendly" ? "חברי" : "מכירתי"}
-                                </span>
-                            </div>
-                        </label>
+                <div className="space-y-1 pt-2">
+                    <label className="text-xs font-bold text-slate-500">איך קוראים לבוט/מזכירה שלך?</label>
+                    <input
+                        type="text"
+                        value={botName}
+                        onChange={(e) => setBotName(e.target.value)}
+                        placeholder="לדוגמה: מיכל, רועי, או סתם 'נציג שירות'"
+                        className="w-full px-4 py-2 bg-slate-50 rounded-xl border border-slate-200 focus:ring-2 focus:ring-blue-500 outline-none text-sm"
+                    />
+                </div>
+            </div>
+
+            {/* Section 2: Tone & Personality */}
+            <div className="bg-white p-6 rounded-2xl shadow-sm border border-slate-100 space-y-4">
+                <h2 className="font-bold text-slate-800 border-b border-slate-100 pb-2">אישיות וסגנון דיבור</h2>
+                
+                <div className="flex gap-3">
+                    {["רשמי", "חברי", "מכירתי"].map((tone) => (
+                        <button
+                            key={tone}
+                            type="button"
+                            onClick={() => setFormData({ ...formData, ai_tone: tone })}
+                            className={`flex-1 py-3 rounded-xl border text-sm font-bold transition-all active:scale-95 flex items-center justify-center gap-2 ${
+                                formData.ai_tone === tone 
+                                ? "bg-blue-50 border-blue-500 text-blue-700 shadow-sm" 
+                                : "bg-white border-slate-200 text-slate-500 hover:bg-slate-50"
+                            }`}
+                        >
+                            {tone === "רשמי" && "👔"}
+                            {tone === "חברי" && "👋"}
+                            {tone === "מכירתי" && "🔥"}
+                            {tone}
+                        </button>
                     ))}
                 </div>
-            </div>
 
-            {/* Knowledge Section */}
-            <div className="bg-white p-5 rounded-2xl shadow-sm border border-slate-100 space-y-4">
-                <div className="flex items-center gap-2 border-b border-slate-50 pb-2 mb-2">
-                    <Lightbulb className="w-5 h-5 text-yellow-500" />
-                    <h2 className="font-bold text-slate-800 text-sm">ידע עסקי</h2>
-                </div>
-
-                <div>
-                    <label className="block text-xs font-bold text-slate-500 mb-1.5">המוצרים/שירותים שלך</label>
-                    <textarea
-                        {...register("products_services")}
-                        rows={5}
-                        className="w-full p-3 bg-slate-50 rounded-xl border border-slate-200 focus:ring-2 focus:ring-blue-500 outline-none text-sm transition resize-none"
-                        placeholder={`למשל:\n- אימון אישי: 250 ש״ח\n- מנוי חודשי: 400 ש״ח\n- שעות פתיחה: 08:00 עד 20:00`}
-                    ></textarea>
+                {/* Dynamic Preview Box */}
+                <div className="mt-4 bg-slate-800 text-slate-300 p-4 rounded-xl text-xs leading-relaxed border border-slate-700 relative overflow-hidden">
+                    <div className="absolute top-0 right-0 w-2 h-full bg-blue-500"></div>
+                    <span className="font-bold text-blue-400 block mb-1">כך הבוט יקבל את ההנחיה:</span>
+                    {getTonePreview(formData.ai_tone)}
                 </div>
             </div>
 
-            {/* NEW: AI Brain Configuration */}
-            <div className="bg-white p-5 rounded-2xl shadow-sm border border-slate-100 space-y-4">
-                <div className="flex items-center gap-2 border-b border-slate-50 pb-2 mb-2">
-                    <BrainCircuit className="w-5 h-5 text-emerald-500" />
-                    <h2 className="font-bold text-slate-800 text-sm">מוח ה-AI (הנחיות אישיות)</h2>
+            {/* Section 3: Knowledge Base */}
+            <div className="bg-white p-6 rounded-2xl shadow-sm border border-slate-100 space-y-4">
+                <div className="flex items-center gap-2 border-b border-slate-100 pb-2">
+                    <h2 className="font-bold text-slate-800">ידע עסקי (שירותים ומחירים)</h2>
+                    
+                    {/* Tooltip Hover */}
+                    <div className="relative group cursor-help">
+                        <Info className="w-4 h-4 text-slate-400 hover:text-blue-500 transition-colors" />
+                        <div className="absolute right-0 bottom-6 w-64 bg-slate-800 text-white text-xs p-3 rounded-lg opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none z-10 shadow-xl">
+                            הכנס כאן את השירותים שאתה מציע, מחירים, שעות פתיחה, וכל פרט טכני שהבוט צריך לדעת כדי לענות לשאלות של הלקוחות בצורה מדויקת.
+                        </div>
+                    </div>
                 </div>
 
-                <div>
-                    <label className="block text-xs font-bold text-slate-500 mb-1.5">
-                        איך תרצה שהבוט יתנהג? (טקסט חופשי)
-                    </label>
-                    <textarea
-                        {...register("custom_instructions")}
-                        rows={6}
-                        className="w-full p-3 bg-slate-50 rounded-xl border border-slate-200 focus:ring-2 focus:ring-blue-500 outline-none text-sm transition resize-none"
-                        placeholder={`כתוב כאן כל הנחיה חופשית לבוט...\nלמשל: 'לעולם אל תבטיח הנחות. אם לקוח שואל על מחיר, תשאל קודם כמה חדרים יש בדירה.'`}
-                    ></textarea>
-                    <p className="text-[10px] text-slate-400 mt-2">
-                        * המערכת תנתח את הטקסט ותהפוך אותו לפרומפט מקצועי מאחורי הקלעים.
-                    </p>
+                <textarea
+                    name="products_services"
+                    value={formData.products_services}
+                    onChange={handleChange}
+                    rows={4}
+                    placeholder="1. אימון אישי 1-על-1: 200 ש״ח לשעה.&#10;2. אימון קבוצתי: 80 ש״ח למשתתף.&#10;3. פתוחים בימים א'-ה' מ-08:00 עד 20:00."
+                    className="w-full px-4 py-3 bg-slate-50 rounded-xl border border-slate-200 focus:ring-2 focus:ring-blue-500 outline-none text-sm leading-relaxed resize-none placeholder:text-slate-400"
+                />
+            </div>
+
+            {/* Section 4: Custom Instructions */}
+            <div className="bg-white p-6 rounded-2xl shadow-sm border border-slate-100 space-y-4">
+                <div className="flex items-center gap-2 border-b border-slate-100 pb-2">
+                    <h2 className="font-bold text-slate-800">הנחיות אישיות למוח ה-AI</h2>
+                    
+                    <div className="relative group cursor-help">
+                        <Info className="w-4 h-4 text-slate-400 hover:text-blue-500 transition-colors" />
+                        <div className="absolute right-0 bottom-6 w-64 bg-slate-800 text-white text-xs p-3 rounded-lg opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none z-10 shadow-xl">
+                            כאן המקום לכתוב "חוקים" לבוט. למשל: אל תציע הנחות אף פעם, תמיד תשאל מה המטרה של הלקוח לפני שאתה מציג מחיר, וכו'.
+                        </div>
+                    </div>
                 </div>
+
+                <textarea
+                    name="custom_instructions"
+                    value={formData.custom_instructions}
+                    onChange={handleChange}
+                    rows={3}
+                    placeholder="אל תציע הנחות בשום אופן. תמיד תשאל את הלקוח אם יש לו פציעות ספורט בעבר לפני שאתה מתאם לו אימון."
+                    className="w-full px-4 py-3 bg-slate-50 rounded-xl border border-slate-200 focus:ring-2 focus:ring-blue-500 outline-none text-sm leading-relaxed resize-none placeholder:text-slate-400"
+                />
             </div>
 
             {/* Submit Button */}
             <button
                 type="submit"
-                disabled={isSaving}
-                className="w-full bg-blue-600 text-white py-4 rounded-xl font-bold shadow-lg shadow-blue-500/30 hover:bg-blue-700 transition active:scale-95 disabled:opacity-70 disabled:active:scale-100 sticky bottom-4 z-40 flex items-center justify-center gap-2"
+                disabled={isLoading}
+                className="w-full bg-blue-600 text-white py-4 rounded-xl font-bold shadow-lg shadow-blue-500/30 hover:bg-blue-700 transition active:scale-95 disabled:opacity-70 disabled:active:scale-100 flex justify-center items-center gap-2"
             >
-                {isSaving ? (
-                    <>
-                        <Loader2 className="w-5 h-5 animate-spin" />
-                        שומר...
-                    </>
-                ) : (
-                    <>
-                        <Save className="w-5 h-5" />
-                        שמור שינויים
-                    </>
-                )}
+                {isLoading ? <Loader2 className="w-5 h-5 animate-spin" /> : "💾 שמור שינויים ועדכן את הבוט"}
             </button>
         </form>
     );
