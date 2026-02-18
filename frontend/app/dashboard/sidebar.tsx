@@ -3,7 +3,7 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { LayoutDashboard, Users, PhoneCall, CreditCard, Settings, LogOut } from "lucide-react";
+import { LayoutDashboard, Users, PhoneCall, CreditCard, Settings, LogOut, Link2 } from "lucide-react";
 
 export default function Sidebar() {
     const pathname = usePathname();
@@ -11,6 +11,7 @@ export default function Sidebar() {
     const navItems = [
         { name: "ראשי", href: "/dashboard", icon: LayoutDashboard },
         { name: "הלידים שלי", href: "/dashboard/leads", icon: Users },
+        { name: "אינטגרציות", href: "/dashboard/integrations", icon: Link2 }, // <-- Added Integrations Hub
         { name: "מספרי טלפון", href: "/dashboard/phone", icon: PhoneCall },
         { name: "חיובים ומנויים", href: "/dashboard/billing", icon: CreditCard },
         { name: "מוח ה-AI (הגדרות)", href: "/dashboard/settings", icon: Settings },
