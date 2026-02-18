@@ -9,8 +9,9 @@ export default function SettingsForm({ initialData, token }: { initialData: any,
     const router = useRouter();
     const [isLoading, setIsLoading] = useState(false);
     
-    // Custom state for Bot Name (we'll merge it into custom_instructions behind the scenes)
-    const [botName, setBotName] = useState("מיכל");
+    const [botName, setBotName] = useState("נציג שירות");
+    const [bookingLink, setBookingLink] = useState("");
+    const [cancellationPolicy, setCancellationPolicy] = useState("ביטולים יתקבלו עד 24 שעות לפני מועד הפגישה. במקרה של ביטול, הצע ללקוח לקבוע מועד חדש.");
 
     const [formData, setFormData] = useState({
         business_name: initialData.business_name || "",
@@ -38,8 +39,13 @@ export default function SettingsForm({ initialData, token }: { initialData: any,
         e.preventDefault();
         setIsLoading(true);
 
-        // Inject the bot name into the instructions dynamically
-        const finalInstructions = `קוראים לך ${botName}. ${formData.custom_instructions}`;
+        // THE MAGIC: We dynamically merge all the new features into the system prompt!
+        const finalInstructions = `
+            קוראים לך ${botName}.
+            לינק לקביעת פגישות/תורים: ${bookingLink ? bookingLink : "אין כרגע לינק ישיר. בקש מהלקוח להשאיר פרטים ונחזור אליו."}.
+            מדיניות ביטולים: ${cancellationPolicy}.
+            הנחיות כלליות נוספות: ${formData.custom_instructions}
+        `.trim();
 
         const payload = {
             ...formData,
@@ -61,7 +67,7 @@ export default function SettingsForm({ initialData, token }: { initialData: any,
             });
 
             if (res.ok) {
-                alert("✅ ההגדרות נשמרו בהצלחה! מוח ה-AI עודכן.");
+                alert("✅ מוח ה-AI עודכן בהצלחה!");
                 router.refresh();
             } else {
                 alert("❌ שגיאה בשמירת ההגדרות.");
@@ -175,6 +181,44 @@ export default function SettingsForm({ initialData, token }: { initialData: any,
                     placeholder="1. אימון אישי 1-על-1: 200 ש״ח לשעה.&#10;2. אימון קבוצתי: 80 ש״ח למשתתף.&#10;3. פתוחים בימים א'-ה' מ-08:00 עד 20:00."
                     className="w-full px-4 py-3 bg-slate-50 rounded-xl border border-slate-200 focus:ring-2 focus:ring-blue-500 outline-none text-sm leading-relaxed resize-none placeholder:text-slate-400"
                 />
+            </div>
+
+            {/* NEW SECTION: Scheduling & Cancellations */}
+            <div className="bg-gradient-to-br from-indigo-50 to-blue-50 p-6 rounded-2xl shadow-sm border border-indigo-100 space-y-4">
+                <div className="flex items-center gap-2 border-b border-indigo-200 pb-2">
+                    <h2 className="font-bold text-indigo-900">יומן פגישות ומדיניות ביטולים</h2>
+                    <div className="relative group cursor-help">
+                        <Info className="w-4 h-4 text-indigo-400 hover:text-indigo-600 transition-colors" />
+                        <div className="absolute right-0 bottom-6 w-64 bg-indigo-900 text-white text-xs p-3 rounded-lg opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none z-10 shadow-xl">
+                            הכנס לינק ליומן תורים (כמו Calendly) ואת המדיניות שלך. הבוט יידע לשלוח את הלינק ללקוחות שמבקשים לקבוע פגישה.
+                        </div>
+                    </div>
+                </div>
+                
+                <div className="space-y-4">
+                    <div className="space-y-1">
+                        <label className="text-xs font-bold text-indigo-700">לינק ליומן תורים (Calendly / מורנינג)</label>
+                        <input 
+                            type="url" 
+                            value={bookingLink} 
+                            onChange={(e) => setBookingLink(e.target.value)} 
+                            placeholder="https://calendly.com/your-link" 
+                            className="w-full px-4 py-2 bg-white rounded-xl border border-indigo-200 focus:ring-2 focus:ring-indigo-500 outline-none text-sm" 
+                            dir="ltr" 
+                        />
+                        <p className="text-[10px] text-indigo-500 mt-1">הבוט ישלח את הלינק הזה ללקוחות שיבקשו לקבוע פגישה.</p>
+                    </div>
+
+                    <div className="space-y-1">
+                        <label className="text-xs font-bold text-indigo-700">מדיניות ביטולים ושינויים</label>
+                        <textarea 
+                            value={cancellationPolicy} 
+                            onChange={(e) => setCancellationPolicy(e.target.value)} 
+                            rows={2} 
+                            className="w-full px-4 py-2 bg-white rounded-xl border border-indigo-200 focus:ring-2 focus:ring-indigo-500 outline-none text-sm resize-none" 
+                        />
+                    </div>
+                </div>
             </div>
 
             {/* Section 4: Custom Instructions */}
