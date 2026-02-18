@@ -6,9 +6,21 @@ export default function Pricing() {
     return (
         <section id="pricing" className="py-24 bg-slate-900 border-t border-white/5 font-sans" dir="rtl">
             <div className="container mx-auto px-4">
-                <div className="text-center mb-16">
-                    <h2 className="text-3xl md:text-4xl font-black text-white mb-4">השקעה קטנה, החזר ענק</h2>
-                    <p className="text-slate-400 text-lg">בלי הפתעות ובלי עמלות נסתרות. בחר את המסלול שמתאים לך.</p>
+                
+                {/* The "Headache Free" Hook */}
+                <div className="max-w-3xl mx-auto text-center mb-16 space-y-4">
+                    <div className="inline-block bg-blue-500/10 border border-blue-500/20 text-blue-400 font-bold px-4 py-2 rounded-full text-sm mb-4">
+                        Zero Code. Zero Setup.
+                    </div>
+                    <h2 className="text-3xl md:text-5xl font-black text-white leading-tight">
+                        תתמקדו בעסק.<br/>
+                        <span className="text-transparent bg-clip-text bg-gradient-to-r from-blue-400 to-indigo-400">
+                            את האוטומציה וה-AI תשאירו לנו.
+                        </span>
+                    </h2>
+                    <p className="text-slate-400 text-lg max-w-2xl mx-auto">
+                        המערכת מסופקת עם תבניות מוכנות (Templates) שמתחברות לפייסבוק ואינסטגרם בלחיצת כפתור אחת. בלי הפתעות ובלי עמלות נסתרות. בחר את המסלול שמתאים לך.
+                    </p>
                 </div>
 
                 <div className="grid md:grid-cols-2 gap-8 max-w-4xl mx-auto">
@@ -24,11 +36,11 @@ export default function Pricing() {
                             <li className="flex items-center gap-3"><Check className="w-5 h-5 text-slate-500" /> חיבור לדאשבורד לידים מתקדם</li>
                             <li className="flex items-center gap-3"><Check className="w-5 h-5 text-slate-500" /> הגדרת יומן פגישות ומדיניות ביטולים</li>
                             <li className="flex items-center gap-3 opacity-50"><Check className="w-5 h-5 text-slate-700" /> <span className="line-through">מספר טלפון וירטואלי</span></li>
-                            <li className="flex items-center gap-3 opacity-50"><Check className="w-5 h-5 text-slate-700" /> <span className="line-through">חיבור Webhook לפייסבוק</span></li>
+                            <li className="flex items-center gap-3 opacity-50"><Check className="w-5 h-5 text-slate-700" /> <span className="line-through">תבניות אוטומציה לפייסבוק</span></li>
                         </ul>
                         
                         <Link href="/register" className="block w-full py-4 border-2 border-slate-600 text-slate-300 hover:bg-slate-700 hover:text-white text-center rounded-xl transition-all font-bold active:scale-95">
-                            התחל עכשיו
+                            התחילו עכשיו
                         </Link>
                     </div>
 
@@ -49,12 +61,12 @@ export default function Pricing() {
                             <li className="flex items-center gap-3"><Check className="w-5 h-5 text-blue-400" /> כל מה שכלול במסלול ההתנסות</li>
                             <li className="flex items-center gap-3"><Check className="w-5 h-5 text-blue-400" /> הקצאת מספר טלפון ישראלי/אמריקאי</li>
                             <li className="flex items-center gap-3"><Check className="w-5 h-5 text-blue-400" /> חיבור רשמי לוואטסאפ (Meta API)</li>
-                            <li className="flex items-center gap-3"><Check className="w-5 h-5 text-blue-400" /> אינטגרציית Webhook למודעות לידים</li>
+                            <li className="flex items-center gap-3"><Check className="w-5 h-5 text-blue-400" /> תבניות Zapier מוכנות לחיבור לידים</li>
                             <li className="flex items-center gap-3"><Check className="w-5 h-5 text-blue-400" /> שיחות וואטסאפ ללא הגבלה</li>
                         </ul>
                         
                         <Link href="/register?plan=pro" className="block w-full py-4 bg-blue-600 text-white hover:bg-blue-500 text-center rounded-xl transition-all font-bold shadow-lg shadow-blue-600/30 active:scale-95">
-                            שדרג ל-PRO
+                            שדרגו ל-PRO
                         </Link>
                     </div>
 
