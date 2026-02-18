@@ -1,26 +1,53 @@
 @import "tailwindcss";
 
+/* --- Default (Light Mode) Variables --- */
+/* Using Tailwind's slate-50 for background and slate-900 for text for a premium soft look */
 :root {
-  --background: #ffffff;
-  --foreground: #171717;
+  --background: #f8fafc; /* slate-50 */
+  --foreground: #0f172a; /* slate-900 */
 }
 
+/* --- Theme Customization --- */
 @theme inline {
   --color-background: var(--background);
   --color-foreground: var(--foreground);
-  --font-sans: var(--font-geist-sans);
-  --font-mono: var(--font-geist-mono);
+  --font-sans: var(--font-geist-sans), Arial, Helvetica, sans-serif;
+  --font-mono: var(--font-geist-mono), monospace;
 }
 
+/* --- Dark Mode Variables --- */
+/* MAGIC FIX: Using Tailwind's slate-900 perfectly matches our marketing components, eliminating the ugly black border! */
 @media (prefers-color-scheme: dark) {
   :root {
-    --background: #0a0a0a;
-    --foreground: #ededed;
+    --background: #0f172a; /* slate-900 */
+    --foreground: #f8fafc; /* slate-50 */
   }
 }
 
+/* --- Global Base Styles --- */
 body {
   background: var(--background);
   color: var(--foreground);
-  font-family: Arial, Helvetica, sans-serif;
+  font-family: var(--font-sans);
+  
+  /* Upgrades for a premium feel */
+  scroll-behavior: smooth; /* Makes anchor links (like #pricing) glide smoothly */
+  overflow-x: hidden; /* Prevents horizontal scrolling bugs */
+  -webkit-font-smoothing: antialiased; /* Crisper text rendering on Mac/iOS */
+  -moz-osx-font-smoothing: grayscale;
+}
+
+/* --- Custom Scrollbar (SaaS Premium UI Touch) --- */
+::-webkit-scrollbar {
+  width: 8px;
+}
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+::-webkit-scrollbar-thumb {
+  background-color: #475569; /* slate-600 */
+  border-radius: 9999px;
+}
+::-webkit-scrollbar-thumb:hover {
+  background-color: #334155; /* slate-700 */
 }
