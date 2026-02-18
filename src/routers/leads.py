@@ -14,16 +14,14 @@ from slowapi.util import get_remote_address
 from src.database.session import get_db
 from src.database.models import Lead, User, LeadSource, LeadStatus
 from src.security.dependencies import get_current_user
+# NEW: Import the WhatsApp adapter to send proactive messages
+from src.services.communication.whatsapp import whatsapp_adapter
 
 # Initialize Router
 router = APIRouter(tags=["Leads Management"])
 logger = logging.getLogger(__name__)
 
 # Security: Get Limiter instance from main app state or create new
-# (Assuming limiter is passed via dependency injection or global state in a real app structure)
-# For this snippet, we assume a global limiter is available or imported from main
-# NOTE: In a circular import scenario, move limiter creation to a separate `src/core/limiter.py` file.
-# For now, we use a placeholder to show where it goes.
 limiter = Limiter(key_func=get_remote_address) 
 
 # --- Schemas ---
@@ -66,10 +64,7 @@ async def get_my_leads(
     SECURE ENDPOINT: Returns leads ONLY for the logged-in user.
     """
     # Security: IDOR Protection
-    # We deliberately DO NOT accept 'user_id' as a parameter. 
-    # We use the token (current_user) as the source of truth.
     query = db.query(Lead).filter(Lead.user_id == current_user.id)
-    
     leads = query.order_by(Lead.created_at.desc()).offset(offset).limit(limit).all()
     
     return leads
@@ -89,7 +84,6 @@ async def receive_external_lead(
     """
     try:
         # 1. Security: Validate UUID format
-        # Prevents SQL injection attempts via URL or processing errors
         try:
             uuid_obj = uuid.UUID(user_id)
         except ValueError:
@@ -98,7 +92,6 @@ async def receive_external_lead(
         # 2. Validate User Exists
         target_user = db.query(User).filter(User.id == user_id).first()
         if not target_user:
-             # Security: Do not reveal too much info, but 404 is acceptable here
              logger.warning(f"Webhook failed: User ID {user_id} not found.")
              raise HTTPException(status_code=404, detail="Target user not found")
 
@@ -116,8 +109,8 @@ async def receive_external_lead(
         # 4. Create DB Entry
         new_lead = Lead(
             user_id=target_user.id,
-            name=lead_data.name, # Encrypted via Model logic
-            phone_number=lead_data.phone, # Encrypted via Model logic
+            name=lead_data.name,
+            phone_number=lead_data.phone,
             email=lead_data.email, 
             source=LeadSource.LANDING_PAGE,
             status=LeadStatus.NEW
@@ -127,6 +120,37 @@ async def receive_external_lead(
         db.commit()
         
         logger.info(f"New Lead Saved via Webhook: {lead_data.name} for User: {target_user.email}")
+
+        # ------------------------------------------------------------------
+        # 5. SPEED TO LEAD: Proactive WhatsApp Outreach
+        # ------------------------------------------------------------------
+        try:
+            # Clean the phone number (remove +, -, spaces) for Meta API
+            clean_phone = ''.join(filter(str.isdigit, lead_data.phone))
+            
+            # Fetch business name safely
+            biz_name = getattr(target_user, "business_name", "העסק שלנו") 
+            if not biz_name:
+                biz_name = "העסק שלנו"
+            
+            # Note: In a strict Meta Production environment, this specific string MUST match 
+            # a pre-approved Template in the Meta Business Manager to open the 24h window.
+            # For MVP/Sandbox, this text will be sent to initiate the conversation.
+            intro_text = f"היי {lead_data.name}, תודה שהשארת פרטים! אני המזכירה הווירטואלית של {biz_name}. איך אפשר לעזור לך היום?"
+            
+            # Send the message
+            success = whatsapp_adapter.send_message(to_phone=clean_phone, text=intro_text)
+            
+            if success:
+                logger.info(f"🚀 Speed-to-Lead: Proactive WhatsApp message sent to {clean_phone}")
+            else:
+                logger.warning(f"⚠️ Speed-to-Lead: Failed to send proactive WhatsApp message to {clean_phone}")
+                
+        except Exception as wa_err:
+            # We catch this so the webhook still returns 201 Created to Zapier/Facebook
+            # even if the WhatsApp delivery fails.
+            logger.error(f"WhatsApp outreach failed for lead {new_lead.id}: {wa_err}")
+
         return {"status": "success", "lead_id": str(new_lead.id)}
 
     except HTTPException as he:
@@ -134,7 +158,6 @@ async def receive_external_lead(
     except Exception as e:
         db.rollback()
         logger.error(f"Error processing webhook: {str(e)}")
-        # Security: Generic Error
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail="Error processing lead"
