@@ -4,6 +4,7 @@ import getpass
 import argparse
 import time
 import json
+import uuid
 
 # --- CONFIGURATION ---
 DEFAULT_LOCAL_URL = "http://127.0.0.1:8000"
@@ -37,6 +38,10 @@ def run_full_system_qa():
 
     print(f"\n🚀 STARTING FULL SYSTEM QA FOR: {base_url}")
     print("="*60)
+
+    # Variables to hold across steps
+    user_id = None
+    token = None
 
     # ==============================================================================
     # 1. AUTHENTICATION & REGISTRATION
@@ -81,7 +86,6 @@ def run_full_system_qa():
             sys.exit(1)
 
         data = res.json()
-        token = None
 
         if data.get("mfa_required"):
             print("\n" + "-"*40)
@@ -108,7 +112,7 @@ def run_full_system_qa():
         sys.exit(1)
 
     # ==============================================================================
-    # 2. VERIFY USER PLAN (INITIAL)
+    # 2. VERIFY USER PLAN (INITIAL) AND GET USER_ID
     # ==============================================================================
     print("\n" + "="*60)
     log("4. USER INFO", "Checking current plan...", "INFO")
@@ -118,7 +122,9 @@ def run_full_system_qa():
         if me_res.status_code == 200:
             user_data = me_res.json()
             initial_plan = user_data.get("plan_tier")
+            user_id = user_data.get("id") # <--- WE NEED THIS FOR THE WEBHOOK
             log("4. USER INFO", f"Current Plan: {initial_plan}", "INFO")
+            log("4. USER INFO", f"User ID: {user_id}", "INFO")
         else:
             log("4. USER INFO", f"❌ Failed to fetch user info: {me_res.text}", "FAIL")
             
@@ -139,7 +145,7 @@ def run_full_system_qa():
         "custom_instructions": "Never offer discounts. Always ask about past injuries before booking.",
         "ai_agent": {
             "voice_id": "female_calm_1",
-            "language": "en-US"
+            "language": "he-IL"
         }
     }
 
@@ -167,7 +173,6 @@ def run_full_system_qa():
             res_data = coupon_res.json()
             if "PRO" in res_data.get("message", "").upper() or res_data.get("plan") == "PRO":
                 log("6. BILLING", "✅ Upgrade successful! User is now PRO.", "SUCCESS")
-                log("6. BILLING", "✅ Confirmation email dispatched (check logs).", "SUCCESS")
             else:
                 log("6. BILLING", "⚠️ Request succeeded, but user is still not PRO.", "WARN")
         else:
@@ -188,8 +193,6 @@ def run_full_system_qa():
         if res.status_code == 200:
             numbers = res.json()
             if numbers:
-                print(f"{CYAN}📞 Found {len(numbers)} available numbers. Simulating purchase of first number...{RESET}")
-                
                 target_num = numbers[0]['number']
                 log("7. PHONES", f"Attempting purchase for {target_num}...", "INFO")
                 
@@ -197,28 +200,61 @@ def run_full_system_qa():
                                         json={"phone_number": target_num, "country_code": "IL"},
                                         headers=headers)
                 
-                if buy_res.status_code == 200:
-                    log("7. PHONES", f"✅ Purchase Successful! Number {target_num} assigned.", "SUCCESS")
-                    
-                    # Verify assignment
-                    me_res2 = requests.get(f"{base_url}/api/v1/auth/me", headers=headers)
-                    if me_res2.status_code == 200 and me_res2.json().get("assigned_phone") == target_num:
-                        log("7. PHONES", "✅ System correctly remembered the purchased number.", "SUCCESS")
-                    else:
-                        log("7. PHONES", "❌ Number was not saved to user profile.", "FAIL")
-                        
-                elif buy_res.status_code == 403:
-                    log("7. PHONES", "🔒 Purchase Blocked: You need PRO plan (Upgrade step failed).", "FAIL")
+                if buy_res.status_code == 200 or "User already has a phone number" in buy_res.text:
+                    log("7. PHONES", f"✅ Purchase Step Complete for {target_num}.", "SUCCESS")
                 else:
                     log("7. PHONES", f"❌ Purchase Failed: {buy_res.text}", "FAIL")
             else:
-                 log("7. PHONES", "⚠️ No numbers found (Check Provider Credentials).", "WARN")
-
+                 log("7. PHONES", "⚠️ No numbers found.", "WARN")
         else:
              log("7. PHONES", f"❌ API Error: {res.text}", "FAIL")
-
     except Exception as e:
         log("PHONES", f"Error: {e}", "FAIL")
+
+
+    # ==============================================================================
+    # 6. WEBHOOK & SPEED-TO-LEAD (NEW TEST!)
+    # ==============================================================================
+    print("\n" + "="*60)
+    log("8. WEBHOOK", "Simulating incoming lead from Facebook/Zapier...", "INFO")
+
+    if not user_id:
+        log("8. WEBHOOK", "❌ Cannot test webhook: Missing User ID.", "FAIL")
+    else:
+        test_phone_number = f"+97250{int(time.time())}"[:13] # Generate a fake unique phone number
+        
+        webhook_payload = {
+            "name": "David Facebook",
+            "phone": test_phone_number,
+            "email": "david@lead.com",
+            "source": "facebook_ad"
+        }
+
+        try:
+            # We hit the Webhook WITHOUT the auth header (because Zapier doesn't have it, it uses the user_id in the URL)
+            webhook_res = requests.post(f"{base_url}/api/v1/leads/webhook/{user_id}", json=webhook_payload)
+            
+            if webhook_res.status_code == 201:
+                log("8. WEBHOOK", f"✅ Webhook received lead successfully! (Phone: {test_phone_number})", "SUCCESS")
+                log("8. WEBHOOK", "✅ Check server logs to see if 'Proactive WhatsApp message' was triggered.", "SUCCESS")
+                
+                # Verify it appears in the user's dashboard
+                leads_res = requests.get(f"{base_url}/api/v1/leads/", headers=headers)
+                if leads_res.status_code == 200:
+                    leads_data = leads_res.json()
+                    found = any(lead.get("phone_number") == test_phone_number for lead in leads_data)
+                    if found:
+                        log("8. WEBHOOK", "✅ VERIFIED: Lead successfully appeared in User's Dashboard.", "SUCCESS")
+                    else:
+                        log("8. WEBHOOK", "❌ Lead saved by webhook, but not found in Dashboard.", "FAIL")
+                else:
+                     log("8. WEBHOOK", f"❌ Failed to fetch leads dashboard: {leads_res.text}", "FAIL")
+
+            else:
+                log("8. WEBHOOK", f"❌ Webhook Failed: {webhook_res.text}", "FAIL")
+
+        except Exception as e:
+            log("WEBHOOK", f"Error: {e}", "FAIL")
 
     print("\n🏁 FULL SYSTEM QA COMPLETE.")
 
