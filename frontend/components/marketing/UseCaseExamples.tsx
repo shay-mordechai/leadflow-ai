@@ -1,3 +1,4 @@
+// frontend/components/marketing/UseCaseExamples.tsx
 export default function UseCaseExamples() {
     return (
         <section className="py-24 relative overflow-hidden bg-slate-900">

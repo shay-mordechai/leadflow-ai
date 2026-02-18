@@ -1,3 +1,4 @@
+// frontend/components/marketing/Navbar.tsx
 import Link from 'next/link';
 import { Zap } from 'lucide-react';
 

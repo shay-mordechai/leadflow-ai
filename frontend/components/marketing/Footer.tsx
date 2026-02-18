@@ -1,3 +1,4 @@
+// frontend/components/marketing/Footer.tsx
 import Link from 'next/link';
 import { Facebook, Instagram, Linkedin } from 'lucide-react';
 
