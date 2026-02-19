@@ -1,6 +1,7 @@
 # src/routers/leads.py
 import logging
 import uuid
+import hashlib # Moved to top
 from datetime import datetime
 from fastapi import APIRouter, HTTPException, status, Depends, Query, Request
 from sqlalchemy.orm import Session
@@ -14,7 +15,6 @@ from slowapi.util import get_remote_address
 from src.database.session import get_db
 from src.database.models import Lead, User, LeadSource, LeadStatus
 from src.security.dependencies import get_current_user
-# NEW: Import the WhatsApp adapter to send proactive messages
 from src.services.communication.whatsapp import whatsapp_adapter
 
 # Initialize Router
@@ -34,7 +34,9 @@ class PagixLead(BaseModel):
     name: str = Field(..., min_length=2, max_length=100, description="Lead's full name")
     phone: str = Field(..., min_length=9, max_length=20, description="Lead's phone number")
     email: Optional[EmailStr] = None
-    source: str = Field(default="pagix_landing_page", max_length=50)
+    source: str = Field(default="LANDING_PAGE", max_length=50) # Changed default to upper case
+    # NEW: Allow Meta/Zapier to pass their unique event ID to prevent duplicates
+    idempotency_key: Optional[str] = Field(None, description="Unique event ID from Zapier/Make to prevent duplicates")
 
 class LeadResponse(BaseModel):
     id: str
@@ -69,7 +71,7 @@ async def get_my_leads(
     
     return leads
 
-@router.post("/webhook/{user_id}", status_code=status.HTTP_201_CREATED)
+@router.post("/webhook/{user_id}", status_code=status.HTTP_200_OK)
 @limiter.limit("10/minute") # Security: Prevent spam attack via public webhook
 async def receive_external_lead(
     request: Request,
@@ -80,7 +82,7 @@ async def receive_external_lead(
     """
     Webhook Endpoint.
     Security Risks: Public endpoint.
-    Mitigation: Rate Limited. Validates UUID format.
+    Mitigation: Rate Limited. Validates UUID format. Idempotency Key protection.
     """
     try:
         # 1. Security: Validate UUID format
@@ -95,50 +97,52 @@ async def receive_external_lead(
              logger.warning(f"Webhook failed: User ID {user_id} not found.")
              raise HTTPException(status_code=404, detail="Target user not found")
 
-        # 3. Duplicate Check
+        # 3. SECURITY: Idempotency Check (The "Retry Storm" Shield)
+        if lead_data.idempotency_key:
+            idemp_key = lead_data.idempotency_key
+        else:
+            raw_key = f"{lead_data.phone}-{lead_data.source}-{datetime.utcnow().strftime('%Y-%m-%d')}"
+            idemp_key = hashlib.md5(raw_key.encode()).hexdigest()
+
         existing_lead = db.query(Lead).filter(
             Lead.user_id == target_user.id,
-            Lead.phone_number == lead_data.phone,
-            Lead.status == LeadStatus.NEW
+            Lead.idempotency_key == idemp_key
         ).first()
 
         if existing_lead:
-            logger.info(f"Skipping duplicate lead {lead_data.phone} for user {user_id}")
-            return {"status": "ignored", "message": "Lead already exists"}
+            logger.info(f"🛡️ Idempotency Shield: Caught duplicate lead {lead_data.phone}. Returning 200 OK to stop retries.")
+            return {"status": "success", "message": "Lead already processed", "lead_id": str(existing_lead.id)}
 
-        # 4. Create DB Entry
+        # 4. Create DB Entry (Fixed source casing for Enum validation)
+        # Using .upper() to ensure it matches the LeadSource Enum
+        safe_source = lead_data.source.upper() if lead_data.source else "LANDING_PAGE"
+        
         new_lead = Lead(
             user_id=target_user.id,
             name=lead_data.name,
             phone_number=lead_data.phone,
             email=lead_data.email, 
-            source=LeadSource.LANDING_PAGE,
-            status=LeadStatus.NEW
+            source=safe_source,
+            status=LeadStatus.NEW,
+            idempotency_key=idemp_key 
         )
         
         db.add(new_lead)
         db.commit()
         
-        logger.info(f"New Lead Saved via Webhook: {lead_data.name} for User: {target_user.email}")
+        logger.info(f"✅ New Lead Saved via Webhook: {lead_data.name} for User: {target_user.email}")
 
         # ------------------------------------------------------------------
         # 5. SPEED TO LEAD: Proactive WhatsApp Outreach
         # ------------------------------------------------------------------
         try:
-            # Clean the phone number (remove +, -, spaces) for Meta API
             clean_phone = ''.join(filter(str.isdigit, lead_data.phone))
-            
-            # Fetch business name safely
             biz_name = getattr(target_user, "business_name", "העסק שלנו") 
             if not biz_name:
                 biz_name = "העסק שלנו"
             
-            # Note: In a strict Meta Production environment, this specific string MUST match 
-            # a pre-approved Template in the Meta Business Manager to open the 24h window.
-            # For MVP/Sandbox, this text will be sent to initiate the conversation.
             intro_text = f"היי {lead_data.name}, תודה שהשארת פרטים! אני המזכירה הווירטואלית של {biz_name}. איך אפשר לעזור לך היום?"
             
-            # Send the message
             success = whatsapp_adapter.send_message(to_phone=clean_phone, text=intro_text)
             
             if success:
@@ -147,8 +151,6 @@ async def receive_external_lead(
                 logger.warning(f"⚠️ Speed-to-Lead: Failed to send proactive WhatsApp message to {clean_phone}")
                 
         except Exception as wa_err:
-            # We catch this so the webhook still returns 201 Created to Zapier/Facebook
-            # even if the WhatsApp delivery fails.
             logger.error(f"WhatsApp outreach failed for lead {new_lead.id}: {wa_err}")
 
         return {"status": "success", "lead_id": str(new_lead.id)}

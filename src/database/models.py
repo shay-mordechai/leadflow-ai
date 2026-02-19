@@ -169,6 +169,9 @@ class Lead(Base):
     # Security: Indexed user_id for fast IDOR-safe queries
     user_id = Column(GUID(), ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True)
     
+    # Security: Prevent duplicate webhooks from Zapier/Meta (Retry Storm Shield)
+    idempotency_key = Column(String, index=True, nullable=True)
+    
     # Security: Encrypted PII Fields
     _name_encrypted = Column("name", String, nullable=True)
     _phone_encrypted = Column("phone_number", String, nullable=True)
