@@ -34,9 +34,23 @@ def get_real_ip(request: Request):
 
 limiter = Limiter(key_func=get_real_ip)
 
-# --- Logging Setup ---
-logging.basicConfig(level=logging.INFO)
+# --- Logging Setup (JSON Structured) ---
+from pythonjsonlogger import jsonlogger
+
 logger = logging.getLogger("LeadFlowSystem")
+logger.setLevel(logging.INFO)
+
+# Remove default handlers
+if logger.handlers:
+    logger.handlers.clear()
+
+logHandler = logging.StreamHandler()
+# This formats the log output as a clean JSON string
+formatter = jsonlogger.JsonFormatter(
+    '%(asctime)s %(levelname)s %(name)s %(message)s'
+)
+logHandler.setFormatter(formatter)
+logger.addHandler(logHandler)
 
 # --- Initialize Global Scheduler ---
 scheduler = AsyncIOScheduler()
