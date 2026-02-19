@@ -11,6 +11,10 @@ from slowapi import Limiter, _rate_limit_exceeded_handler
 from slowapi.errors import RateLimitExceeded
 from slowapi.util import get_remote_address
 
+# --- NEW: Background Scheduler ---
+from apscheduler.schedulers.asyncio import AsyncIOScheduler
+from src.tasks.billing_tasks import enforce_trial_expirations
+
 # Database & Config
 from src.config import settings
 from src.database.session import engine, Base
@@ -34,15 +38,25 @@ limiter = Limiter(key_func=get_real_ip)
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger("LeadFlowSystem")
 
+# --- Initialize Global Scheduler ---
+scheduler = AsyncIOScheduler()
+
 # --- Lifecycle Management (Graceful Shutdown Prep) ---
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     logger.info("🚀 Starting System...")
-    # NOTE: Base.metadata.create_all is REMOVED. 
-    # Schema is now strictly managed by Alembic migrations.
+    
+    # 1. Start Background Jobs
+    # Schedule the trial expiration job to run every day at Midnight (00:00 UTC)
+    scheduler.add_job(enforce_trial_expirations, 'cron', hour=0, minute=0)
+    scheduler.start()
+    logger.info("📅 Background Task Scheduler started (Billing Jobs configured).")
+    
     yield
-    # Tier 1 - Graceful Shutdown
+    
+    # 2. Tier 1 - Graceful Shutdown
     logger.info("🛑 Shutting down gracefully... Closing pending tasks and connections.")
+    scheduler.shutdown() # Wait for running jobs to finish
     engine.dispose() # Properly close database connection pool
 
 # --- App Definition ---
