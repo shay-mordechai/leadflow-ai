@@ -5,22 +5,17 @@ from alembic import context
 import os
 import sys
 
-# 1. Add the parent directory to path so we can import src
+# 1. Add the parent directory to path so we can import src modules
 sys.path.insert(0, os.path.dirname(os.path.dirname(__file__)))
 
 # 2. Import settings and models
-# We assume Base is in src.database and settings in src.config
-try:
-    from src.config import settings
-    from src.database import Base
-    
-    # Important: Import models so Base registers them before migration
-    # Verify these are the actual class names in your src/models.py
-    from src.models import User, Lead, Subscription 
-except ImportError as e:
-    print(f"Could not import app modules: {e}")
-    # If error, try continuing without models (just to check connection)
-    Base = None
+from src.config import settings
+from src.database.session import Base
+# IMPORTANT: Import ALL models here so they are registered with Base.metadata before migration
+from src.database.models import (
+    User, Lead, BusinessProfile, PhoneNumber, 
+    AIAgent, MediaInteraction, Integration, CoachingSession
+)
 
 config = context.config
 
@@ -29,7 +24,7 @@ if config.config_file_name is not None:
     fileConfig(config.config_file_name)
 
 # 4. Connect app models to Alembic
-target_metadata = Base.metadata if Base else None
+target_metadata = Base.metadata
 
 def run_migrations_offline() -> None:
     """Run migrations in 'offline' mode."""
@@ -47,9 +42,10 @@ def run_migrations_offline() -> None:
 def run_migrations_online() -> None:
     """Run migrations in 'online' mode."""
     
-    # Override the URL in the ini file with the real URL from the code
+    # Override the URL in the ini file with the real URL from our codebase
     configuration = config.get_section(config.config_ini_section)
-    configuration["sqlalchemy.url"] = str(settings.DATABASE_URL)
+    if configuration is not None:
+        configuration["sqlalchemy.url"] = str(settings.DATABASE_URL)
     
     connectable = engine_from_config(
         configuration,
@@ -59,7 +55,10 @@ def run_migrations_online() -> None:
 
     with connectable.connect() as connection:
         context.configure(
-            connection=connection, target_metadata=target_metadata
+            connection=connection, 
+            target_metadata=target_metadata,
+            compare_type=True,          # Detects changes like String -> Text
+            compare_server_default=True # Detects changes in default values
         )
 
         with context.begin_transaction():
