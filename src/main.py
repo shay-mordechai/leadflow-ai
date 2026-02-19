@@ -5,6 +5,8 @@ from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.middleware.trustedhost import TrustedHostMiddleware
 from fastapi.responses import JSONResponse
+import sentry_sdk
+
 from slowapi import Limiter, _rate_limit_exceeded_handler
 from slowapi.errors import RateLimitExceeded
 from slowapi.util import get_remote_address
@@ -32,17 +34,26 @@ limiter = Limiter(key_func=get_real_ip)
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger("LeadFlowSystem")
 
-# --- Lifecycle Management ---
+# --- Lifecycle Management (Graceful Shutdown Prep) ---
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     logger.info("🚀 Starting System...")
-    # Security Note: In Production, use Alembic for migrations, not create_all
-    Base.metadata.create_all(bind=engine)
+    # NOTE: Base.metadata.create_all is REMOVED. 
+    # Schema is now strictly managed by Alembic migrations.
     yield
-    logger.info("🛑 Shutting down...")
+    # Tier 1 - Graceful Shutdown
+    logger.info("🛑 Shutting down gracefully... Closing pending tasks and connections.")
+    engine.dispose() # Properly close database connection pool
 
 # --- App Definition ---
-app = FastAPI(title="LeadFlow AI", version="3.0.0", lifespan=lifespan)
+if settings.SENTRY_DSN:
+    sentry_sdk.init(
+        dsn=settings.SENTRY_DSN,
+        traces_sample_rate=1.0,
+        profiles_sample_rate=1.0,
+    )
+
+app = FastAPI(title=settings.APP_NAME, version="3.0.0", lifespan=lifespan)
 
 @app.middleware("http")
 async def add_security_headers(request: Request, call_next):
@@ -72,10 +83,12 @@ app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
 @app.exception_handler(Exception)
 async def global_exception_handler(request: Request, exc: Exception):
     """
-    Security: Catches internal errors (SQLAlchemy, Python code) 
-    and returns a generic 500 error to the client.
-    Prevents Information Disclosure (Stack Traces).
+    Security: Catches internal errors and returns a generic 500.
+    Explicitly forwards the exception to Sentry since we caught it.
     """
+    if settings.SENTRY_DSN:
+        sentry_sdk.capture_exception(exc)
+        
     logger.error(f"Internal Server Error: {str(exc)}")
     return JSONResponse(
         status_code=500,

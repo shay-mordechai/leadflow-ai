@@ -5,7 +5,7 @@ import logging
 import requests
 from pydantic_settings import BaseSettings
 from botocore.exceptions import ClientError
-from typing import List, Dict
+from typing import List, Dict, Optional
 
 logger = logging.getLogger("Configuration")
 
@@ -81,6 +81,7 @@ load_aws_configurations()
 # --- 3. Define Settings Class ---
 class Settings(BaseSettings):
     # --- Core Configuration ---
+    APP_NAME: str = "LeadFlow AI"
     APP_ENV: str = "development"
     SECRET_KEY: str = "temporary_dev_key" # Default for safety during boot
     ALGORITHM: str = "HS256"
@@ -133,6 +134,8 @@ class Settings(BaseSettings):
     # --- Feature Flags ---
     ENABLE_REAL_PHONE_PURCHASE: bool = True
 
+    SENTRY_DSN: Optional[str] = None
+    
     class Config:
         case_sensitive = True
         extra = "ignore" 
