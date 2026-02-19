@@ -2,7 +2,7 @@
 import logging
 import secrets  # CRITICAL: Use secrets, not random, for cryptography
 from datetime import timedelta, datetime, timezone
-from fastapi import APIRouter, Depends, HTTPException, status, BackgroundTasks
+from fastapi import APIRouter, Depends, HTTPException, status, BackgroundTasks, Request
 from fastapi.security import OAuth2PasswordRequestForm
 from jose import jwt, JWTError
 from sqlalchemy.orm import Session
@@ -15,6 +15,9 @@ from src.services.communication.email import send_otp_email
 from src.schemas.user import UserCreate, UserResponse, VerifyOTP
 from src.security.dependencies import get_current_user
 from src.security.hashing import get_hash, verify_hash
+
+# SECURITY: Import the rate limiter we defined in main.py
+from src.main import limiter 
 
 router = APIRouter()
 logger = logging.getLogger("AuthSecurity")
@@ -55,13 +58,14 @@ async def read_users_me(user: User = Depends(get_current_user), db: Session = De
     return user_data
 
 @router.post("/register", status_code=201)
-async def register(data: UserCreate, db: Session = Depends(get_db)):
+@limiter.limit("5/minute") # SECURITY: Prevent mass account creation (Bot attack)
+async def register(request: Request, data: UserCreate, db: Session = Depends(get_db)):
     """
     Registers a new user and enforces the STARTER tier.
     Prevents Mass Assignment vulnerabilities.
     """
     # 1. Check if email exists
-    if db.query(User).filter(User.email == data.email).first():
+    if db.query(User).filter(User.email == data.email.lower()).first():
         raise HTTPException(status_code=400, detail="Email already registered")
     
     # 2. Hash Password
@@ -87,7 +91,8 @@ async def register(data: UserCreate, db: Session = Depends(get_db)):
     return {"status": "success", "message": "User created successfully"}
 
 @router.post("/login")
-async def login(bg_tasks: BackgroundTasks, form: OAuth2PasswordRequestForm = Depends(), db: Session = Depends(get_db)):
+@limiter.limit("5/minute") # SECURITY: Prevent Brute Force Password attacks
+async def login(request: Request, bg_tasks: BackgroundTasks, form: OAuth2PasswordRequestForm = Depends(), db: Session = Depends(get_db)):
     """
     Initiates login flow by generating and emailing a secure OTP.
     """
@@ -120,12 +125,14 @@ async def login(bg_tasks: BackgroundTasks, form: OAuth2PasswordRequestForm = Dep
     # SECURITY: Log the event, never the actual OTP code
     logger.info(f"OTP generated for user: {user.email}")
     
+    # We send the OTP using a background task so the user doesn't wait for SMTP
     bg_tasks.add_task(send_otp_email, user.email, otp)
     
     return {"message": "OTP sent to email", "mfa_required": True}
 
 @router.post("/verify-otp")
-async def verify_otp(data: VerifyOTP, db: Session = Depends(get_db)):
+@limiter.limit("5/minute") # SECURITY: Prevent OTP brute forcing (guessing the 6 digits)
+async def verify_otp(request: Request, data: VerifyOTP, db: Session = Depends(get_db)):
     """
     Verifies OTP and issues JWT. OTP is cleared immediately after use.
     """
@@ -153,5 +160,4 @@ async def verify_otp(data: VerifyOTP, db: Session = Depends(get_db)):
     # 4. Issue Access Token
     token = create_access_token({"sub": str(user.id), "email": user.email})
     
-    # Bandit B105 False Positive: 'bearer' is a standard OAuth2 string, not a hardcoded password
-    return {"access_token": token, "token_type": "bearer"} # nosec B105
+    return {"access_token": token, "token_type": "bearer"}

@@ -9,16 +9,12 @@ export const metadata: Metadata = {
   description: "אוטומציית AI לעסקים נותני שירות - הבוט שעונה ללידים שלך ב-5 שניות וסוגר עסקאות 24/7.",
 };
 
-export default function RootLayout({
-  children,
-  <Toaster position="top-center" reverseOrder={false} />
-}: Readonly<{
-  children: React.ReactNode;
-}>) {
+export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
     <html lang="he" dir="rtl">
-      {/* Background is now controlled centrally via globals.css */}
-      <body>
+      <body className={inter.className}>
+        <Toaster position="top-center" reverseOrder={false} />
+        
         {children}
       </body>
     </html>
