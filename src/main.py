@@ -4,6 +4,7 @@ from contextlib import asynccontextmanager
 from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.middleware.trustedhost import TrustedHostMiddleware
+from fastapi.middleware.gzip import GZipMiddleware
 from fastapi.responses import JSONResponse
 import sentry_sdk
 
@@ -129,6 +130,11 @@ app.add_middleware(
     TrustedHostMiddleware, 
     allowed_hosts=["my-leads.app", "*.my-leads.app", "localhost", "127.0.0.1"]
 )
+
+# --- NEW: Performance Middleware (Tier 2) ---
+# Compresses responses larger than 500 bytes using Gzip. Reduces payload size by ~80%
+app.add_middleware(GZipMiddleware, minimum_size=500)
+# --------------------------------------------
 
 # 2. CORS (Strict)
 app.add_middleware(

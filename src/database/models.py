@@ -77,6 +77,10 @@ class User(Base):
     last_known_city = Column(String, nullable=True)
     last_known_country = Column(String, nullable=True)
 
+    # --- NEW: Business & Usage Limits (Tier 2) ---
+    monthly_ai_messages = Column(Integer, default=0, nullable=False)
+    # ---------------------------------------------
+
     # Security: OTP is encrypted at rest
     _otp_encrypted = Column("otp_code", String, nullable=True)
     otp_expires_at = Column(DateTime, nullable=True)

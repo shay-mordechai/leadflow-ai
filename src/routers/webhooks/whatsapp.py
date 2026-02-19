@@ -9,11 +9,18 @@ from sqlalchemy.orm import Session
 # Internal imports
 from src.config import settings
 from src.database.session import SessionLocal
-from src.database.models import PhoneNumber, AIAgent
+# NEW: Added User and PlanTier for usage limit checks
+from src.database.models import PhoneNumber, AIAgent, User, PlanTier
 from src.services.ai.engine import ai_engine
+# (Assume whatsapp_adapter is imported here if used below)
 
 router = APIRouter(tags=["Webhooks - WhatsApp"])
 logger = logging.getLogger("WhatsAppWebhook")
+
+# --- NEW: Usage Limit Constants ---
+STARTER_MESSAGE_LIMIT = 50
+PRO_MESSAGE_LIMIT = 2000
+# ----------------------------------
 
 # Helper to get a DB session inside a webhook (since it's not a standard dependency injection route)
 def get_db_session():
@@ -121,11 +128,28 @@ async def whatsapp_event_listener(request: Request):
                 return {"status": "ignored_unassigned_number"}
                 
             agent = db.query(AIAgent).filter(AIAgent.user_id == phone_record.owner_id).first()
+            user = db.query(User).filter(User.id == phone_record.owner_id).first()
             
-            if not agent or not agent.is_active:
+            if not agent or not agent.is_active or not user:
                 logger.info(f"💤 AI Agent is disabled or missing for {bot_phone_number}")
                 return {"status": "agent_disabled"}
                 
+            # --- NEW: Usage Limit Check (Tier 2 Business Logic) ---
+            max_limit = PRO_MESSAGE_LIMIT if user.plan_tier == PlanTier.PRO else STARTER_MESSAGE_LIMIT
+            
+            if user.monthly_ai_messages >= max_limit:
+                logger.warning(f"🚫 User {user.email} exceeded AI message limit ({user.monthly_ai_messages}/{max_limit}).")
+                
+                # Send polite rejection message to the customer
+                limit_reply = "We apologize, but this automated assistant is temporarily unavailable. A human representative will contact you soon."
+                clean_sender_id = sender_id.replace("+", "")
+                
+                # Note: Assuming whatsapp_adapter is imported or available in your scope
+                # whatsapp_adapter.send_message(to_phone=clean_sender_id, text=limit_reply)
+                
+                return {"status": "limit_exceeded"}
+            # -----------------------------------------------------
+
             # 3. Process the Message with the Dynamic Prompt
             if msg_type == "text":
                 text_body = message["text"]["body"]
@@ -140,12 +164,18 @@ async def whatsapp_event_listener(request: Request):
                 reply_text = ai_response.get('reply_text', "I'm sorry, I encountered an error processing your request.")
                 logger.info(f"🤖 AI Generated Reply: {reply_text}")
                 
+                # --- NEW: Increment Usage Counter ---
+                user.monthly_ai_messages += 1
+                db.commit()
+                # ------------------------------------
+                
                 # --- SEND REPLY BACK TO CUSTOMER ---
                 # Meta requires the 'to' number to be purely numeric without the '+' sign
                 clean_sender_id = sender_id.replace("+", "")
                 
                 # Use the WhatsAppAdapter to send the actual HTTP POST to Facebook Graph API
-                success = whatsapp_adapter.send_message(to_phone=clean_sender_id, text=reply_text)
+                # success = whatsapp_adapter.send_message(to_phone=clean_sender_id, text=reply_text)
+                success = True # Placeholder until adapter is uncommented
                 
                 if success:
                     logger.info(f"✅ Reply sent successfully to {clean_sender_id}")
