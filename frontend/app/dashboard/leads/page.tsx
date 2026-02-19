@@ -27,9 +27,14 @@ async function getLeads() {
     }
 }
 
-// Helper function to format dates nicely
+// Helper function to format dates nicely and handle UTC correctly
 function formatDate(dateString: string) {
-    const date = new Date(dateString);
+    // 1. Force the string to be treated as UTC by appending 'Z' if it's missing
+    const safeDateString = dateString.endsWith('Z') ? dateString : `${dateString}Z`;
+    
+    // 2. The browser automatically converts this UTC date to the user's local timezone
+    const date = new Date(safeDateString);
+    
     return new Intl.DateTimeFormat("he-IL", {
         day: "2-digit",
         month: "2-digit",

@@ -1,4 +1,5 @@
 // frontend/app/layout.tsx
+import { Toaster } from 'react-hot-toast';
 import type { Metadata } from "next";
 import "./globals.css";
 
@@ -10,6 +11,7 @@ export const metadata: Metadata = {
 
 export default function RootLayout({
   children,
+  <Toaster position="top-center" reverseOrder={false} />
 }: Readonly<{
   children: React.ReactNode;
 }>) {

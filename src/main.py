@@ -44,6 +44,26 @@ async def lifespan(app: FastAPI):
 # --- App Definition ---
 app = FastAPI(title="LeadFlow AI", version="3.0.0", lifespan=lifespan)
 
+@app.middleware("http")
+async def add_security_headers(request: Request, call_next):
+    """
+    Tier 1 Security: Inject essential HTTP security headers to prevent XSS, 
+    Clickjacking, and force HTTPS (HSTS).
+    """
+    response = await call_next(request)
+    # Force browsers to use HTTPS only for the next year
+    response.headers["Strict-Transport-Security"] = "max-age=31536000; includeSubDomains"
+    # Prevent browsers from guessing the content type
+    response.headers["X-Content-Type-Options"] = "nosniff"
+    # Prevent Clickjacking (framing the site inside an attacker's site)
+    response.headers["X-Frame-Options"] = "DENY"
+    # Enable browser's built-in XSS protection
+    response.headers["X-XSS-Protection"] = "1; mode=block"
+    # Basic Content Security Policy (allow self and standard data formats)
+    response.headers["Content-Security-Policy"] = "default-src 'self' https: data: 'unsafe-inline' 'unsafe-eval';"
+    
+    return response
+    
 # --- Security: Register Rate Limiter ---
 app.state.limiter = limiter
 app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)

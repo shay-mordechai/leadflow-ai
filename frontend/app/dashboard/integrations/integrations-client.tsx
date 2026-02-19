@@ -1,6 +1,7 @@
 // frontend/app/dashboard/integrations/integrations-client.tsx
 "use client";
 
+import toast from 'react-hot-toast';
 import { useState } from "react";
 import { LayoutTemplate, Megaphone, Camera, Zap, Settings, X, Copy, CheckCircle2 } from "lucide-react";
 
@@ -75,6 +76,13 @@ export default function IntegrationsClient({ webhookUrl }: { webhookUrl: string 
     const handleCopy = () => {
         navigator.clipboard.writeText(webhookUrl);
         setCopied(true);
+        toast.success('כתובת הקליטה הועתקה בהצלחה!', {
+            style: {
+                borderRadius: '10px',
+                background: '#333',
+                color: '#fff',
+            },
+        });
         setTimeout(() => setCopied(false), 2000);
     };
 
