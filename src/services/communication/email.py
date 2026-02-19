@@ -88,6 +88,9 @@ class EmailService:
             logger.error(f"❌ Failed to send OTP email: {e}")
 
     async def send_payment_receipt(self, to_email: EmailStr, pdf_path: str):
+        """
+        Sends the generated PDF invoice to the user after a successful upgrade.
+        """
         if not self.conf:
             logger.info(f"🛑 [MOCK RECEIPT] To: {to_email} | File: {pdf_path}")
             return
@@ -96,11 +99,26 @@ class EmailService:
             logger.error(f"❌ Attachment not found: {pdf_path}")
             return
 
-        html_content = "<p>Your requested document is attached.</p>"
+        html_content = """
+        <html>
+          <body style="font-family: Arial, sans-serif; padding: 20px; color: #333;">
+            <div style="max-width: 600px; margin: auto; border: 1px solid #eee; padding: 30px; border-radius: 10px;">
+                <h2 style="color: #4F46E5;">Welcome to MyLeads AI PRO! 🚀</h2>
+                <p>Your payment was successful and your account has been instantly upgraded.</p>
+                <p>You now have full access to our advanced AI Sales Agent features and unlimited lead processing.</p>
+                <br>
+                <p>Attached to this email is your official PDF tax invoice for your accounting records.</p>
+                <br>
+                <p>If you have any questions, simply reply to this email.</p>
+                <p>Best regards,<br><b>The MyLeads AI Team</b></p>
+            </div>
+          </body>
+        </html>
+        """
 
         try:
             message = MessageSchema(
-                subject="Your Document from LeadFlow AI",
+                subject="Your MyLeads AI Invoice & Account Upgrade",
                 recipients=[to_email],
                 body=html_content,
                 subtype=MessageType.html,
@@ -109,10 +127,10 @@ class EmailService:
 
             fm = FastMail(self.conf)
             await fm.send_message(message)
-            logger.info(f"✅ Receipt sent successfully to {to_email}")
+            logger.info(f"✅ Invoice PDF sent successfully to {to_email}")
 
         except Exception as e:
-            logger.error(f"❌ Failed to send receipt: {e}")
+            logger.error(f"❌ Failed to send invoice email: {e}")
 
 # Singleton Instance
 email_service = EmailService()
