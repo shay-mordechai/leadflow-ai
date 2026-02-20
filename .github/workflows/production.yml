@@ -54,6 +54,7 @@ jobs:
               - '.github/workflows/production.yml'
             frontend:
               - 'frontend/**'
+              - 'tests/**'
               - '.github/workflows/production.yml'
 
   # --- JOB 1: TEST BACKEND ---
@@ -77,7 +78,7 @@ jobs:
           if [ -f requirements.txt ]; then pip install --no-build-isolation -r requirements.txt; fi
           pip install pytest httpx sqlalchemy fastapi passlib python-jose python-multipart
 
-      - name: Run Pytest
+      - name: Run Pytest (Backend)
         env:
           PYTHONPATH: .
           APP_ENV: "testing"
@@ -85,13 +86,45 @@ jobs:
           DATABASE_URL: "sqlite:///:memory:"
           AWS_REGION: "eu-north-1"
         run: |
-          if [ -f "tests/test_flow.py" ]; then
-            pytest tests/test_flow.py -v
+          if [ -f "tests/pytest_backend.py" ]; then
+            pytest tests/pytest_backend.py -v
           else
-            echo "⚠️ Test file not found! Skipping tests."
+            echo "⚠️ Backend test file not found! Skipping tests."
           fi
 
-  # --- JOB 2: BUILD BACKEND ---
+  # --- JOB 2: TEST FRONTEND ---
+  test-frontend:
+    needs: detect-changes
+    if: ${{ needs.detect-changes.outputs.frontend == 'true' }}
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v3
+
+      - name: Set up Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: '3.11'
+          cache: 'pip'
+
+      - name: Install Dependencies
+        run: |
+          python -m pip install --upgrade pip "setuptools<70" wheel
+          if [ -f requirements.txt ]; then pip install --no-build-isolation -r requirements.txt; fi
+          pip install pytest httpx
+
+      - name: Run Pytest (Frontend)
+        env:
+          PYTHONPATH: .
+          APP_ENV: "testing"
+        run: |
+          if [ -f "tests/pytest_frontend.py" ]; then
+            pytest tests/pytest_frontend.py -v
+          else
+            echo "⚠️ Frontend test file not found! Skipping tests."
+          fi
+
+  # --- JOB 3: BUILD BACKEND ---
   build-backend:
     needs: [detect-changes, test-backend]
     if: ${{ needs.detect-changes.outputs.backend == 'true' }}
@@ -119,9 +152,9 @@ jobs:
           docker build -t $ECR_REGISTRY/$IMAGE_BACKEND:$IMAGE_TAG -t $ECR_REGISTRY/$IMAGE_BACKEND:latest .
           docker push $ECR_REGISTRY/$IMAGE_BACKEND --all-tags
 
-  # --- JOB 3: BUILD FRONTEND ---
+  # --- JOB 4: BUILD FRONTEND ---
   build-frontend:
-    needs: detect-changes
+    needs: [detect-changes, test-frontend] # CRITICAL: Now waits for the frontend tests to pass!
     if: ${{ needs.detect-changes.outputs.frontend == 'true' }}
     runs-on: ubuntu-latest
     steps:
@@ -147,7 +180,7 @@ jobs:
           docker build -t $ECR_REGISTRY/$IMAGE_FRONTEND:$IMAGE_TAG -t $ECR_REGISTRY/$IMAGE_FRONTEND:latest ./frontend
           docker push $ECR_REGISTRY/$IMAGE_FRONTEND --all-tags
 
-  # --- JOB 4: DEPLOY ---
+  # --- JOB 5: DEPLOY ---
   # Runs only if at least one build job ran OR if the workflow file itself changed.
   deploy:
     needs: [detect-changes, build-backend, build-frontend]
