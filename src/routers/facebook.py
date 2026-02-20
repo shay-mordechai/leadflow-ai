@@ -1,4 +1,4 @@
-.p# src/routers/facebook.py
+# src/routers/facebook.py
 import logging
 import requests
 from fastapi import APIRouter, Depends, HTTPException, Request, Response, status
