@@ -1,5 +1,5 @@
 # Professional English Comment:
-# Optimized Dockerfile for FastAPI/Celery. 
+# Optimized Dockerfile for FastAPI. 
 # Uses a non-root user and slim base for enhanced security and reduced footprint.
 
 FROM python:3.11-slim
@@ -11,12 +11,10 @@ ENV PYTHONPATH=/app
 
 WORKDIR /app
 
-# Install system dependencies
-# Added libpq-dev for database stability and cleaned apt cache to save space
+# Install system dependencies (Removed Postgres libs since we use SQLite)
 RUN apt-get update && apt-get install -y --no-install-recommends \
     ffmpeg \
     libmagic1 \
-    libpq-dev \
     gcc \
     && rm -rf /var/lib/apt/lists/*
 
@@ -31,8 +29,8 @@ RUN pip install --no-cache-dir -r requirements.txt
 # Copy the rest of the application code
 COPY . .
 
-# Create storage directory for audio files
-RUN mkdir -p storage/audio
+# Create storage and data directories for SQLite and media
+RUN mkdir -p storage/audio data
 
 # SECURITY: Run as a non-privileged user. 
 # Prevents container breakout attacks and follows the Principle of Least Privilege.
@@ -43,9 +41,10 @@ USER leadflowuser
 EXPOSE 8000
 
 # Professional English Comment:
-# Gunicorn is configured to handle timeouts and pipe logs directly to the container engine.
+# Gunicorn is configured with 1 worker for SQLite concurrency safety.
+# Logs are piped directly to the container engine.
 CMD ["gunicorn", "src.main:app", \
-    "--workers", "2", \
+    "--workers", "1", \
     "--worker-class", "uvicorn.workers.UvicornWorker", \
     "--bind", "0.0.0.0:8000", \
     "--timeout", "120", \
