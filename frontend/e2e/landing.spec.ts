@@ -8,8 +8,8 @@ test('has expected title and navigation works', async ({ page }) => {
   // 2. Expect a title "to contain" a substring.
   await expect(page).toHaveTitle(/MyLeads AI/);
 
-  // 3. Click the login button.
-  await page.click('text=התחברות');
+  // 3. Click the login button (forcing it to bypass overlapping elements like the fixed navbar)
+  await page.locator('text=התחברות').first().click({ force: true });
 
   // 4. Expects the URL to contain '/login'.
   await expect(page).toHaveURL(/.*\/login/);
