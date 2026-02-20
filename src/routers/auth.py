@@ -16,8 +16,8 @@ from src.schemas.user import UserCreate, UserResponse, VerifyOTP
 from src.security.dependencies import get_current_user
 from src.security.hashing import get_hash, verify_hash
 
-# SECURITY: Import the rate limiter we defined in main.py
-from src.main import limiter 
+# SECURITY: Import the centralized rate limiter to prevent Brute Force attacks and Circular Imports
+from src.security.rate_limiter import limiter 
 
 router = APIRouter()
 logger = logging.getLogger("AuthSecurity")

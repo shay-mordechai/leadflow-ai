@@ -8,9 +8,11 @@ from fastapi.middleware.gzip import GZipMiddleware
 from fastapi.responses import JSONResponse
 import sentry_sdk
 
-from slowapi import Limiter, _rate_limit_exceeded_handler
+from slowapi import _rate_limit_exceeded_handler
 from slowapi.errors import RateLimitExceeded
-from slowapi.util import get_remote_address
+
+# --- NEW: Centralized Rate Limiter (Fix for Circular Imports) ---
+from src.security.rate_limiter import limiter
 
 # --- NEW: Background Scheduler ---
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
@@ -24,16 +26,6 @@ from src.database.session import engine, Base
 from src.routers import auth, leads, phones, sessions, facebook, settings as settings_router
 from src.routers.billing import checkout, invoices
 from src.routers.webhooks import twilio, meshulam, whatsapp
-
-# --- Security: Cloudflare Aware Rate Limiter ---
-def get_real_ip(request: Request):
-    """
-    Security: Retrieves the actual client IP behind Cloudflare.
-    If 'CF-Connecting-IP' is missing, falls back to direct connection IP.
-    """
-    return request.headers.get("CF-Connecting-IP", get_remote_address(request))
-
-limiter = Limiter(key_func=get_real_ip)
 
 # --- Logging Setup (JSON Structured) ---
 from pythonjsonlogger import jsonlogger
