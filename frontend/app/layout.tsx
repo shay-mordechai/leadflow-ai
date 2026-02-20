@@ -1,7 +1,7 @@
 // frontend/app/layout.tsx
 import type { Metadata } from "next";
 import { Inter } from 'next/font/google';
-import { Toaster } from 'react-hot-toast';
+import ToastProvider from '@/components/ToastProvider';
 import "./globals.css";
 
 const inter = Inter({ subsets: ['latin'] });
@@ -20,8 +20,8 @@ export default function RootLayout({
   return (
     <html lang="he" dir="rtl">
       <body className={inter.className}>
-        {/* Setting up site-wide pop-up bubbles*/}
-        <Toaster position="top-center" reverseOrder={false} />
+        {/* Setting up site-wide pop-up bubbles correctly */}
+        <ToastProvider />
         
         {children}
       </body>
