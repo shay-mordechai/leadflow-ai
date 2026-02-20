@@ -53,17 +53,20 @@ scheduler = AsyncIOScheduler()
 async def lifespan(app: FastAPI):
     logger.info("🚀 Starting System...")
     
-    # 1. Start Background Jobs
-    # Schedule the trial expiration job to run every day at Midnight (00:00 UTC)
-    scheduler.add_job(enforce_trial_expirations, 'cron', hour=0, minute=0)
-    scheduler.start()
-    logger.info("📅 Background Task Scheduler started (Billing Jobs configured).")
+    # 1. Start Background Jobs ONLY if not in testing mode
+    if settings.APP_ENV != "testing":
+        scheduler.add_job(enforce_trial_expirations, 'cron', hour=0, minute=0)
+        scheduler.start()
+        logger.info("📅 Background Task Scheduler started (Billing Jobs configured).")
+    else:
+        logger.info("📅 Running in testing mode - Scheduler disabled.")
     
     yield
     
     # 2. Tier 1 - Graceful Shutdown
     logger.info("🛑 Shutting down gracefully... Closing pending tasks and connections.")
-    scheduler.shutdown() # Wait for running jobs to finish
+    if settings.APP_ENV != "testing":
+        scheduler.shutdown() # Wait for running jobs to finish
     engine.dispose() # Properly close database connection pool
 
 # --- App Definition ---
