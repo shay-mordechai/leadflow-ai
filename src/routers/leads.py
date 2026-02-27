@@ -1,7 +1,7 @@
 # src/routers/leads.py
 import logging
 import uuid
-import hashlib # Moved to top
+import hashlib
 from datetime import datetime
 from fastapi import APIRouter, HTTPException, status, Depends, Query, Request
 from sqlalchemy.orm import Session
@@ -34,7 +34,7 @@ class PagixLead(BaseModel):
     name: str = Field(..., min_length=2, max_length=100, description="Lead's full name")
     phone: str = Field(..., min_length=9, max_length=20, description="Lead's phone number")
     email: Optional[EmailStr] = None
-    source: str = Field(default="LANDING_PAGE", max_length=50) # Changed default to upper case
+    source: str = Field(default="LANDING_PAGE", max_length=50) 
     # NEW: Allow Meta/Zapier to pass their unique event ID to prevent duplicates
     idempotency_key: Optional[str] = Field(None, description="Unique event ID from Zapier/Make to prevent duplicates")
 
@@ -44,8 +44,11 @@ class LeadResponse(BaseModel):
     phone_number: str
     email: Optional[str] = None
     status: str
+    source: str
     summary_text: Optional[str] = None
     suggested_reply: Optional[str] = None
+    ai_rating: Optional[int] = None      # NEW: Expose rating to the frontend
+    ai_feedback_note: Optional[str] = None # NEW: Expose feedback note to the frontend
     created_at: datetime
     
     class Config:
@@ -70,6 +73,40 @@ async def get_my_leads(
     leads = query.order_by(Lead.created_at.desc()).offset(offset).limit(limit).all()
     
     return leads
+
+# --- NEW: AI Feedback Loop Endpoint ---
+@router.post("/{lead_id}/feedback")
+@limiter.limit("20/minute") # Security: Prevent feedback spam
+async def submit_lead_feedback(
+    request: Request,
+    lead_id: str, 
+    rating: int = Query(..., description="1 for Like, -1 for Dislike"),
+    note: Optional[str] = Query(None, description="Optional text feedback"),
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user)
+):
+    """
+    SECURE ENDPOINT: Submit AI feedback for a specific lead's interaction.
+    Allows users to rate the AI's performance (👍/👎).
+    """
+    # 1. Security: Find the lead and verify ownership (IDOR protection)
+    lead = db.query(Lead).filter(Lead.id == lead_id, Lead.user_id == current_user.id).first()
+    
+    if not lead:
+        raise HTTPException(status_code=404, detail="Lead not found")
+    
+    if rating not in [1, -1, 0]:
+        raise HTTPException(status_code=400, detail="Invalid rating value. Must be 1 or -1.")
+
+    # 2. Update feedback
+    lead.ai_rating = rating
+    if note:
+        lead.ai_feedback_note = note
+        
+    db.commit()
+    logger.info(f"🧠 AI Feedback recorded for Lead {lead_id} by User {current_user.email}: Rating {rating}")
+    
+    return {"status": "success", "message": "Feedback recorded. The AI is learning!"}
 
 @router.post("/webhook/{user_id}", status_code=status.HTTP_200_OK)
 @limiter.limit("10/minute") # Security: Prevent spam attack via public webhook
@@ -113,8 +150,7 @@ async def receive_external_lead(
             logger.info(f"🛡️ Idempotency Shield: Caught duplicate lead {lead_data.phone}. Returning 200 OK to stop retries.")
             return {"status": "success", "message": "Lead already processed", "lead_id": str(existing_lead.id)}
 
-        # 4. Create DB Entry (Fixed source casing for Enum validation)
-        # Using .upper() to ensure it matches the LeadSource Enum
+        # 4. Create DB Entry 
         safe_source = lead_data.source.upper() if lead_data.source else "LANDING_PAGE"
         
         new_lead = Lead(
@@ -132,9 +168,7 @@ async def receive_external_lead(
         
         logger.info(f"✅ New Lead Saved via Webhook: {lead_data.name} for User: {target_user.email}")
 
-        # ------------------------------------------------------------------
         # 5. SPEED TO LEAD: Proactive WhatsApp Outreach
-        # ------------------------------------------------------------------
         try:
             clean_phone = ''.join(filter(str.isdigit, lead_data.phone))
             biz_name = getattr(target_user, "business_name", "העסק שלנו") 
