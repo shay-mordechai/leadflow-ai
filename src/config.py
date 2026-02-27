@@ -105,6 +105,7 @@ class Settings(BaseSettings):
     # --- Telephony Providers ---
     TWILIO_ACCOUNT_SID: str = ""
     TWILIO_AUTH_TOKEN: str = ""
+    TWILIO_WHATSAPP_NUMBER: str = ""  # NEW: The WhatsApp sender number from Twilio
     
     VONAGE_API_KEY: str = ""
     VONAGE_API_SECRET: str = ""
@@ -115,7 +116,7 @@ class Settings(BaseSettings):
     SIGNALWIRE_AUTH_TOKEN: str = ""
     SIGNALWIRE_SPACE_URL: str = ""
     
-    # --- Meta / WhatsApp ---
+    # --- Meta / WhatsApp (Kept for backwards compatibility if needed) ---
     META_ACCESS_TOKEN: str = ""
     WHATSAPP_PHONE_ID: str = ""
     WHATSAPP_VERIFY_TOKEN: str = "my_secure_token"
@@ -148,9 +149,8 @@ def validate_config(s: Settings):
     # Define groups of settings for clean reporting
     groups = {
         "AI (OpenAI/Google)": ["OPENAI_API_KEY", "GOOGLE_API_KEY"],
-        "Telephony (Twilio)": ["TWILIO_ACCOUNT_SID", "TWILIO_AUTH_TOKEN"],
+        "Telephony (Twilio)": ["TWILIO_ACCOUNT_SID", "TWILIO_AUTH_TOKEN", "TWILIO_WHATSAPP_NUMBER"],
         "Telephony (SignalWire)": ["SIGNALWIRE_PROJECT_ID", "SIGNALWIRE_AUTH_TOKEN", "SIGNALWIRE_SPACE_URL"],
-        "WhatsApp (Meta)": ["META_ACCESS_TOKEN", "WHATSAPP_PHONE_ID"],
         "Email (SMTP)": ["MAIL_USERNAME", "MAIL_PASSWORD"],
         "Billing (Meshulam)": ["MESHULAM_PAGE_CODE", "MESHULAM_API_KEY"],
         "Security": ["ENCRYPTION_KEY"]

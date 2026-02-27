@@ -1,60 +1,57 @@
 # src/services/communication/whatsapp.py
+# Used Twilio API Service
 import logging
 import requests
 import os
 import tempfile
 from typing import Optional
+from twilio.rest import Client
 from src.config import settings
 
 logger = logging.getLogger("WhatsAppAdapter")
 
 class WhatsAppAdapter:
     """
-    Adapter for Meta's Official WhatsApp Cloud API.
+    Adapter for Twilio WhatsApp API.
     Handles sending proactive messages (Speed-to-Lead) and downloading media securely.
+    Bypasses Meta's personal account restrictions by using a verified Business Solution Provider (Twilio).
     """
     def __init__(self):
-        self.api_version = "v17.0"
-        self.access_token = settings.META_ACCESS_TOKEN
-        self.phone_id = settings.WHATSAPP_PHONE_ID
+        self.account_sid = settings.TWILIO_ACCOUNT_SID
+        self.auth_token = settings.TWILIO_AUTH_TOKEN
+        self.from_number = settings.TWILIO_WHATSAPP_NUMBER
+        
+        if self.account_sid and self.auth_token and self.from_number:
+            self.client = Client(self.account_sid, self.auth_token)
+        else:
+            self.client = None
 
     def send_message(self, to_phone: str, text: str) -> bool:
         """
-        Sends a text message to a WhatsApp number.
+        Sends a text message to a WhatsApp number via Twilio.
         If credentials are missing, operates in MOCK MODE to allow QA testing to pass.
         """
         # --- MOCK MODE FOR QA / TESTING ---
-        if not self.access_token or not self.phone_id:
-            logger.warning(f"⚠️ [MOCK MODE] Meta credentials missing. Simulating sending WhatsApp to {to_phone}: '{text}'")
+        if not self.client:
+            logger.warning(f"⚠️ [MOCK MODE] Twilio credentials missing. Simulating sending WhatsApp to {to_phone}: '{text}'")
             return True # Return True so the system continues smoothly during QA and Speed-to-Lead logic
 
-        url = f"https://graph.facebook.com/{self.api_version}/{self.phone_id}/messages"
-        headers = {
-            "Authorization": f"Bearer {self.access_token}",
-            "Content-Type": "application/json"
-        }
-        payload = {
-            "messaging_product": "whatsapp",
-            "to": to_phone,
-            "type": "text",
-            "text": {"body": text}
-        }
-
         try:
-            # SECURITY FIX (B113): Explicit timeout prevents hanging connections
-            response = requests.post(url, headers=headers, json=payload, timeout=10)
-            response.raise_for_status()
-            logger.info(f"✅ WhatsApp message successfully sent to {to_phone}")
+            # Twilio strictly requires the 'whatsapp:+' prefix for numbers
+            clean_phone = to_phone.replace("+", "").replace("-", "").replace(" ", "")
+            formatted_to = f"whatsapp:+{clean_phone}"
+
+            message = self.client.messages.create(
+                from_=self.from_number,
+                body=text,
+                to=formatted_to
+            )
+            
+            logger.info(f"✅ Twilio WhatsApp message successfully sent to {formatted_to} (SID: {message.sid})")
             return True
             
-        except requests.exceptions.HTTPError as e:
-            # Extract Meta's specific error message if available
-            error_details = response.json() if response.content else str(e)
-            logger.error(f"🔥 Failed to send WhatsApp HTTP Error: {error_details}")
-            return False
-            
         except Exception as e:
-            logger.error(f"🔥 Failed to send WhatsApp Exception: {e}")
+            logger.error(f"🔥 Failed to send Twilio WhatsApp Exception: {e}")
             return False
 
     def download_media(self, media_url: str) -> Optional[str]:
@@ -62,17 +59,21 @@ class WhatsAppAdapter:
         Downloads media securely using dynamic temp directories.
         Returns the secure local file path.
         """
-        try:
-            headers = {}
-            if "facebook.com" in media_url and self.access_token:
-                headers["Authorization"] = f"Bearer {self.access_token}"
+        if not self.client:
+            logger.warning("⚠️ [MOCK MODE] Cannot download media without Twilio credentials.")
+            return None
 
+        try:
+            # Twilio media URLs require HTTP Basic Auth using Account SID and Auth Token
             # SECURITY FIX (B113): Ensured timeout is present
-            response = requests.get(media_url, headers=headers, timeout=30)
+            response = requests.get(
+                media_url, 
+                auth=(self.account_sid, self.auth_token),
+                timeout=30
+            )
             response.raise_for_status()
 
             # SECURITY FIX (B108): Use mkstemp for secure, race-condition-free ephemeral storage.
-            # This is strictly safer than os.path.join(tempdir, random_name).
             fd, save_path = tempfile.mkstemp(suffix=".ogg", prefix="wa_media_")
             with os.fdopen(fd, 'wb') as f:
                 f.write(response.content)
