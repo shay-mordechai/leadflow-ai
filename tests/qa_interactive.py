@@ -9,6 +9,7 @@ import uuid
 # --- CONFIGURATION ---
 DEFAULT_LOCAL_URL = "http://127.0.0.1:8000"
 PROD_URL = "https://my-leads.app" 
+REQ_TIMEOUT = 15 # NEW: Global timeout to prevent hanging
 
 # --- COLORS ---
 RED = "\033[91m"
@@ -32,14 +33,11 @@ def run_full_system_qa():
     parser.add_argument("--password", type=str, help="User password for auto-login")
     
     args = parser.parse_args()
-
-    # Determine Base URL
     base_url = PROD_URL if args.prod else DEFAULT_LOCAL_URL
 
     print(f"\n🚀 STARTING FULL SYSTEM QA FOR: {base_url}")
     print("="*60)
 
-    # Variables to hold across steps
     user_id = None
     token = None
 
@@ -68,7 +66,7 @@ def run_full_system_qa():
 
     try:
         log("1. AUTH", "Attempting Registration...", "INFO")
-        res = requests.post(f"{base_url}/api/v1/auth/register", json=user_payload)
+        res = requests.post(f"{base_url}/api/v1/auth/register", json=user_payload, timeout=REQ_TIMEOUT)
         
         if res.status_code == 201:
             log("1. AUTH", "✅ User registered successfully.", "SUCCESS")
@@ -79,7 +77,7 @@ def run_full_system_qa():
 
         log("2. LOGIN", "Requesting Access Token...", "INFO")
         login_data = {"username": email, "password": password}
-        res = requests.post(f"{base_url}/api/v1/auth/login", data=login_data)
+        res = requests.post(f"{base_url}/api/v1/auth/login", data=login_data, timeout=REQ_TIMEOUT)
 
         if res.status_code != 200:
             log("2. LOGIN", f"❌ Login Failed: {res.text}", "FAIL")
@@ -93,7 +91,7 @@ def run_full_system_qa():
             print(f"   Check your Email (or Server Logs if local) for the OTP code.")
             print("-" * 40 + "\n")
             otp_code = input(f"[{RESET}INPUT{RESET}] 🔢 Enter OTP Code: ").strip()
-            otp_res = requests.post(f"{base_url}/api/v1/auth/verify-otp", json={"email": email, "otp_code": otp_code})
+            otp_res = requests.post(f"{base_url}/api/v1/auth/verify-otp", json={"email": email, "otp_code": otp_code}, timeout=REQ_TIMEOUT)
 
             if otp_res.status_code == 200:
                 token = otp_res.json().get("access_token")
@@ -107,6 +105,9 @@ def run_full_system_qa():
 
         headers = {"Authorization": f"Bearer {token}"}
 
+    except requests.exceptions.Timeout:
+        log("CRITICAL", "Auth Flow Timed Out. Server might be down.", "FAIL")
+        sys.exit(1)
     except Exception as e:
         log("CRITICAL", f"Auth Flow Crashed: {e}", "FAIL")
         sys.exit(1)
@@ -118,16 +119,15 @@ def run_full_system_qa():
     log("4. USER INFO", "Checking current plan...", "INFO")
     
     try:
-        me_res = requests.get(f"{base_url}/api/v1/auth/me", headers=headers)
+        me_res = requests.get(f"{base_url}/api/v1/auth/me", headers=headers, timeout=REQ_TIMEOUT)
         if me_res.status_code == 200:
             user_data = me_res.json()
             initial_plan = user_data.get("plan_tier")
-            user_id = user_data.get("id") # <--- WE NEED THIS FOR THE WEBHOOK
+            user_id = user_data.get("id")
             log("4. USER INFO", f"Current Plan: {initial_plan}", "INFO")
             log("4. USER INFO", f"User ID: {user_id}", "INFO")
         else:
             log("4. USER INFO", f"❌ Failed to fetch user info: {me_res.text}", "FAIL")
-            
     except Exception as e:
         log("USER INFO", f"Error: {e}", "FAIL")
 
