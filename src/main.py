@@ -53,6 +53,10 @@ scheduler = AsyncIOScheduler()
 async def lifespan(app: FastAPI):
     logger.info("🚀 Starting System...")
     
+    # 0. DATABASE AUTO-MIGRATION (Crucial for SQLite schema updates)
+    logger.info("🗄️ Ensuring Database Schema is up to date...")
+    Base.metadata.create_all(bind=engine)
+    
     # 1. Start Background Jobs ONLY if not in testing mode
     if settings.APP_ENV != "testing":
         scheduler.add_job(enforce_trial_expirations, 'cron', hour=0, minute=0)
@@ -68,14 +72,6 @@ async def lifespan(app: FastAPI):
     if settings.APP_ENV != "testing":
         scheduler.shutdown() # Wait for running jobs to finish
     engine.dispose() # Properly close database connection pool
-
-# --- App Definition ---
-if settings.SENTRY_DSN:
-    sentry_sdk.init(
-        dsn=settings.SENTRY_DSN,
-        traces_sample_rate=1.0,
-        profiles_sample_rate=1.0,
-    )
 
 app = FastAPI(title=settings.APP_NAME, version="3.0.0", lifespan=lifespan)
 
