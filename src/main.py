@@ -17,6 +17,7 @@ from src.security.rate_limiter import limiter
 # --- NEW: Background Scheduler ---
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
 from src.tasks.billing_tasks import enforce_trial_expirations
+from src.tasks.followup_tasks import process_smart_followups
 
 # Database & Config
 from src.config import settings
@@ -59,9 +60,14 @@ async def lifespan(app: FastAPI):
     
     # 1. Start Background Jobs ONLY if not in testing mode
     if settings.APP_ENV != "testing":
+        # Check for expired trials at midnight
         scheduler.add_job(enforce_trial_expirations, 'cron', hour=0, minute=0)
+        
+        # Send Smart Follow-ups daily at 10:00 AM
+        scheduler.add_job(process_smart_followups, 'cron', hour=10, minute=0)
+        
         scheduler.start()
-        logger.info("📅 Background Task Scheduler started (Billing Jobs configured).")
+        logger.info("📅 Background Task Scheduler started (Billing & Follow-up Jobs configured).")
     else:
         logger.info("📅 Running in testing mode - Scheduler disabled.")
     
@@ -72,6 +78,14 @@ async def lifespan(app: FastAPI):
     if settings.APP_ENV != "testing":
         scheduler.shutdown() # Wait for running jobs to finish
     engine.dispose() # Properly close database connection pool
+
+# --- App Definition ---
+if settings.SENTRY_DSN:
+    sentry_sdk.init(
+        dsn=settings.SENTRY_DSN,
+        traces_sample_rate=1.0,
+        profiles_sample_rate=1.0,
+    )
 
 app = FastAPI(title=settings.APP_NAME, version="3.0.0", lifespan=lifespan)
 

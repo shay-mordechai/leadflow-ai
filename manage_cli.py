@@ -1,6 +1,7 @@
 # manage_cli.py
 import sys
 import argparse
+import asyncio
 from prettytable import PrettyTable
 from src.database.session import SessionLocal
 from src.database.models import User, PlanTier, SubscriptionStatus
@@ -82,12 +83,22 @@ def show_stats():
     finally:
         db.close()
 
+async def run_manual_followup():
+    """
+    Triggers the Smart Follow-up logic manually for testing.
+    """
+    from src.tasks.followup_tasks import process_smart_followups
+    print("⏳ Running manual follow-up check for stale leads...")
+    await process_smart_followups()
+    print("✅ Follow-up process complete.")
+
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="LeadFlow AI Management CLI")
     subparsers = parser.add_subparsers(dest="command")
     
     subparsers.add_parser("list", help="List all users")
     subparsers.add_parser("stats", help="Show system statistics")
+    subparsers.add_parser("followup", help="Manually trigger smart follow-ups")
     
     toggle = subparsers.add_parser("toggle", help="Toggle user active status")
     toggle.add_argument("email", help="User email address")
@@ -97,21 +108,31 @@ if __name__ == "__main__":
     
     args = parser.parse_args()
     
-    if args.command == "list": list_users()
-    elif args.command == "stats": show_stats()
-    elif args.command == "toggle": toggle_user(args.email)
-    elif args.command == "upgrade": upgrade_user(args.email)
-    else: parser.print_help()
+    if args.command == "list": 
+        list_users()
+    elif args.command == "stats": 
+        show_stats()
+    elif args.command == "toggle": 
+        toggle_user(args.email)
+    elif args.command == "upgrade": 
+        upgrade_user(args.email)
+    elif args.command == "followup": 
+        asyncio.run(run_manual_followup())
+    else: 
+        parser.print_help()
 
-# Usage:
+# Usage Examples:
 # View Users Table
 # ssh production "podman exec leadflow-backend python manage_cli.py list"
 
 # Upgrade user to pro
 # ssh production "podman exec leadflow-backend python manage_cli.py upgrade shay.mordechai@proton.me"
 
-# Active/Disactive a user
+# Active/Deactive a user
 # ssh production "podman exec leadflow-backend python manage_cli.py toggle shay.mordechai@proton.me"
 
-# View Statics info
+# View Statistics info
 # ssh production "podman exec leadflow-backend python manage_cli.py stats"
+
+# Trigger follow-ups manually
+# ssh production "podman exec leadflow-backend python manage_cli.py followup"
