@@ -26,8 +26,10 @@ class SubscriptionStatus(str, enum.Enum):
 
 class LeadSource(str, enum.Enum):
     FACEBOOK = "FACEBOOK"
+    FACEBOOK_AD = "FACEBOOK_AD"   # Added for Meta Ads
     INSTAGRAM = "INSTAGRAM"
     WHATSAPP = "WHATSAPP"
+    GOOGLE_ADS = "GOOGLE_ADS"     # Adding for future use
     MANUAL = "MANUAL"
     LANDING_PAGE = "LANDING_PAGE"
 
