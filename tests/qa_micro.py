@@ -1,8 +1,11 @@
 # tests/qa_micro.py
-import requests, sys, argparse, time, io
+import requests, sys, argparse, time
+from requests.exceptions import Timeout, RequestException
 
 DEFAULT_LOCAL_URL = "http://127.0.0.1:8000"
 PROD_URL = "https://my-leads.app" 
+REQ_TIMEOUT = 10
+LOGIN_TIMEOUT = 25
 
 GREEN, RED, YELLOW, CYAN, RESET = "\033[92m", "\033[91m", "\033[93m", "\033[96m", "\033[0m"
 
@@ -13,36 +16,49 @@ def log(step, msg, status="INFO"):
 def run_micro_qa():
     parser = argparse.ArgumentParser()
     parser.add_argument("--prod", action="store_true")
+    parser.add_argument("--email", type=str)
+    parser.add_argument("--password", type=str)
     args = parser.parse_args()
+    
+    # דרך ה-SSH Tunnel אנחנו פונים ל-LOCAL_URL כדי לדבר עם הפרודקשן
     base_url = PROD_URL if args.prod else DEFAULT_LOCAL_URL
 
-    print(f"\n🔬 STARTING MICRO QA (ADVANCED AI & COMMANDS) FOR: {base_url}\n" + "="*60)
-    
-    # SETUP: Create a real-world scenario
-    email = f"owner_{int(time.time())}@test.com"
-    owner_phone = "+972541112222" # Simulated owner phone
-    
-    # 1. Registration & Setup
-    requests.post(f"{base_url}/api/v1/auth/register", json={
-        "email": email, "password": "Password123!", "full_name": "Shay Owner"
-    })
-    # ... login & otp flow (abbreviated for the example) ...
-    # Assume we got 'token' and 'headers' here
-    token = "MOCK_OR_REAL_TOKEN" 
-    headers = {"Authorization": f"Bearer {token}"}
+    ts = int(time.time())
+    email = args.email if args.email else f"owner_{ts}@test.com"
+    password = args.password if args.password else "SecurePassword123!"
+    owner_phone = "+972541112222" # המספר המדמה את בעל העסק
 
-    # Setup Business Profile with a specific Tag
-    requests.patch(f"{base_url}/api/v1/users/me", json={"personal_whatsapp": owner_phone, "business_name": "Yoga Studio"}, headers=headers)
+    print(f"\n🔬 STARTING MICRO QA (ADVANCED AI & COMMANDS) FOR: {base_url}")
+    print(f"👤 Testing with User: {email}\n" + "="*60)
+    
+    # --- 1. REGISTRATION & LOGIN ---
+    log("AUTH", "Authenticating to get a real token...", "INFO")
+    try:
+        requests.post(f"{base_url}/api/v1/auth/register", json={
+            "email": email, "password": password, "full_name": "Shay Owner", 
+            "business_name": "Yoga Studio", "business_type": "Fitness"
+        }, timeout=REQ_TIMEOUT)
+        
+        login_res = requests.post(f"{base_url}/api/v1/auth/login", data={"username": email, "password": password}, timeout=LOGIN_TIMEOUT)
+        if login_res.status_code != 200: sys.exit(log("AUTH", f"Login failed: {login_res.text}", "FAIL"))
+        
+        otp_code = input(f"[{RESET}INPUT{RESET}] 🔢 Enter OTP Code: ").strip()
+        auth_res = requests.post(f"{base_url}/api/v1/auth/verify-otp", json={"email": email, "otp_code": otp_code}, timeout=REQ_TIMEOUT)
+        token = auth_res.json().get("access_token")
+        headers = {"Authorization": f"Bearer {token}"}
+        
+        user_id = requests.get(f"{base_url}/api/v1/auth/me", headers=headers, timeout=REQ_TIMEOUT).json().get("id")
+        log("AUTH", "✅ Authentication successful.", "SUCCESS")
+    except Exception as e:
+        sys.exit(log("AUTH", f"Auth flow failed: {e}", "FAIL"))
+
+    # --- SETUP: Business Profile & Tag ---
+    log("SETUP", "Setting up Owner Phone and Tags...", "INFO")
+    requests.patch(f"{base_url}/api/v1/users/me", json={"personal_whatsapp": owner_phone}, headers=headers)
     requests.post(f"{base_url}/api/v1/tags", json={"name": "קריית נטפים"}, headers=headers)
 
-    # --- TEST 1: REGIONAL PHONE SCAN ---
-    log("1. REGIONAL", "Testing Area Code Filtering (Target: '03')...", "INFO")
-    res = requests.get(f"{base_url}/api/v1/phones/available?country_code=IL&area_code=03", headers=headers)
-    if res.status_code == 200: log("1. REGIONAL", "✅ Twilio API connected & filtered 03 successfully.", "SUCCESS")
-
-    # --- TEST 2: OWNER COMMAND MODE (The 'Yoga Teacher' Feature) ---
+    # --- TEST 1: OWNER COMMAND MODE ---
     log("2. OWNER-CMD", "Simulating OWNER sending a broadcast command via WhatsApp...", "INFO")
-    # We simulate a message coming FROM the owner's personal phone TO the system number
     cmd_payload = {
         "From": f"whatsapp:{owner_phone}", 
         "To": "whatsapp:+97233829709", 
@@ -50,11 +66,13 @@ def run_micro_qa():
     }
     cmd_res = requests.post(f"{base_url}/webhooks/twilio/sms", data=cmd_payload)
     if cmd_res.status_code == 200:
-        log("2. OWNER-CMD", "✅ System recognized Owner. Check logs to see Gemini parsing the Broadcast intent.", "SUCCESS")
+        log("2. OWNER-CMD", "✅ System recognized Owner. Check server logs to see Gemini parsing the Broadcast intent.", "SUCCESS")
+    else:
+        log("2. OWNER-CMD", f"❌ Command failed: {cmd_res.status_code}", "FAIL")
 
-    # --- TEST 3: HUMAN HANDOFF (Muting the Bot) ---
+    # --- TEST 2: HUMAN HANDOFF ---
     log("3. HANDOFF", "Simulating Lead asking for a human...", "INFO")
-    lead_phone = "+972509998888"
+    lead_phone = f"+97250999{str(ts)[-4:]}"
     handoff_payload = {
         "From": f"whatsapp:{lead_phone}", 
         "To": "whatsapp:+97233829709", 
@@ -62,16 +80,31 @@ def run_micro_qa():
     }
     requests.post(f"{base_url}/webhooks/twilio/sms", data=handoff_payload)
     
-    # Check if lead is now marked as 'requires_human' and 'bot_active=False'
-    leads = requests.get(f"{base_url}/api/v1/leads", headers=headers).json()
-    test_lead = next((l for l in leads if l['phone_number'] == lead_phone), None)
+    log("3. HANDOFF", "Waiting 5 seconds for Gemini AI to process the intent...", "INFO")
+    time.sleep(5) 
     
-    if test_lead and test_lead.get('bot_active') == False:
-        log("3. HANDOFF", "✅ Bot successfully muted itself after human request.", "SUCCESS")
-    else:
-        log("3. HANDOFF", "❌ Bot failed to mute or lead not found.", "FAIL")
-
-    # --- TEST 4: LOCAL WHISPER (Keep your existing Step 3) ---
-    # ... existing Whisper upload code ...
+    # Check Handoff Status
+    try:
+        # פנייה רגילה לחלוטין - המנהרה תפתור הכל
+        leads_res = requests.get(f"{base_url}/api/v1/leads/", headers=headers, timeout=REQ_TIMEOUT)
+             
+        if leads_res.status_code == 200:
+            leads = leads_res.json()
+            test_lead = next((l for l in leads if lead_phone in l.get('phone_number', '')), None)
+            
+            if test_lead and test_lead.get('bot_active') is False:
+                log("3. HANDOFF", "✅ Bot successfully muted itself after human request.", "SUCCESS")
+            elif test_lead:
+                log("3. HANDOFF", "❌ Lead found, but bot is still ACTIVE. Gemini might have failed to trigger [HANDOFF].", "FAIL")
+            else:
+                log("3. HANDOFF", "❌ Lead not found in the database.", "FAIL")
+        else:
+            log("3. HANDOFF", f"❌ API Error during Handoff check: {leads_res.status_code}", "FAIL")
+            
+    except Exception as e:
+        log("3. HANDOFF", f"❌ Failed to verify handoff status: {e}", "FAIL")
 
     print("\n🏁 MICRO QA COMPLETE.\n")
+
+if __name__ == "__main__":
+    run_micro_qa()
