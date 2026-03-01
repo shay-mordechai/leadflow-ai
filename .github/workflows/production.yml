@@ -54,6 +54,7 @@ jobs:
               - '.github/workflows/production.yml'
             frontend:
               - 'frontend/**'
+              - 'tests/**'
               - '.github/workflows/production.yml'
 
   # --- JOB 1: TEST BACKEND (Internal Logic) ---
@@ -97,7 +98,7 @@ jobs:
             echo "⚠️ Backend test_main.py not found! Skipping internal tests."
           fi
 
-  # --- JOB 2: TEST FRONTEND (Build Validation Only) ---
+  # --- JOB 2: TEST FRONTEND (Enterprise Grade) ---
   test-frontend:
     needs: detect-changes
     if: ${{ needs.detect-changes.outputs.frontend == 'true' }}
@@ -119,10 +120,19 @@ jobs:
       - name: Install Dependencies
         run: npm ci --legacy-peer-deps
 
+      - name: Install Playwright Browsers
+        run: npx playwright install --with-deps
+
       - name: Phase 1 - Validate Next.js Build (SSR & TS Check)
         run: npm run build
         env:
           NEXT_PUBLIC_API_URL: "https://my-leads.app"
+
+      - name: Phase 2 - Run Unit Tests (Vitest)
+        run: npm run test:unit
+
+      - name: Phase 3 - Run E2E Tests (Playwright)
+        run: npm run test:e2e
 
   # --- JOB 3: BUILD BACKEND ---
   build-backend:
