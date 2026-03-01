@@ -39,7 +39,7 @@ class PagixLead(BaseModel):
     idempotency_key: Optional[str] = Field(None, description="Unique event ID from Zapier/Make to prevent duplicates")
 
 class LeadResponse(BaseModel):
-    id: str
+    id: UUID
     name: str
     phone_number: str
     email: Optional[str] = None
@@ -47,12 +47,11 @@ class LeadResponse(BaseModel):
     source: str
     summary_text: Optional[str] = None
     suggested_reply: Optional[str] = None
-    ai_rating: Optional[int] = None      # NEW: Expose rating to the frontend
-    ai_feedback_note: Optional[str] = None # NEW: Expose feedback note to the frontend
+    ai_rating: Optional[int] = None      
+    ai_feedback_note: Optional[str] = None 
     created_at: datetime
     
-    class Config:
-        from_attributes = True
+    model_config = {"from_attributes": True}
 
 # --- Routes ---
 
