@@ -26,10 +26,10 @@ class SubscriptionStatus(str, enum.Enum):
 
 class LeadSource(str, enum.Enum):
     FACEBOOK = "FACEBOOK"
-    FACEBOOK_AD = "FACEBOOK_AD"   # Added for Meta Ads
+    FACEBOOK_AD = "FACEBOOK_AD"   
     INSTAGRAM = "INSTAGRAM"
     WHATSAPP = "WHATSAPP"
-    GOOGLE_ADS = "GOOGLE_ADS"     # Adding for future use
+    GOOGLE_ADS = "GOOGLE_ADS"     
     MANUAL = "MANUAL"
     LANDING_PAGE = "LANDING_PAGE"
 
@@ -99,7 +99,6 @@ class User(Base):
     media_files = relationship("MediaInteraction", back_populates="user", cascade="all, delete-orphan")
     integrations = relationship("Integration", back_populates="user", cascade="all, delete-orphan")
     business_profile = relationship("BusinessProfile", uselist=False, back_populates="user", cascade="all, delete-orphan")
-    # NEW: Relationship to the AI Agent (The bot's brain)
     ai_agent = relationship("AIAgent", uselist=False, back_populates="user", cascade="all, delete-orphan")
     phone_numbers = relationship("PhoneNumber", back_populates="owner", cascade="all, delete-orphan")
     coaching_sessions = relationship("CoachingSession", back_populates="user", cascade="all, delete-orphan")
@@ -139,34 +138,20 @@ class BusinessProfile(Base):
     updated_at = Column(DateTime(timezone=True), onupdate=func.now())
     user = relationship("User", back_populates="business_profile")
 
-# --- NEW MODEL: AI Agent ---
 class AIAgent(Base):
-    """
-    Stores the compiled 'Brain' of the AI for a specific user.
-    Generated from the BusinessProfile's custom_instructions via Google AI Studio.
-    """
     __tablename__ = "ai_agents"
     
     id = Column(GUID(), primary_key=True, default=uuid.uuid4)
     user_id = Column(GUID(), ForeignKey("users.id", ondelete="CASCADE"), unique=True, nullable=False)
-    
-    # The actual optimized prompt that will be fed to the LLM
     system_prompt = Column(Text, nullable=True)
-    
-    # Voice configuration
     voice_id = Column(String, default="default_voice_1")
     language = Column(String, default="he-IL")
-    
-    # Optional connection to a virtual phone number
     phone_number_id = Column(GUID(), ForeignKey("phone_numbers.id", ondelete="SET NULL"), nullable=True)
-    
     is_active = Column(Boolean, default=True)
     created_at = Column(DateTime(timezone=True), server_default=func.now())
     updated_at = Column(DateTime(timezone=True), onupdate=func.now())
-    
     user = relationship("User", back_populates="ai_agent")
     phone_number = relationship("PhoneNumber")
-
 
 class Lead(Base):
     __tablename__ = "leads"
@@ -175,7 +160,6 @@ class Lead(Base):
     # Security: Indexed user_id for fast IDOR-safe queries
     user_id = Column(GUID(), ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True)
     
-    # Security: Prevent duplicate webhooks from Zapier/Meta (Retry Storm Shield)
     idempotency_key = Column(String, index=True, nullable=True)
     
     # Security: Encrypted PII Fields
@@ -196,9 +180,17 @@ class Lead(Base):
     followup_date = Column(DateTime, nullable=True)
     created_at = Column(DateTime(timezone=True), server_default=func.now(), index=True)
     
+    # --- AI Feedback Loop (Tier 2) ---
+    ai_rating = Column(Integer, nullable=True)  # 1 for Like, -1 for Dislike
+    ai_feedback_note = Column(Text, nullable=True) 
+
+    # Relationships
     user = relationship("User", back_populates="leads")
     media_files = relationship("MediaInteraction", back_populates="lead")
     sessions = relationship("CoachingSession", back_populates="lead")
+    
+    # --- NEW: Relationship to Message for Conversational Memory ---
+    messages = relationship("Message", back_populates="lead", cascade="all, delete-orphan", order_by="Message.created_at")
 
     # Security: Encryption Getters/Setters
     @property
@@ -214,6 +206,27 @@ class Lead(Base):
     @phone_number.setter
     def phone_number(self, value):
         self._phone_encrypted = protector.encrypt(value) if value else None
+
+# --- NEW MODEL: Message (Conversational Memory) ---
+class Message(Base):
+    """
+    Stores the chat history between the Lead and the AI Bot.
+    Used to provide conversational context to the LLM (Solving the Goldfish Problem).
+    """
+    __tablename__ = "messages"
+
+    id = Column(String(36), primary_key=True, default=lambda: str(uuid.uuid4()))
+    lead_id = Column(GUID(), ForeignKey("leads.id", ondelete="CASCADE"), nullable=False)
+    
+    # 'user' means the Lead/Customer sent it. 'bot' means the AI sent it.
+    sender_type = Column(String(10), nullable=False) 
+    
+    content = Column(Text, nullable=False)
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
+
+    # Relationship back to the Lead
+    lead = relationship("Lead", back_populates="messages")
+
 
 class MediaInteraction(Base):
     __tablename__ = "media_interactions"
@@ -237,6 +250,7 @@ class MediaInteraction(Base):
     user = relationship("User", back_populates="media_files")
     lead = relationship("Lead", back_populates="media_files")
 
+
 class Integration(Base):
     __tablename__ = "integrations"
     
@@ -248,6 +262,7 @@ class Integration(Base):
     webhook_url = Column(String, nullable=True)
     created_at = Column(DateTime(timezone=True), server_default=func.now())
     user = relationship("User", back_populates="integrations")
+
 
 class CoachingSession(Base):
     __tablename__ = "coaching_sessions"

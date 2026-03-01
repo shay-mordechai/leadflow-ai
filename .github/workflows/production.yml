@@ -1,7 +1,7 @@
 # ==============================================================================
 # ⚠️  CRITICAL CONFIGURATION WARNING ⚠️
 # ==============================================================================
-# Target Server OS: Amazon Linux 2023
+# Target Server OS: Amazon Linux 2023 / RHEL 10
 # Container Runtime: PODMAN
 # Architecture: Zero Trust (Cloudflare Tunnel)
 # Registry: AWS ECR (Replaced GHCR)
@@ -39,7 +39,7 @@ jobs:
     steps:
       - uses: actions/checkout@v3
         with:
-          fetch-depth: 2 # Required to compare current with previous commit
+          fetch-depth: 2 
       
       - name: Check for changed paths
         id: filter
@@ -54,10 +54,9 @@ jobs:
               - '.github/workflows/production.yml'
             frontend:
               - 'frontend/**'
-              - 'tests/**'
               - '.github/workflows/production.yml'
 
-  # --- JOB 1: TEST BACKEND ---
+  # --- JOB 1: TEST BACKEND (Internal Logic) ---
   test-backend:
     needs: detect-changes
     if: ${{ needs.detect-changes.outputs.backend == 'true' }}
@@ -78,7 +77,7 @@ jobs:
           if [ -f requirements.txt ]; then pip install --no-build-isolation -r requirements.txt; fi
           pip install pytest httpx sqlalchemy fastapi passlib python-jose python-multipart
 
-      - name: Run Pytest (Backend)
+      - name: Run Pytest (Backend Internal Tests)
         env:
           PYTHONPATH: .
           APP_ENV: "testing"
@@ -86,10 +85,10 @@ jobs:
           DATABASE_URL: "sqlite:///:memory:"
           AWS_REGION: "eu-north-1"
         run: |
-          if [ -f "tests/pytest_backend.py" ]; then
-            pytest tests/pytest_backend.py -v
+          if [ -f "tests/test_main.py" ]; then
+            pytest tests/test_main.py -v
           else
-            echo "⚠️ Backend test file not found! Skipping tests."
+            echo "⚠️ Backend test_main.py not found! Skipping internal tests."
           fi
 
   # --- JOB 2: TEST FRONTEND (Enterprise Grade) ---
@@ -158,7 +157,7 @@ jobs:
 
   # --- JOB 4: BUILD FRONTEND ---
   build-frontend:
-    needs: [detect-changes, test-frontend] # CRITICAL: Now waits for the frontend tests to pass!
+    needs: [detect-changes, test-frontend] 
     if: ${{ needs.detect-changes.outputs.frontend == 'true' }}
     runs-on: ubuntu-latest
     steps:
@@ -185,10 +184,8 @@ jobs:
           docker push $ECR_REGISTRY/$IMAGE_FRONTEND --all-tags
 
   # --- JOB 5: DEPLOY ---
-  # Runs only if at least one build job ran OR if the workflow file itself changed.
   deploy:
     needs: [detect-changes, build-backend, build-frontend]
-    # 'always()' ensures it runs even if a skipped build job is treated as "successful"
     if: |
       always() && 
       (needs.detect-changes.outputs.backend == 'true' || needs.detect-changes.outputs.frontend == 'true') &&
@@ -196,7 +193,6 @@ jobs:
       needs.build-frontend.result != 'failure'
     runs-on: ubuntu-latest
     steps:
-      # We authenticate the Runner first so we can grab the short-lived ECR token
       - name: Configure AWS credentials
         uses: aws-actions/configure-aws-credentials@v2
         with:
@@ -226,7 +222,6 @@ jobs:
           UPDATE_BACKEND: ${{ needs.detect-changes.outputs.backend }}
           UPDATE_FRONTEND: ${{ needs.detect-changes.outputs.frontend }}
         run: |
-          # Fetch a temporary, 12-hour valid ECR authentication token using GitHub's credentials
           ECR_TEMP_TOKEN=$(aws ecr get-login-password --region ${{ env.AWS_REGION }})
           
           cat <<EOF > deploy.sh
@@ -305,5 +300,4 @@ jobs:
         run: |
           chmod +x deploy.sh
           scp deploy.sh production:~/deploy.sh
-          # Execute the script, and DELETE it immediately afterwards so no tokens remain on disk
           ssh production "~/deploy.sh && rm -f ~/deploy.sh"

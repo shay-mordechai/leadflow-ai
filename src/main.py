@@ -170,7 +170,7 @@ app.include_router(checkout.router, prefix="/api/v1/billing", tags=["Billing"])
 app.include_router(invoices.router, prefix="/api/v1/billing", tags=["Billing"])
 
 # Webhooks
-app.include_router(twilio.router, prefix="/webhooks/twilio", tags=["Webhooks - Twilio"])
+app.include_router(twilio.router, prefix="/webhooks/twilio", tags=["Webhooks - Twilio"]) # https://my-leads.app/webhooks/twilio/sms
 app.include_router(whatsapp.router, prefix="/webhooks/whatsapp", tags=["Webhooks - WhatsApp"])
 app.include_router(meshulam.router, prefix="/webhooks/meshulam", tags=["Webhooks - Meshulam"])
 

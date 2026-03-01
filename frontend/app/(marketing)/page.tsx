@@ -1,4 +1,4 @@
-// frontend/app/marketing/page.tsx
+// frontend/app/(marketing)/page.tsx
 import { Metadata } from "next";
 import Navbar from '@/components/marketing/Navbar';
 import Hero from '@/components/marketing/Hero';
@@ -19,24 +19,24 @@ export default function LandingPage() {
       <Navbar />
       <Hero />
 
-      {/* --- THE SPEED-TO-LEAD MARKETING HOOK BANNER --- */}
-      <section className="w-full bg-gradient-to-r from-blue-700 to-indigo-900 text-white py-16 px-4 relative overflow-hidden">
+      {/* --- THE SPEED-TO-LEAD MARKETING HOOK BANNER (Refined SaaS Design) --- */}
+      <section className="w-full bg-slate-900 text-slate-50 py-16 px-4 relative overflow-hidden border-y border-slate-800">
         <div className="max-w-4xl mx-auto text-center relative z-10 flex flex-col items-center gap-6">
-          <div className="w-16 h-16 bg-white/10 rounded-full flex items-center justify-center border border-white/20 shadow-lg">
-            <Zap className="w-8 h-8 text-yellow-400" fill="currentColor" />
+          <div className="w-16 h-16 bg-slate-800 rounded-full flex items-center justify-center border border-slate-700 shadow-lg shadow-indigo-500/10">
+            <Zap className="w-8 h-8 text-indigo-400" fill="currentColor" />
           </div>
           
-          <h2 className="text-3xl md:text-5xl font-black leading-tight">
-            חזרה לליד תוך 5 דקות מקפיצה את סיכויי הסגירה ב-<span className="text-transparent bg-clip-text bg-gradient-to-r from-yellow-300 to-yellow-500">400%</span>.
+          <h2 className="text-3xl md:text-5xl font-black leading-tight text-slate-100">
+            חזרה לליד תוך 5 דקות מקפיצה את סיכויי הסגירה ב-<span className="text-transparent bg-clip-text bg-gradient-to-r from-indigo-400 to-blue-400">400%</span>.
           </h2>
           
-          <p className="text-xl md:text-2xl font-medium text-blue-100 max-w-2xl">
+          <p className="text-xl md:text-2xl font-medium text-slate-300 max-w-2xl">
             המתחרים שלך חוזרים ללידים אחרי שעות. <br className="hidden md:block"/>
-            עם <span className="font-bold text-white">MyLeads AI</span>, הבוט שלך יפנה אליהם בוואטסאפ <span className="underline decoration-yellow-400 underline-offset-4 decoration-4">בתוך 5 שניות</span>.
+            עם <span className="font-bold text-white">MyLeads AI</span>, הבוט שלך יפנה אליהם בוואטסאפ <span className="underline decoration-indigo-500/50 underline-offset-4 decoration-4">בתוך 5 שניות</span>.
           </p>
         </div>
       </section>
-      {/* ------------------------------------------------ */}
+      {/* ---------------------------------------------------------------------- */}
 
       <Features />
       <UseCaseExamples />

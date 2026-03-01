@@ -9,20 +9,19 @@ from sqlalchemy.orm import Session
 # Internal imports
 from src.config import settings
 from src.database.session import SessionLocal
-# NEW: Added User and PlanTier for usage limit checks
-from src.database.models import PhoneNumber, AIAgent, User, PlanTier
+from src.database.models import PhoneNumber, AIAgent, User, PlanTier, Lead, LeadStatus
 from src.services.ai.engine import ai_engine
-# (Assume whatsapp_adapter is imported here if used below)
+from src.services.communication.whatsapp import whatsapp_adapter # UNCOMMENTED: To actually send messages
 
 router = APIRouter(tags=["Webhooks - WhatsApp"])
 logger = logging.getLogger("WhatsAppWebhook")
 
-# --- NEW: Usage Limit Constants ---
+# --- Usage Limit Constants ---
 STARTER_MESSAGE_LIMIT = 50
 PRO_MESSAGE_LIMIT = 2000
 # ----------------------------------
 
-# Helper to get a DB session inside a webhook (since it's not a standard dependency injection route)
+# Helper to get a DB session inside a webhook
 def get_db_session():
     db = SessionLocal()
     try:
@@ -35,7 +34,6 @@ async def verify_whatsapp_signature(request: Request):
     Security Middleware: Validates the SHA256 signature from Meta.
     Ensures the request originated from Facebook/Meta servers.
     """
-    # 1. Get the signature from the header
     signature = request.headers.get("X-Hub-Signature-256")
     if not signature:
         logger.warning(f"❌ Missing X-Hub-Signature-256 from {request.client.host}")
@@ -45,17 +43,16 @@ async def verify_whatsapp_signature(request: Request):
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid signature format")
     
     received_hash = signature[7:]
-
-    # SECURITY: Meta signs the raw request body
     body = await request.body()
-    # Note: Ensure WHATSAPP_APP_SECRET is set in your environment/SSM!
+    
+    # Securely retrieve the App Secret
+    secret = getattr(settings, 'WHATSAPP_APP_SECRET', "")
     expected_hash = hmac.new(
-        settings.WHATSAPP_APP_SECRET.encode('utf-8') if hasattr(settings, 'WHATSAPP_APP_SECRET') else b"",
+        secret.encode('utf-8'),
         body,
         hashlib.sha256
     ).hexdigest()
 
-    # Constant-time comparison
     if not hmac.compare_digest(received_hash, expected_hash):
         logger.error(f"❌ SECURITY ALERT: Invalid WhatsApp signature from {request.client.host}")
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid signature")
@@ -88,10 +85,11 @@ async def verify_webhook(
 @router.post("/")
 async def whatsapp_event_listener(request: Request):
     """
-    Receives incoming WhatsApp messages after verifying Meta signature.
+    Receives incoming WhatsApp messages. 
+    Updates Lead status to stop follow-ups and triggers AI response.
     """
-    # SECURITY CHECK
-    # await verify_whatsapp_signature(request) # Uncomment in Production when Secret is configured
+    # SECURITY CHECK (Uncomment in production when WHATSAPP_APP_SECRET is set)
+    # await verify_whatsapp_signature(request)
 
     try:
         data = await request.json()
@@ -103,7 +101,6 @@ async def whatsapp_event_listener(request: Request):
         changes = entry.get("changes", [])[0]
         value = changes.get("value", {})
         
-        # Identify the recipient bot (Our customer's phone number)
         metadata = value.get("metadata", {})
         bot_phone_number = metadata.get("display_phone_number")
         
@@ -115,14 +112,10 @@ async def whatsapp_event_listener(request: Request):
             
             logger.info(f"💬 Authenticated WhatsApp Message from {sender_name} ({sender_id}) to Bot {bot_phone_number}")
             
-            # --- AI BRAIN INTEGRATION ---
-            # 1. Open DB Session
             db = next(get_db_session())
             
-            # 2. Find the AIAgent associated with this phone number
-            # Note: In a real scenario, format the bot_phone_number to match your DB format (e.g., +972...)
+            # 1. Find the bot's owner
             phone_record = db.query(PhoneNumber).filter(PhoneNumber.number.contains(bot_phone_number)).first()
-            
             if not phone_record:
                 logger.warning(f"⚠️ Received message for unassigned number: {bot_phone_number}")
                 return {"status": "ignored_unassigned_number"}
@@ -133,28 +126,49 @@ async def whatsapp_event_listener(request: Request):
             if not agent or not agent.is_active or not user:
                 logger.info(f"💤 AI Agent is disabled or missing for {bot_phone_number}")
                 return {"status": "agent_disabled"}
-                
-            # --- NEW: Usage Limit Check (Tier 2 Business Logic) ---
-            max_limit = PRO_MESSAGE_LIMIT if user.plan_tier == PlanTier.PRO else STARTER_MESSAGE_LIMIT
             
-            if user.monthly_ai_messages >= max_limit:
-                logger.warning(f"🚫 User {user.email} exceeded AI message limit ({user.monthly_ai_messages}/{max_limit}).")
-                
-                # Send polite rejection message to the customer
-                limit_reply = "We apologize, but this automated assistant is temporarily unavailable. A human representative will contact you soon."
-                clean_sender_id = sender_id.replace("+", "")
-                
-                # Note: Assuming whatsapp_adapter is imported or available in your scope
-                # whatsapp_adapter.send_message(to_phone=clean_sender_id, text=limit_reply)
-                
-                return {"status": "limit_exceeded"}
-            # -----------------------------------------------------
+            # ------------------------------------------------------------------
+            # 2. Update Lead Status (Stop Follow-ups)
+            # ------------------------------------------------------------------
+            clean_sender_id = sender_id.replace("+", "")
+            
+            # Security Note: Because phone numbers are encrypted in DB, we fetch 
+            # active leads for this user and check in memory.
+            active_leads = db.query(Lead).filter(
+                Lead.user_id == user.id,
+                Lead.status == LeadStatus.NEW
+            ).all()
+            
+            lead_to_update = None
+            for l in active_leads:
+                if l.phone_number and clean_sender_id[-9:] in l.phone_number:
+                    lead_to_update = l
+                    break
+            
+            if lead_to_update:
+                logger.info(f"🛑 Stopping follow-ups for lead {lead_to_update.id}. Status changed to IN_PROGRESS.")
+                lead_to_update.status = LeadStatus.IN_PROGRESS
+                lead_to_update.needs_followup = False
+                db.commit()
+            else:
+                logger.info(f"🆕 Unknown number {clean_sender_id} messaged the bot. Treating as generic inquiry.")
 
-            # 3. Process the Message with the Dynamic Prompt
+            # ------------------------------------------------------------------
+            # 3. Check Usage Limits
+            # ------------------------------------------------------------------
+            max_limit = PRO_MESSAGE_LIMIT if user.plan_tier == PlanTier.PRO else STARTER_MESSAGE_LIMIT
+            if user.monthly_ai_messages >= max_limit:
+                logger.warning(f"🚫 User {user.email} exceeded AI message limit.")
+                limit_reply = "We apologize, but this automated assistant is temporarily unavailable. A human representative will contact you soon."
+                whatsapp_adapter.send_message(to_phone=clean_sender_id, text=limit_reply)
+                return {"status": "limit_exceeded"}
+
+            # ------------------------------------------------------------------
+            # 4. AI Processing & Reply
+            # ------------------------------------------------------------------
             if msg_type == "text":
                 text_body = message["text"]["body"]
                 
-                # Call Gemini using the customer's specific Brain (system_prompt)
                 ai_response = await ai_engine.analyze_interaction(
                     system_prompt=agent.system_prompt,
                     text_input=text_body,
@@ -164,18 +178,11 @@ async def whatsapp_event_listener(request: Request):
                 reply_text = ai_response.get('reply_text', "I'm sorry, I encountered an error processing your request.")
                 logger.info(f"🤖 AI Generated Reply: {reply_text}")
                 
-                # --- NEW: Increment Usage Counter ---
                 user.monthly_ai_messages += 1
                 db.commit()
-                # ------------------------------------
                 
-                # --- SEND REPLY BACK TO CUSTOMER ---
-                # Meta requires the 'to' number to be purely numeric without the '+' sign
-                clean_sender_id = sender_id.replace("+", "")
-                
-                # Use the WhatsAppAdapter to send the actual HTTP POST to Facebook Graph API
-                # success = whatsapp_adapter.send_message(to_phone=clean_sender_id, text=reply_text)
-                success = True # Placeholder until adapter is uncommented
+                # Send Reply via WhatsApp
+                success = whatsapp_adapter.send_message(to_phone=clean_sender_id, text=reply_text)
                 
                 if success:
                     logger.info(f"✅ Reply sent successfully to {clean_sender_id}")
@@ -183,11 +190,11 @@ async def whatsapp_event_listener(request: Request):
                     logger.error(f"❌ Failed to send reply to {clean_sender_id}")
 
             elif msg_type == "audio":
-                audio_id = message["audio"]["id"]
-                # TODO: Download media -> Transcribe -> Call ai_engine.analyze_interaction
+                logger.info("🎤 Audio message received. Audio processing not yet implemented.")
+                # audio_id = message["audio"]["id"]
 
         return {"status": "received"}
 
     except Exception as e:
-        logger.error(f"🔥 WhatsApp Webhook Processing Error: {e}")
+        logger.error(f"🔥 WhatsApp Webhook Processing Error: {str(e)}")
         return {"status": "error"}

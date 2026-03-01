@@ -9,7 +9,7 @@ import uuid
 # --- CONFIGURATION ---
 DEFAULT_LOCAL_URL = "http://127.0.0.1:8000"
 PROD_URL = "https://my-leads.app" 
-REQ_TIMEOUT = 15 # NEW: Global timeout to prevent hanging
+REQ_TIMEOUT = 15
 
 # --- COLORS ---
 RED = "\033[91m"
@@ -180,24 +180,46 @@ def run_full_system_qa():
     except Exception as e:
         log("BILLING", f"Error: {e}", "FAIL")
 
-
     # ==============================================================================
-    # 5. PHONE NUMBER BROWSING & ASSIGNMENT
+    # 5. PHONE NUMBER BROWSING & ASSIGNMENT (TESTING AREA CODE FILTER)
     # ==============================================================================
     print("\n" + "="*60)
-    log("7. PHONES", "Testing Phone Number Browsing and Purchase Gate...", "INFO")
+    log("7. PHONES", "Testing Area Code Filtering (Target: '03' - Tel Aviv)...", "INFO")
 
     try:
-        res = requests.get(f"{base_url}/api/v1/phones/available?country_code=IL", headers=headers)
+        # We append area_code=03 to test the routing logic
+        res = requests.get(f"{base_url}/api/v1/phones/available?country_code=IL&area_code=03", headers=headers)
         
         if res.status_code == 200:
             numbers = res.json()
             if numbers:
-                target_num = numbers[0]['number']
-                log("7. PHONES", f"Attempting purchase for {target_num}...", "INFO")
+                log("7. PHONES", f"✅ Found {len(numbers)} total numbers matching filter.", "SUCCESS")
+                
+                print(f"\n{'#':<4} | {'Phone Number':<18} | {'Type':<15} | {'Provider':<10}")
+                print("-" * 55)
+                
+                sorted_nums = sorted(numbers, key=lambda x: x.get('price_monthly', 1.0))[:10]
+                
+                for idx, num_data in enumerate(sorted_nums, 1):
+                    phone = num_data.get('number', '')
+                    provider = num_data.get('provider', 'Twilio') 
+                    prefix_type = "Tel Aviv (03)" if "+9723" in phone else "Other/IL"
+                    color = GREEN if "03" in prefix_type else RESET
+                    
+                    print(f"{idx:<4} | {color}{phone:<18}{RESET} | {prefix_type:<15} | {provider:<10}")
+                
+                print("-" * 55 + "\n")
+
+                target_num = sorted_nums[0]['number']
+                provider_to_buy = sorted_nums[0].get('provider', 'twilio')
+                log("7. PHONES", f"Attempting test purchase for {target_num} via {provider_to_buy}...", "INFO")
                 
                 buy_res = requests.post(f"{base_url}/api/v1/phones/purchase", 
-                                        json={"phone_number": target_num, "country_code": "IL"},
+                                        json={
+                                            "phone_number": target_num, 
+                                            "country_code": "IL",
+                                            "provider": provider_to_buy
+                                        },
                                         headers=headers)
                 
                 if buy_res.status_code == 200 or "User already has a phone number" in buy_res.text:
@@ -205,15 +227,14 @@ def run_full_system_qa():
                 else:
                     log("7. PHONES", f"❌ Purchase Failed: {buy_res.text}", "FAIL")
             else:
-                 log("7. PHONES", "⚠️ No numbers found.", "WARN")
+                 log("7. PHONES", "🚨 DEBUG ALERT: Providers returned ZERO numbers for area code 03.", "FAIL")
         else:
              log("7. PHONES", f"❌ API Error: {res.text}", "FAIL")
     except Exception as e:
         log("PHONES", f"Error: {e}", "FAIL")
 
-
     # ==============================================================================
-    # 6. WEBHOOK & SPEED-TO-LEAD (NEW TEST!)
+    # 6. WEBHOOK & SPEED-TO-LEAD
     # ==============================================================================
     print("\n" + "="*60)
     log("8. WEBHOOK", "Simulating incoming lead from Facebook/Zapier...", "INFO")
@@ -221,7 +242,7 @@ def run_full_system_qa():
     if not user_id:
         log("8. WEBHOOK", "❌ Cannot test webhook: Missing User ID.", "FAIL")
     else:
-        test_phone_number = f"+97250{int(time.time())}"[:13] # Generate a fake unique phone number
+        test_phone_number = f"+97250{int(time.time())}"[:13] 
         
         webhook_payload = {
             "name": "David Facebook",
@@ -231,14 +252,12 @@ def run_full_system_qa():
         }
 
         try:
-            # We hit the Webhook WITHOUT the auth header (because Zapier doesn't have it, it uses the user_id in the URL)
             webhook_res = requests.post(f"{base_url}/api/v1/leads/webhook/{user_id}", json=webhook_payload)
             
-            if webhook_res.status_code == 201:
+            if webhook_res.status_code in [200, 201]:
                 log("8. WEBHOOK", f"✅ Webhook received lead successfully! (Phone: {test_phone_number})", "SUCCESS")
                 log("8. WEBHOOK", "✅ Check server logs to see if 'Proactive WhatsApp message' was triggered.", "SUCCESS")
                 
-                # Verify it appears in the user's dashboard
                 leads_res = requests.get(f"{base_url}/api/v1/leads/", headers=headers)
                 if leads_res.status_code == 200:
                     leads_data = leads_res.json()
@@ -249,7 +268,6 @@ def run_full_system_qa():
                         log("8. WEBHOOK", "❌ Lead saved by webhook, but not found in Dashboard.", "FAIL")
                 else:
                      log("8. WEBHOOK", f"❌ Failed to fetch leads dashboard: {leads_res.text}", "FAIL")
-
             else:
                 log("8. WEBHOOK", f"❌ Webhook Failed: {webhook_res.text}", "FAIL")
 
