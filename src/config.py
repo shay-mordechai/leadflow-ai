@@ -144,13 +144,23 @@ class Settings(BaseSettings):
 # --- 4. Validation Helper ---
 def validate_config(s: Settings):
     """
-    Checks for missing API keys and logs warnings for each service.
+    Checks for missing API keys with smart logic for alternative providers.
     """
-    # Define groups of settings for clean reporting
+    # 1. AI Engine Logic (Either OpenAI or Google is fine)
+    ai_configured = False
+    if s.GOOGLE_API_KEY:
+        logger.info("🤖 AI Engine: Google Gemini (Active)")
+        ai_configured = True
+    if s.OPENAI_API_KEY:
+        logger.info("🤖 AI Engine: OpenAI GPT (Active)")
+        ai_configured = True
+    
+    if not ai_configured:
+        logger.warning("❌ CRITICAL: No AI Engines configured (OpenAI/Google). AI features will fail.")
+
+    # 2. Other groups (Standard validation)
     groups = {
-        "AI (OpenAI/Google)": ["OPENAI_API_KEY", "GOOGLE_API_KEY"],
         "Telephony (Twilio)": ["TWILIO_ACCOUNT_SID", "TWILIO_AUTH_TOKEN", "TWILIO_WHATSAPP_NUMBER"],
-        "Telephony (SignalWire)": ["SIGNALWIRE_PROJECT_ID", "SIGNALWIRE_AUTH_TOKEN", "SIGNALWIRE_SPACE_URL"],
         "Email (SMTP)": ["MAIL_USERNAME", "MAIL_PASSWORD"],
         "Billing (Meshulam)": ["MESHULAM_PAGE_CODE", "MESHULAM_API_KEY"],
         "Security": ["ENCRYPTION_KEY"]
@@ -159,7 +169,7 @@ def validate_config(s: Settings):
     for group_name, keys in groups.items():
         missing = [k for k in keys if not getattr(s, k)]
         if missing:
-            logger.warning(f"⚠ {group_name} credentials missing: {', '.join(missing)}. Feature will be disabled.")
+            logger.warning(f"⚠ {group_name} credentials missing: {', '.join(missing)}.")
         else:
             logger.info(f"✅ {group_name} configured correctly.")
 
