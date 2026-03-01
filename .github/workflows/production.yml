@@ -71,13 +71,12 @@ jobs:
           python-version: '3.11'
           cache: 'pip'
 
-      # NEW: Install FFmpeg on the GitHub Runner so Faster-Whisper can load during tests
-      - name: Install OS Dependencies (FFmpeg)
+      # FIXED: Added ffmpeg dev libraries required to compile the 'av' package for faster-whisper
+      - name: Install OS Dependencies (FFmpeg & Dev Libraries)
         run: |
           sudo apt-get update
-          sudo apt-get install -y ffmpeg
+          sudo apt-get install -y ffmpeg libavformat-dev libavcodec-dev libavdevice-dev libavutil-dev libavfilter-dev libswscale-dev libswresample-dev pkg-config
 
-      # FIXED: Removed --no-build-isolation so packages like 'av' and 'faster-whisper' can build correctly
       - name: Install Python Dependencies
         run: |
           python -m pip install --upgrade pip setuptools wheel
