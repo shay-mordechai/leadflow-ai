@@ -3,7 +3,7 @@ import uuid
 import enum
 from datetime import datetime
 from sqlalchemy import (
-    Column, String, DateTime, Boolean, Text, ForeignKey, Enum, Integer, func
+    Column, String, DateTime, Boolean, Text, ForeignKey, Enum, Integer, func, Table
 )
 from sqlalchemy.orm import relationship
 
@@ -57,6 +57,17 @@ class SessionStatus(str, enum.Enum):
     COMPLETED = "COMPLETED"
     FAILED = "FAILED"
 
+
+# --- ASSOCIATION TABLES ---
+# Many-to-Many relationship between Leads and Tags
+lead_tag_association = Table(
+    'lead_tag_association',
+    Base.metadata,
+    Column('lead_id', GUID(), ForeignKey('leads.id', ondelete="CASCADE"), primary_key=True),
+    Column('tag_id', GUID(), ForeignKey('tags.id', ondelete="CASCADE"), primary_key=True)
+)
+
+
 # --- MODELS ---
 
 class User(Base):
@@ -79,9 +90,8 @@ class User(Base):
     last_known_city = Column(String, nullable=True)
     last_known_country = Column(String, nullable=True)
 
-    # --- NEW: Business & Usage Limits (Tier 2) ---
+    # --- Business & Usage Limits (Tier 2) ---
     monthly_ai_messages = Column(Integer, default=0, nullable=False)
-    # ---------------------------------------------
 
     # Security: OTP is encrypted at rest
     _otp_encrypted = Column("otp_code", String, nullable=True)
@@ -102,6 +112,7 @@ class User(Base):
     ai_agent = relationship("AIAgent", uselist=False, back_populates="user", cascade="all, delete-orphan")
     phone_numbers = relationship("PhoneNumber", back_populates="owner", cascade="all, delete-orphan")
     coaching_sessions = relationship("CoachingSession", back_populates="user", cascade="all, delete-orphan")
+    tags = relationship("Tag", back_populates="user", cascade="all, delete-orphan")
 
     @property
     def otp_code(self):
@@ -110,6 +121,22 @@ class User(Base):
     @otp_code.setter
     def otp_code(self, value):
         self._otp_encrypted = protector.encrypt(value) if value else None
+
+
+class Tag(Base):
+    """
+    Stores logical groupings for Leads (e.g., 'Kiryat Netafim', 'Morning Class').
+    Used for AI Voice Broadcast targeting.
+    """
+    __tablename__ = "tags"
+
+    id = Column(GUID(), primary_key=True, default=uuid.uuid4)
+    user_id = Column(GUID(), ForeignKey("users.id", ondelete="CASCADE"), nullable=False)
+    name = Column(String, nullable=False)
+    
+    user = relationship("User", back_populates="tags")
+    leads = relationship("Lead", secondary=lead_tag_association, back_populates="tags")
+
 
 class PhoneNumber(Base):
     __tablename__ = "phone_numbers"
@@ -123,6 +150,7 @@ class PhoneNumber(Base):
     created_at = Column(DateTime(timezone=True), server_default=func.now())
     owner_id = Column(GUID(), ForeignKey("users.id"))
     owner = relationship("User", back_populates="phone_numbers")
+
 
 class BusinessProfile(Base):
     __tablename__ = "business_profiles"
@@ -138,6 +166,7 @@ class BusinessProfile(Base):
     updated_at = Column(DateTime(timezone=True), onupdate=func.now())
     user = relationship("User", back_populates="business_profile")
 
+
 class AIAgent(Base):
     __tablename__ = "ai_agents"
     
@@ -152,6 +181,7 @@ class AIAgent(Base):
     updated_at = Column(DateTime(timezone=True), onupdate=func.now())
     user = relationship("User", back_populates="ai_agent")
     phone_number = relationship("PhoneNumber")
+
 
 class Lead(Base):
     __tablename__ = "leads"
@@ -170,6 +200,10 @@ class Lead(Base):
     city = Column(String, nullable=True)
     source = Column(Enum(LeadSource), default=LeadSource.MANUAL, nullable=False)
     status = Column(Enum(LeadStatus), default=LeadStatus.NEW, nullable=False, index=True)
+
+    # --- Omnichannel Inbox Features ---
+    bot_active = Column(Boolean, default=True, nullable=False)
+    requires_human = Column(Boolean, default=False, nullable=False, index=True)
     
     transcription_summary = Column(Text, nullable=True)
     original_transcript = Column(Text, nullable=True)
@@ -188,9 +222,8 @@ class Lead(Base):
     user = relationship("User", back_populates="leads")
     media_files = relationship("MediaInteraction", back_populates="lead")
     sessions = relationship("CoachingSession", back_populates="lead")
-    
-    # --- NEW: Relationship to Message for Conversational Memory ---
     messages = relationship("Message", back_populates="lead", cascade="all, delete-orphan", order_by="Message.created_at")
+    tags = relationship("Tag", secondary=lead_tag_association, back_populates="leads")
 
     # Security: Encryption Getters/Setters
     @property
@@ -207,7 +240,7 @@ class Lead(Base):
     def phone_number(self, value):
         self._phone_encrypted = protector.encrypt(value) if value else None
 
-# --- NEW MODEL: Message (Conversational Memory) ---
+
 class Message(Base):
     """
     Stores the chat history between the Lead and the AI Bot.

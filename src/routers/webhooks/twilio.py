@@ -10,7 +10,7 @@ from twilio.twiml.messaging_response import MessagingResponse
 # Internal imports
 from src.config import settings
 from src.database.session import get_db
-from src.database.models import PhoneNumber, Lead, User
+from src.database.models import PhoneNumber, Lead, User, Message, LeadSource
 from src.services.ai.engine import ai_engine
 from src.services.communication.whatsapp import whatsapp_adapter
 
@@ -22,13 +22,12 @@ async def verify_twilio_signature(request: Request):
     Security Middleware: Validates that the incoming request is genuinely from Twilio.
     """
     if not settings.TWILIO_AUTH_TOKEN:
-        logger.warning("⚠️ Skipping Twilio Signature Verification: Auth Token Missing (MOCK MODE)")
+        logger.warning("⚠️ Skipping Twilio Signature Verification: Auth Token Missing")
         return True
 
     validator = RequestValidator(settings.TWILIO_AUTH_TOKEN)
     signature = request.headers.get("X-Twilio-Signature", "")
     
-    # Workaround for proxy/tunnel setups where the scheme might arrive as HTTP instead of HTTPS
     url = str(request.url).replace("http://", "https://") if "my-leads.app" in str(request.url) else str(request.url)
     form_data = await request.form()
     
@@ -40,24 +39,6 @@ async def verify_twilio_signature(request: Request):
         )
     return True
 
-@router.post("/voice")
-async def incoming_voice_call(
-    request: Request,
-    From: str = Form(...),
-    To: str = Form(...),
-    CallSid: str = Form(...)
-):
-    """Handles incoming Voice Calls (Placeholder for Future IVR)."""
-    await verify_twilio_signature(request)
-    logger.info(f"📞 Authenticated Call | From: {From} | SID: {CallSid}")
-
-    resp = VoiceResponse()
-    resp.say("Hello. You have reached the LeadFlow AI assistant.", voice="alice")
-    resp.record(maxLength=60, playBeep=True, transcribe=False)
-    resp.hangup()
-
-    return Response(content=str(resp), media_type="application/xml")
-
 @router.post("/sms")
 async def incoming_sms_message(
     request: Request,
@@ -67,79 +48,103 @@ async def incoming_sms_message(
     db: Session = Depends(get_db)
 ):
     """
-    Handles incoming SMS and WhatsApp messages from Twilio.
-    Acts as the main brain for answering leads dynamically.
+    Handles incoming WhatsApp messages.
+    Includes Conversational Memory, Auto-Lead Creation, and Human Handoff logic.
     """
     await verify_twilio_signature(request)
     logger.info(f"📩 Incoming Message | From: {From} | To: {To} | Body: {Body}")
 
-    # 1. Clean the 'To' and 'From' numbers (Twilio prepends 'whatsapp:' for WA messages)
     clean_to = To.replace("whatsapp:", "").strip()
     clean_from = From.replace("whatsapp:", "").strip()
 
-    # 2. Identify the Business (Who does this Twilio number belong to?)
+    # 1. Identify the Business Owner
     phone_record = db.query(PhoneNumber).filter(PhoneNumber.number == clean_to, PhoneNumber.is_active == True).first()
-    
     if not phone_record:
         logger.warning(f"⚠️ Received message to unassigned number: {clean_to}")
         return Response(content=str(MessagingResponse()), media_type="application/xml")
 
     business_user = phone_record.owner
 
-    # 3. Identify the Lead (Who is sending the message?)
-    # We look for an existing lead belonging to this business with this phone number
+    # 2. Identify or Create the Lead
     lead_record = db.query(Lead).filter(
-        Lead.owner_id == business_user.id,
-        Lead.phone_number.like(f"%{clean_from[-9:]}%") # Match last 9 digits to avoid country code prefix issues
+        Lead.user_id == business_user.id,
+        Lead.phone_number.like(f"%{clean_from[-9:]}%")
     ).first()
 
-    lead_name = lead_record.name if lead_record else "Guest"
+    if not lead_record:
+        logger.info(f"🆕 Creating new Lead for phone: {clean_from}")
+        lead_record = Lead(
+            user_id=business_user.id,
+            name="New WhatsApp Lead",
+            phone_number=clean_from,
+            source=LeadSource.WHATSAPP
+        )
+        db.add(lead_record)
+        db.commit()
+        db.refresh(lead_record)
 
-    # 4. Construct the AI Persona/System Prompt based on Business Settings
+    # 3. Save incoming message to Conversational Memory
+    new_msg = Message(lead_id=lead_record.id, sender_type="user", content=Body)
+    db.add(new_msg)
+    db.commit()
+
+    # 4. Check Human Handoff Status (Is the Bot silenced?)
+    if not lead_record.bot_active:
+        logger.info(f"🔇 Bot is muted for Lead {lead_record.id}. Message saved to Dashboard only.")
+        return Response(content=str(MessagingResponse()), media_type="application/xml")
+
+    # 5. Build Context & AI Persona
     biz_name = business_user.business_name or "our business"
     biz_type = business_user.business_type or "service"
     products = business_user.products_services or "Ask how we can help."
     instructions = business_user.custom_instructions or "Be helpful and polite."
-    tone = business_user.ai_tone or "Friendly"
-    lang = business_user.ai_language or "he-IL"
+
+    # Fetch last 10 messages for AI memory
+    history = db.query(Message).filter(Message.lead_id == lead_record.id).order_by(Message.created_at.desc()).limit(10).all()
+    history.reverse()
+    chat_history_text = "\n".join([f"{'Customer' if m.sender_type=='user' else 'AI Agent'}: {m.content}" for m in history])
 
     system_prompt = f"""
-    You are an AI assistant for '{biz_name}', a {biz_type} business.
-    Your tone must be: {tone}. Language: {lang}.
+    You are the Virtual AI Secretary for '{biz_name}', a {biz_type} business.
+    Your job is to answer customer questions and qualify them politely.
     
-    Products/Services offered:
-    {products}
+    Business Info & Services: {products}
+    Owner Instructions: {instructions}
     
-    Specific Instructions from the business owner:
-    {instructions}
+    STRICT HANDOFF RULES:
+    If the customer is angry, asks a very complex question you can't answer, or explicitly asks to speak to a human/manager, you MUST stop the automated chat.
+    To handoff, your response MUST begin with exactly this keyword: "[HANDOFF]".
+    Example: "[HANDOFF] הבנתי, אני מעבירה את השיחה לצוות האנושי שלנו שיחזור אליך בהקדם."
     
-    IMPORTANT: Never break character. Always answer on behalf of {biz_name}. Keep answers concise and suitable for WhatsApp.
+    Recent Chat History:
+    {chat_history_text}
     """
 
-    # 5. Process the message through the AI Engine asynchronously
-    logger.info(f"🧠 Sending message to AI Engine for business: {biz_name}")
-    
-    # We don't want to block the Twilio HTTP response while AI generates, 
-    # but for simplicity in V1, we await it. (In production with heavy traffic, use background tasks)
+    # 6. Get AI Response
     try:
         ai_response = await ai_engine.analyze_interaction(
             system_prompt=system_prompt,
             text_input=Body,
-            sender_name=lead_name
+            sender_name=lead_record.name or "Customer"
         )
-        
-        reply_text = ai_response.get("reply_text", "מצטער, אני מתקשה להבין כרגע. אפשר לנסח מחדש?")
-        
+        reply_text = ai_response.get("reply_text", "מצטער, אני מתקשה להבין. אפשר לנסח מחדש?")
     except Exception as e:
         logger.error(f"❌ AI Processing Failed: {e}")
-        reply_text = "הייתה שגיאה טכנית קטנה, נחזור אליך בהקדם."
+        reply_text = "מערכת ההודעות שלנו בבדיקה כרגע, נחזור אליך בקרוב."
 
-    # 6. Send the response back via WhatsApp Adapter (bypassing Twilio's default TwiML for better control)
-    # Why? Because TwiML response has a strict 15-second timeout, AI might take 3-5 seconds.
-    # By using our adapter, we send it asynchronously.
+    # 7. Process Handoff Keyword
+    if "[HANDOFF]" in reply_text:
+        reply_text = reply_text.replace("[HANDOFF]", "").strip()
+        lead_record.bot_active = False
+        lead_record.requires_human = True
+        logger.info(f"🛑 Human Handoff triggered for Lead {lead_record.id}. Bot muted.")
+
+    # 8. Save AI Reply to Memory
+    ai_msg = Message(lead_id=lead_record.id, sender_type="bot", content=reply_text)
+    db.add(ai_msg)
+    db.commit()
+
+    # 9. Send via WhatsApp
     whatsapp_adapter.send_message(to_phone=clean_from, text=reply_text)
 
-    # 7. Return empty TwiML to Twilio so they know we received the webhook successfully
-    # (We already sent the actual reply via the API above)
-    resp = MessagingResponse()
-    return Response(content=str(resp), media_type="application/xml")
+    return Response(content=str(MessagingResponse()), media_type="application/xml")
