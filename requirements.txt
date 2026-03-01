@@ -31,7 +31,7 @@ fpdf2==2.8.5                # FIXED: Was 2.7.8 (ReDoS Vuln)
 
 # --- AI & Processing ---
 #openai-whisper>=20231117 
-faster-whisper==1.0.1       # OPTIMIZED: Replaced openai-whisper for low RAM (1GB EC2)
+faster-whisper>=1.0.3       # OPTIMIZED: Replaced openai-whisper for low RAM (1GB EC2)
 openai==1.13.3
 google-generativeai==0.4.0
 
