@@ -46,7 +46,7 @@ class LeadResponse(BaseModel):
     email: Optional[str] = None
     status: str
     source: str
-    bot_active: bool
+    bot_active: bool = True
     summary_text: Optional[str] = None
     suggested_reply: Optional[str] = None
     ai_rating: Optional[int] = None      
