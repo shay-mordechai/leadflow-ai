@@ -12,8 +12,8 @@ WORKDIR /app
 COPY --from=deps /app/node_modules ./node_modules
 COPY . .
 
-# Environment variables for build
-ENV NEXT_PUBLIC_API_URL=http://localhost:8000
+# CRITICAL FIX: Set to production URL so Next.js bakes the correct API path
+ENV NEXT_PUBLIC_API_URL=https://my-leads.app
 
 RUN npm run build
 
