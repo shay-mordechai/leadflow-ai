@@ -1,6 +1,7 @@
 # src/routers/leads.py
 import logging
 import uuid
+from uuid import UUID
 import hashlib
 from datetime import datetime
 from fastapi import APIRouter, HTTPException, status, Depends, Query, Request
