@@ -12,10 +12,11 @@ ENV PYTHONPATH=/app
 WORKDIR /app
 
 # Install system dependencies (Removed Postgres libs since we use SQLite)
+# FIXED: Replaced gcc with build-essential to include stdlib.h and C headers needed for PyAV
 RUN apt-get update && apt-get install -y --no-install-recommends \
     ffmpeg \
     libmagic1 \
-    gcc \
+    build-essential \
     pkg-config \
     libavformat-dev \
     libavcodec-dev \
