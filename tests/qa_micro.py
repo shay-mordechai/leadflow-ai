@@ -20,13 +20,13 @@ def run_micro_qa():
     parser.add_argument("--password", type=str)
     args = parser.parse_args()
     
-    # דרך ה-SSH Tunnel אנחנו פונים ל-LOCAL_URL כדי לדבר עם הפרודקשן
+    # When using SSH Tunnel, we rely on the LOCAL_URL to securely reach Production
     base_url = PROD_URL if args.prod else DEFAULT_LOCAL_URL
 
     ts = int(time.time())
     email = args.email if args.email else f"owner_{ts}@test.com"
     password = args.password if args.password else "SecurePassword123!"
-    owner_phone = "+972541112222" # המספר המדמה את בעל העסק
+    owner_phone = "+972541112222" # Simulated business owner phone number
 
     print(f"\n🔬 STARTING MICRO QA (ADVANCED AI & COMMANDS) FOR: {base_url}")
     print(f"👤 Testing with User: {email}\n" + "="*60)
@@ -55,14 +55,14 @@ def run_micro_qa():
     # --- SETUP: Business Profile & Tag ---
     log("SETUP", "Setting up Owner Phone and Tags...", "INFO")
     requests.patch(f"{base_url}/api/v1/users/me", json={"personal_whatsapp": owner_phone}, headers=headers)
-    requests.post(f"{base_url}/api/v1/tags", json={"name": "קריית נטפים"}, headers=headers)
+    requests.post(f"{base_url}/api/v1/tags", json={"name": "Kiryat Netafim"}, headers=headers)
 
     # --- TEST 1: OWNER COMMAND MODE ---
     log("2. OWNER-CMD", "Simulating OWNER sending a broadcast command via WhatsApp...", "INFO")
     cmd_payload = {
         "From": f"whatsapp:{owner_phone}", 
         "To": "whatsapp:+97233829709", 
-        "Body": "תשלחי הודעה לכל הבנות מקריית נטפים שהשיעור מחר מבוטל"
+        "Body": "Send a message to all the girls from Kiryat Netafim that tomorrow's class is canceled"
     }
     cmd_res = requests.post(f"{base_url}/webhooks/twilio/sms", data=cmd_payload)
     if cmd_res.status_code == 200:
@@ -73,10 +73,17 @@ def run_micro_qa():
     # --- TEST 2: HUMAN HANDOFF ---
     log("3. HANDOFF", "Simulating Lead asking for a human...", "INFO")
     lead_phone = f"+97250999{str(ts)[-4:]}"
+    
+    # First, inject the lead so the system recognizes the incoming phone number
+    webhook_url = f"{base_url}/api/v1/leads/webhook/{user_id}"
+    requests.post(webhook_url, json={"name": "Angry Lead", "phone": lead_phone, "source": "QA_Micro"})
+    time.sleep(2) # Give the DB a moment to save the lead
+    
+    # Now, send the "angry" message triggering the Handoff protocol
     handoff_payload = {
         "From": f"whatsapp:{lead_phone}", 
         "To": "whatsapp:+97233829709", 
-        "Body": "אני רוצה לדבר עם נציג אנושי דחוף"
+        "Body": "I want to speak to a human representative urgently"
     }
     requests.post(f"{base_url}/webhooks/twilio/sms", data=handoff_payload)
     
@@ -85,7 +92,7 @@ def run_micro_qa():
     
     # Check Handoff Status
     try:
-        # פנייה רגילה לחלוטין - המנהרה תפתור הכל
+        # Standard request - the Tunnel handles the networking securely
         leads_res = requests.get(f"{base_url}/api/v1/leads/", headers=headers, timeout=REQ_TIMEOUT)
              
         if leads_res.status_code == 200:
@@ -108,3 +115,7 @@ def run_micro_qa():
 
 if __name__ == "__main__":
     run_micro_qa()
+
+# Usage:
+# 1. Open SSH Tunnel in background: ssh -f -N -L 8000:localhost:8000 production
+# 2. Run test: python3 tests/qa_micro.py --email your@email.com --password "YourPassword123!"

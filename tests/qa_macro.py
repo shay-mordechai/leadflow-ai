@@ -1,6 +1,5 @@
 # tests/qa_macro.py
 import requests, sys, argparse, time
-from urllib.parse import urlparse
 from requests.exceptions import Timeout, RequestException
 
 DEFAULT_LOCAL_URL = "http://127.0.0.1:8000"
@@ -14,19 +13,6 @@ def log(step, msg, status="INFO"):
     color = GREEN if status == "SUCCESS" else RED if status == "FAIL" else YELLOW if status == "WARN" else CYAN if status == "INPUT" else RESET
     print(f"[{step}] {color}{msg}{RESET}")
 
-def safe_get(base_url, endpoint, headers):
-    """Bulletproof fetcher that strips bad internal IPs from redirects."""
-    url = f"{base_url}{endpoint}"
-    for _ in range(5):
-        res = requests.get(url, headers=headers, allow_redirects=False, timeout=REQ_TIMEOUT)
-        if res.status_code in [301, 302, 307, 308]:
-            # Extract ONLY the path from the redirect and append to the real base_url
-            path = urlparse(res.headers.get("Location", "")).path
-            url = f"{base_url}{path}"
-            continue
-        return res
-    return res
-
 def run_macro_qa():
     parser = argparse.ArgumentParser()
     parser.add_argument("--prod", action="store_true")
@@ -34,6 +20,7 @@ def run_macro_qa():
     parser.add_argument("--password", type=str)
     args = parser.parse_args()
     
+    # When using SSH Tunnel, we rely on the LOCAL_URL to securely reach Production
     base_url = PROD_URL if args.prod else DEFAULT_LOCAL_URL
 
     ts = int(time.time())
@@ -47,8 +34,11 @@ def run_macro_qa():
     log("AUTH", f"Ensuring user is registered...", "INFO")
     try:
         reg_res = requests.post(f"{base_url}/api/v1/auth/register", json={
-            "email": email, "password": password, "full_name": "Macro Tester",
-            "business_name": "QA Corp", "business_type": "Consulting"
+            "email": email, 
+            "password": password, 
+            "full_name": "Macro Tester",
+            "business_name": "QA Corp",
+            "business_type": "Consulting"
         }, timeout=REQ_TIMEOUT)
         
         if reg_res.status_code == 201:
@@ -85,8 +75,9 @@ def run_macro_qa():
         token = auth_res.json().get("access_token")
         headers = {"Authorization": f"Bearer {token}"}
         
-        user_data = safe_get(base_url, "/api/v1/auth/me", headers).json()
-        user_id = user_data.get("id")
+        # Requesting /me with a trailing slash
+        user_res = requests.get(f"{base_url}/api/v1/auth/me/", headers=headers, timeout=REQ_TIMEOUT)
+        user_id = user_res.json().get("id")
         log("AUTH", "✅ Token acquired and verified.", "SUCCESS")
     except Exception as e:
         sys.exit(log("AUTH", f"MFA connection error: {e}", "FAIL"))
@@ -114,7 +105,8 @@ def run_macro_qa():
     # --- 6. DATABASE VERIFICATION ---
     log("DATABASE", "Verifying lead data...", "INFO")
     try:
-        res = safe_get(base_url, "/api/v1/leads", headers)
+        # Requesting /leads with trailing slash to prevent 308 redirects
+        res = requests.get(f"{base_url}/api/v1/leads/", headers=headers, timeout=REQ_TIMEOUT)
             
         if res.status_code == 200:
             leads = res.json()
@@ -127,7 +119,7 @@ def run_macro_qa():
                 else:
                     log("DATABASE", "❌ Failed: Bot should be ACTIVE by default.", "FAIL")
             else:
-                log("DATABASE", f"❌ Failed: Found {len(matching_leads)} leads for this phone.", "FAIL")
+                log("DATABASE", f"❌ Failed: Found {len(matching_leads)} leads for this phone. Expected 1.", "FAIL")
         else:
             log("DATABASE", f"❌ Verification API returned status: {res.status_code} - {res.text}", "FAIL")
             
@@ -138,3 +130,7 @@ def run_macro_qa():
 
 if __name__ == "__main__":
     run_macro_qa()
+
+# Usage:
+# 1. Open SSH Tunnel in background: ssh -f -N -L 8000:localhost:8000 production
+# 2. Run test: python3 tests/qa_macro.py --email your@email.com --password "YourPassword123!"
