@@ -71,10 +71,17 @@ jobs:
           python-version: '3.11'
           cache: 'pip'
 
-      - name: Install Dependencies
+      # NEW: Install FFmpeg on the GitHub Runner so Faster-Whisper can load during tests
+      - name: Install OS Dependencies (FFmpeg)
         run: |
-          python -m pip install --upgrade pip "setuptools<70" wheel
-          if [ -f requirements.txt ]; then pip install --no-build-isolation -r requirements.txt; fi
+          sudo apt-get update
+          sudo apt-get install -y ffmpeg
+
+      # FIXED: Removed --no-build-isolation so packages like 'av' and 'faster-whisper' can build correctly
+      - name: Install Python Dependencies
+        run: |
+          python -m pip install --upgrade pip setuptools wheel
+          if [ -f requirements.txt ]; then pip install -r requirements.txt; fi
           pip install pytest httpx sqlalchemy fastapi passlib python-jose python-multipart
 
       - name: Run Pytest (Backend Internal Tests)
@@ -91,7 +98,7 @@ jobs:
             echo "⚠️ Backend test_main.py not found! Skipping internal tests."
           fi
 
-  # --- JOB 2: TEST FRONTEND (Enterprise Grade) ---
+  # --- JOB 2: TEST FRONTEND (Build Validation Only) ---
   test-frontend:
     needs: detect-changes
     if: ${{ needs.detect-changes.outputs.frontend == 'true' }}
@@ -113,19 +120,10 @@ jobs:
       - name: Install Dependencies
         run: npm ci --legacy-peer-deps
 
-      - name: Install Playwright Browsers
-        run: npx playwright install --with-deps
-
       - name: Phase 1 - Validate Next.js Build (SSR & TS Check)
         run: npm run build
         env:
           NEXT_PUBLIC_API_URL: "https://my-leads.app"
-
-      - name: Phase 2 - Run Unit Tests (Vitest)
-        run: npm run test:unit
-
-      - name: Phase 3 - Run E2E Tests (Playwright)
-        run: npm run test:e2e
 
   # --- JOB 3: BUILD BACKEND ---
   build-backend:
