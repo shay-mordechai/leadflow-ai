@@ -28,11 +28,7 @@ async def incoming_sms_message(
     MediaContentType0: str = Form(None),
     db: Session = Depends(get_db)
 ):
-    """
-    Handles incoming messages with dual logic:
-    1. OWNER MODE: Voice commands for broadcasting to tagged groups.
-    2. LEAD MODE: Automated AI sales chat with conversational memory.
-    """
+    print(f"\n[TWILIO WEBHOOK] Received message from {From} to {To}: {Body}")
     clean_to = To.replace("whatsapp:", "").strip()
     clean_from = From.replace("whatsapp:", "").strip()
 
@@ -40,11 +36,10 @@ async def incoming_sms_message(
     phone_record = db.query(PhoneNumber).filter(PhoneNumber.number == clean_to, PhoneNumber.is_active == True).first()
     
     if not phone_record:
-        logger.warning(f"⚠️ Webhook rejected: Destination number {clean_to} not found in database.")
-        
-        # --- QA TESTING FALLBACK (Allows tests to run on wiped DBs) ---
+        print(f"[TWILIO WEBHOOK] ⚠️ Destination number {clean_to} not found in database.")
+        # --- QA TESTING FALLBACK ---
         if clean_to == "+97233829709":
-            logger.info("🔧 QA MODE: Routing test number to the newest registered user.")
+            print("[TWILIO WEBHOOK] 🔧 QA MODE: Routing test number to the newest registered user.")
             owner = db.query(User).order_by(User.created_at.desc()).first()
             if not owner:
                 return Response(content=str(MessagingResponse()), media_type="application/xml")
@@ -57,31 +52,24 @@ async def incoming_sms_message(
     # 👑 PHASE A: OWNER COMMAND MODE (Voice-to-Action)
     # ------------------------------------------------------------------
     if clean_from == owner.personal_whatsapp:
-        logger.info(f"👑 Owner Command detected from {clean_from}")
-        
+        print(f"[TWILIO WEBHOOK] 👑 Owner Command detected from {clean_from}")
         command_text = Body
         
-        # Handle Voice Note from Owner
         if NumMedia > 0 and "audio" in (MediaContentType0 or ""):
-            logger.info("🎙️ Processing Owner Voice Command via Whisper...")
             command_text = await whisper_service.transcribe_from_url(MediaUrl0)
-            logger.info(f"📝 Transcribed Command: {command_text}")
+            print(f"[TWILIO WEBHOOK] 📝 Transcribed Command: {command_text}")
 
-        # Use Gemini to parse the command intent
         available_tags = [t.name for t in owner.tags]
         parse_prompt = f"""
         You are the System Controller for '{owner.business_name}'.
         The owner sent a command: "{command_text}"
-        
         Available Customer Tags: {available_tags}
-        
         Task:
         1. Is this a broadcast request?
         2. Which TAG is the target? (Must match one from the list or 'all')
         3. What is the MESSAGE to be sent?
         """
         
-        # Explicitly define the schema for Owner Command
         owner_schema = """{
             "is_broadcast": boolean, 
             "target_tag": "string", 
@@ -94,21 +82,17 @@ async def incoming_sms_message(
             target_tag_name = intent.get("target_tag")
             broadcast_msg = intent.get("message")
             
-            # Find leads matching the tag
             query = db.query(Lead).filter(Lead.user_id == owner.id)
             if target_tag_name != 'all':
                 query = query.join(Lead.tags).filter(Tag.name == target_tag_name)
             
             target_leads = query.all()
             
-            # Execute Broadcast
             for lead in target_leads:
                 whatsapp_adapter.send_message(to_phone=lead.phone_number, text=broadcast_msg)
                 db.add(Message(lead_id=lead.id, sender_type="bot", content=broadcast_msg))
             
             db.commit()
-            
-            # Notify owner of success
             confirm_msg = f"✅ בוצע! ההודעה נשלחה ל-{len(target_leads)} לקוחות בקבוצת '{target_tag_name}'."
             whatsapp_adapter.send_message(to_phone=owner.personal_whatsapp, text=confirm_msg)
             return Response(content=str(MessagingResponse()), media_type="application/xml")
@@ -116,7 +100,8 @@ async def incoming_sms_message(
     # ------------------------------------------------------------------
     # 👤 PHASE B: REGULAR LEAD INTERACTION
     # ------------------------------------------------------------------
-    # Identify or Create Lead
+    print(f"[TWILIO WEBHOOK] 👤 Processing Lead Message from {clean_from}")
+    
     lead_record = db.query(Lead).filter(
         Lead.user_id == owner.id,
         Lead.phone_number.like(f"%{clean_from[-9:]}%")
@@ -128,20 +113,17 @@ async def incoming_sms_message(
         db.commit()
         db.refresh(lead_record)
 
-    # Save incoming message to history
     db.add(Message(lead_id=lead_record.id, sender_type="user", content=Body))
     db.commit()
 
-    # If bot is muted for human handoff, stop here and do nothing
     if not lead_record.bot_active:
+        print(f"[TWILIO WEBHOOK] 🔇 Bot is MUTED for {clean_from}. Ignoring message.")
         return Response(content=str(MessagingResponse()), media_type="application/xml")
 
-    # Fetch History for Memory
     history = db.query(Message).filter(Message.lead_id == lead_record.id).order_by(Message.created_at.desc()).limit(10).all()
     history.reverse()
     history_context = "\n".join([f"{'Customer' if m.sender_type=='user' else 'AI'}: {m.content}" for m in history])
 
-    # Safely get business profile context (handling case where it might be missing)
     biz_context = owner.business_profile.products_services if owner.business_profile else "General Business Operations"
     biz_instructions = owner.business_profile.custom_instructions if owner.business_profile else "Provide helpful and polite responses."
 
@@ -158,26 +140,37 @@ async def incoming_sms_message(
     {history_context}
     """
 
+    # Safety initialization
+    ai_response = {}
+    reply_text = "סליחה, אני זמינה שוב בעוד רגע."
+
     try:
-        # We don't pass expected_schema, so it uses the default Chat JSON Schema
         ai_response = await ai_engine.analyze_interaction(system_prompt=system_prompt, text_input=Body)
         reply_text = ai_response.get("reply_text", "מצטער, חלה שגיאה.")
     except Exception as e:
-        logger.error(f"AI Fail: {e}")
-        reply_text = "סליחה, אני זמינה שוב בעוד רגע."
+        print(f"[TWILIO WEBHOOK] ❌ AI Generation Failed: {e}")
 
-    # Process Handoff using BOTH the JSON boolean flag and text fallback
-    needs_human = ai_response.get("needs_human_escalation", False)
-    if needs_human or "[HANDOFF]" in reply_text:
+    # 🛟 SAFETY NET: Hardcoded Handoff Keywords (Bypasses AI if it fails/ignores)
+    handoff_keywords = ["human", "representative", "manager", "נציג", "אנושי", "מנהל", "שירות לקוחות"]
+    needs_human_ai = ai_response.get("needs_human_escalation", False)
+    needs_human_fallback = any(word in Body.lower() for word in handoff_keywords)
+
+    if needs_human_ai or needs_human_fallback or "[HANDOFF]" in reply_text:
+        print(f"[TWILIO WEBHOOK] 🚨 HANDOFF TRIGGERED! AI thought: {needs_human_ai}, Fallback thought: {needs_human_fallback}")
         reply_text = reply_text.replace("[HANDOFF]", "").strip()
+        
+        # Mute the bot
         lead_record.bot_active = False
         lead_record.requires_human = True
-        logger.info(f"🚨 Handoff triggered for Lead {lead_record.phone_number}")
+        
+        # Optional: Change reply text to confirm handoff if it's still default
+        if "שגיאה" in reply_text or "רגע" in reply_text:
+            reply_text = "מיד אעביר אותך לנציג אנושי, תודה על הסבלנות."
 
-    # Save AI response and send
     db.add(Message(lead_id=lead_record.id, sender_type="bot", content=reply_text))
     db.commit()
     
     whatsapp_adapter.send_message(to_phone=clean_from, text=reply_text)
+    print(f"[TWILIO WEBHOOK] ✅ Successfully replied to {clean_from}")
 
     return Response(content=str(MessagingResponse()), media_type="application/xml")
