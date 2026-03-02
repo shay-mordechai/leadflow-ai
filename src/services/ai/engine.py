@@ -90,11 +90,19 @@ class AIEngine:
             logger.error(f"Summary generation failed: {e}")
             return "Failed to generate summary."
 
-    async def analyze_interaction(self, system_prompt: str, text_input: str = None, audio_path: str = None, sender_name: str = "Guest") -> Dict[str, Any]:
+    async def analyze_interaction(self, system_prompt: str, text_input: str = None, audio_path: str = None, sender_name: str = "Guest", expected_schema: str = None) -> Dict[str, Any]:
         """
         High-level flow for Chatbot Personas.
-        Takes the dynamic system_prompt (from the DB) and calls the generic generator asynchronously.
+        Takes the dynamic system_prompt and dynamically injects the expected JSON schema.
         """
+        # Default Schema for standard Lead Chat
+        if not expected_schema:
+            expected_schema = """{
+                "intent": "general_inquiry" | "booking" | "support" | "greeting" | "other",
+                "reply_text": "Your response to the user in the correct tone and language.",
+                "needs_human_escalation": boolean
+            }"""
+
         # Construct the final prompt injected with the user's specific instructions
         final_prompt = f"""
         {system_prompt}
@@ -104,11 +112,7 @@ class AIEngine:
         
         Task: You must respond in the character defined above. 
         Return a valid JSON object strictly matching this format:
-        {{
-            "intent": "general_inquiry" | "booking" | "support" | "greeting" | "other",
-            "reply_text": "Your response to the user in the correct tone and language.",
-            "needs_human_escalation": boolean
-        }}
+        {expected_schema}
         """
 
         # Execute via generic method (Non-blocking)

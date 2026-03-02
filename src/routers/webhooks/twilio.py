@@ -17,8 +17,6 @@ from src.services.communication.whatsapp import whatsapp_adapter
 router = APIRouter(tags=["Webhooks - Twilio"])
 logger = logging.getLogger("TwilioWebhook")
 
-# ... (verify_twilio_signature stays the same) ...
-
 @router.post("/sms")
 async def incoming_sms_message(
     request: Request,
@@ -35,8 +33,6 @@ async def incoming_sms_message(
     1. OWNER MODE: Voice commands for broadcasting to tagged groups.
     2. LEAD MODE: Automated AI sales chat with conversational memory.
     """
-    # await verify_twilio_signature(request) # Security active
-    
     clean_to = To.replace("whatsapp:", "").strip()
     clean_from = From.replace("whatsapp:", "").strip()
 
@@ -70,14 +66,19 @@ async def incoming_sms_message(
         Available Customer Tags: {available_tags}
         
         Task:
-        1. Is this a broadcast request? (True/False)
+        1. Is this a broadcast request?
         2. Which TAG is the target? (Must match one from the list or 'all')
-        3. What is the MESSAGE to be sent? (Keep it exactly as the owner intended).
-        
-        Return JSON only: {{"is_broadcast": bool, "target_tag": str, "message": str}}
+        3. What is the MESSAGE to be sent?
         """
         
-        intent = await ai_engine.analyze_interaction(system_prompt=parse_prompt, text_input=command_text)
+        # Explicitly define the schema for Owner Command so it doesn't use the Lead Chat schema
+        owner_schema = """{
+            "is_broadcast": boolean, 
+            "target_tag": "string", 
+            "message": "string"
+        }"""
+        
+        intent = await ai_engine.analyze_interaction(system_prompt=parse_prompt, text_input=command_text, expected_schema=owner_schema)
         
         if intent.get("is_broadcast") and intent.get("message"):
             target_tag_name = intent.get("target_tag")
@@ -117,11 +118,11 @@ async def incoming_sms_message(
         db.commit()
         db.refresh(lead_record)
 
-    # Save to history
+    # Save incoming message to history
     db.add(Message(lead_id=lead_record.id, sender_type="user", content=Body))
     db.commit()
 
-    # If muted for human handoff, stop here
+    # If bot is muted for human handoff, stop here and do nothing
     if not lead_record.bot_active:
         return Response(content=str(MessagingResponse()), media_type="application/xml")
 
@@ -130,35 +131,43 @@ async def incoming_sms_message(
     history.reverse()
     history_context = "\n".join([f"{'Customer' if m.sender_type=='user' else 'AI'}: {m.content}" for m in history])
 
+    # Safely get business profile context (handling case where it might be missing)
+    biz_context = owner.business_profile.products_services if owner.business_profile else "General Business Operations"
+    biz_instructions = owner.business_profile.custom_instructions if owner.business_profile else "Provide helpful and polite responses."
+
     system_prompt = f"""
     You are the Virtual Secretary for '{owner.business_name}'. 
-    Context: {owner.business_profile.products_services}
-    Instructions: {owner.business_profile.custom_instructions}
+    Context: {biz_context}
+    Instructions: {biz_instructions}
     
     Rules:
     - Answer based on chat history.
-    - If user asks for human/manager, start reply with [HANDOFF].
+    - If user asks for a human, representative, or manager, you MUST set needs_human_escalation to true.
     
     History:
     {history_context}
     """
 
     try:
+        # We don't pass expected_schema, so it uses the default Chat JSON Schema
         ai_response = await ai_engine.analyze_interaction(system_prompt=system_prompt, text_input=Body)
         reply_text = ai_response.get("reply_text", "מצטער, חלה שגיאה.")
     except Exception as e:
         logger.error(f"AI Fail: {e}")
         reply_text = "סליחה, אני זמינה שוב בעוד רגע."
 
-    # Process Handoff
-    if "[HANDOFF]" in reply_text:
+    # Process Handoff using BOTH the JSON boolean flag and text fallback
+    needs_human = ai_response.get("needs_human_escalation", False)
+    if needs_human or "[HANDOFF]" in reply_text:
         reply_text = reply_text.replace("[HANDOFF]", "").strip()
         lead_record.bot_active = False
         lead_record.requires_human = True
+        logger.info(f"🚨 Handoff triggered for Lead {lead_record.phone_number}")
 
     # Save AI response and send
     db.add(Message(lead_id=lead_record.id, sender_type="bot", content=reply_text))
     db.commit()
+    
     whatsapp_adapter.send_message(to_phone=clean_from, text=reply_text)
 
     return Response(content=str(MessagingResponse()), media_type="application/xml")
