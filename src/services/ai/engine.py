@@ -23,16 +23,9 @@ class AIEngine:
     """
     
     def __init__(self):
-        # We use 'gemini-2.0-flash' for speed and cost efficiency.
+        # Using 'gemini-2.0-flash' for speed and cost efficiency.
         self.model_name = "gemini-2.0-flash"
-        
-        # Model optimized for JSON output
-        self.json_model = genai.GenerativeModel(
-            self.model_name,
-            generation_config={"response_mime_type": "application/json"}
-        )
-        # Model optimized for free text (summaries)
-        self.text_model = genai.GenerativeModel(self.model_name)
+        self.model = genai.GenerativeModel(self.model_name)
 
     def _clean_json_text(self, text: str) -> str:
         """Helper to strip Markdown formatting from JSON responses."""
@@ -56,10 +49,16 @@ class AIEngine:
                 uploaded_file = genai.upload_file(path=media_path, mime_type=mime_type)
                 content.append(uploaded_file)
             
-            # Generate Response
-            response = self.json_model.generate_content(content)
+            # Generate Response with JSON Mode fallback for older SDK versions
+            try:
+                response = self.model.generate_content(
+                    content,
+                    generation_config={"response_mime_type": "application/json"}
+                )
+            except Exception as cfg_err:
+                logger.warning(f"JSON Mode config failed, retrying without explicit mime_type: {cfg_err}")
+                response = self.model.generate_content(content)
             
-            # Parse Response
             if not response.text:
                 return {}
 
@@ -68,27 +67,7 @@ class AIEngine:
 
         except Exception as e:
             logger.error(f"AI Generation Error: {e}")
-            return {"error": str(e), "reply_text": "Error processing AI request."}
-
-    def generate_meeting_summary(self, transcription_text: str) -> str:
-        """
-        Summarizes text into a report format (Plain Text).
-        """
-        prompt = f"""
-        You are an expert executive assistant. 
-        Analyze the following meeting transcription (Hebrew/English).
-        Output a structured summary containing:
-        1. Key Topics Discussed
-        2. Action Items (To-Do List)
-        3. Next Steps
-        Transcription: "{transcription_text}"
-        """
-        try:
-            response = self.text_model.generate_content(prompt)
-            return response.text
-        except Exception as e:
-            logger.error(f"Summary generation failed: {e}")
-            return "Failed to generate summary."
+            return {"error": str(e), "reply_text": "I'm sorry, I'm having a technical moment. Please try again."}
 
     async def analyze_interaction(self, system_prompt: str, text_input: str = None, audio_path: str = None, sender_name: str = "Guest", expected_schema: str = None) -> Dict[str, Any]:
         """
@@ -111,7 +90,7 @@ class AIEngine:
         User Message: {text_input if text_input else 'Audio Message (Transcribed separately)'}
         
         Task: You must respond in the character defined above. 
-        Return a valid JSON object strictly matching this format:
+        Return ONLY a valid JSON object strictly matching this format:
         {expected_schema}
         """
 

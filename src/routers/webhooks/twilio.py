@@ -28,7 +28,7 @@ async def incoming_sms_message(
     MediaContentType0: str = Form(None),
     db: Session = Depends(get_db)
 ):
-    print(f"\n[TWILIO WEBHOOK] Received message from {From} to {To}: {Body}")
+    print(f"\n[TWILIO WEBHOOK] Incoming message from {From} to {To}: {Body}")
     clean_to = To.replace("whatsapp:", "").strip()
     clean_from = From.replace("whatsapp:", "").strip()
 
@@ -36,73 +36,56 @@ async def incoming_sms_message(
     phone_record = db.query(PhoneNumber).filter(PhoneNumber.number == clean_to, PhoneNumber.is_active == True).first()
     
     if not phone_record:
-        print(f"[TWILIO WEBHOOK] ⚠️ Destination number {clean_to} not found in database.")
-        # --- QA TESTING FALLBACK ---
+        # --- QA TESTING FALLBACK: Route test number to the newest user ---
         if clean_to == "+97233829709":
-            print("[TWILIO WEBHOOK] 🔧 QA MODE: Routing test number to the newest registered user.")
             owner = db.query(User).order_by(User.created_at.desc()).first()
             if not owner:
                 return Response(content=str(MessagingResponse()), media_type="application/xml")
         else:
+            logger.warning(f"Destination {clean_to} not found in DB.")
             return Response(content=str(MessagingResponse()), media_type="application/xml")
     else:
         owner = phone_record.owner
 
     # ------------------------------------------------------------------
-    # 👑 PHASE A: OWNER COMMAND MODE (Voice-to-Action)
+    # 👑 PHASE A: OWNER COMMAND MODE (Broadcasting)
     # ------------------------------------------------------------------
     if clean_from == owner.personal_whatsapp:
-        print(f"[TWILIO WEBHOOK] 👑 Owner Command detected from {clean_from}")
+        logger.info(f"👑 Owner Command detected from {clean_from}")
         command_text = Body
         
         if NumMedia > 0 and "audio" in (MediaContentType0 or ""):
             command_text = await whisper_service.transcribe_from_url(MediaUrl0)
-            print(f"[TWILIO WEBHOOK] 📝 Transcribed Command: {command_text}")
 
         available_tags = [t.name for t in owner.tags]
-        parse_prompt = f"""
+        owner_prompt = f"""
         You are the System Controller for '{owner.business_name}'.
-        The owner sent a command: "{command_text}"
-        Available Customer Tags: {available_tags}
-        Task:
-        1. Is this a broadcast request?
-        2. Which TAG is the target? (Must match one from the list or 'all')
-        3. What is the MESSAGE to be sent?
+        Owner Command: "{command_text}"
+        Tags: {available_tags}
+        Task: Parse if this is a broadcast and return JSON only.
         """
         
-        owner_schema = """{
-            "is_broadcast": boolean, 
-            "target_tag": "string", 
-            "message": "string"
-        }"""
-        
-        intent = await ai_engine.analyze_interaction(system_prompt=parse_prompt, text_input=command_text, expected_schema=owner_schema)
+        owner_schema = '{"is_broadcast": boolean, "target_tag": "string", "message": "string"}'
+        intent = await ai_engine.analyze_interaction(system_prompt=owner_prompt, text_input=command_text, expected_schema=owner_schema)
         
         if intent.get("is_broadcast") and intent.get("message"):
-            target_tag_name = intent.get("target_tag")
-            broadcast_msg = intent.get("message")
-            
+            target_tag = intent.get("target_tag")
             query = db.query(Lead).filter(Lead.user_id == owner.id)
-            if target_tag_name != 'all':
-                query = query.join(Lead.tags).filter(Tag.name == target_tag_name)
+            if target_tag != 'all':
+                query = query.join(Lead.tags).filter(Tag.name == target_tag)
             
-            target_leads = query.all()
-            
-            for lead in target_leads:
-                whatsapp_adapter.send_message(to_phone=lead.phone_number, text=broadcast_msg)
-                db.add(Message(lead_id=lead.id, sender_type="bot", content=broadcast_msg))
+            leads_to_msg = query.all()
+            for l in leads_to_msg:
+                whatsapp_adapter.send_message(to_phone=l.phone_number, text=intent.get("message"))
+                db.add(Message(lead_id=l.id, sender_type="bot", content=intent.get("message")))
             
             db.commit()
-            confirm_msg = f"✅ בוצע! ההודעה נשלחה ל-{len(target_leads)} לקוחות בקבוצת '{target_tag_name}'."
-            whatsapp_adapter.send_message(to_phone=owner.personal_whatsapp, text=confirm_msg)
+            whatsapp_adapter.send_message(to_phone=owner.personal_whatsapp, text=f"✅ Sent to {len(leads_to_msg)} clients in '{target_tag}'.")
             return Response(content=str(MessagingResponse()), media_type="application/xml")
 
     # ------------------------------------------------------------------
-    # 👤 PHASE B: REGULAR LEAD INTERACTION
+    # 👤 PHASE B: SALES BRAIN - LEAD INTERACTION
     # ------------------------------------------------------------------
-    print(f"[TWILIO WEBHOOK] 👤 Processing Lead Message from {clean_from}")
-    
-    # Identify or Create Lead - Reverting to the fast, index-optimized .like() query
     lead_record = db.query(Lead).filter(
         Lead.user_id == owner.id,
         Lead.phone_number.like(f"%{clean_from[-9:]}%")
@@ -110,68 +93,58 @@ async def incoming_sms_message(
 
     if not lead_record:
         lead_record = Lead(user_id=owner.id, name="New Lead", phone_number=clean_from, source=LeadSource.WHATSAPP)
-        db.add(lead_record)
-        db.commit()
-        db.refresh(lead_record)
+        db.add(lead_record); db.commit(); db.refresh(lead_record)
 
+    # Save user message
     db.add(Message(lead_id=lead_record.id, sender_type="user", content=Body))
     db.commit()
 
     if not lead_record.bot_active:
-        print(f"[TWILIO WEBHOOK] 🔇 Bot is MUTED for {clean_from}. Ignoring message.")
+        logger.info(f"Muted lead {clean_from} - skipping AI.")
         return Response(content=str(MessagingResponse()), media_type="application/xml")
 
+    # Conversational Memory (Last 10 messages)
     history = db.query(Message).filter(Message.lead_id == lead_record.id).order_by(Message.created_at.desc()).limit(10).all()
     history.reverse()
-    history_context = "\n".join([f"{'Customer' if m.sender_type=='user' else 'AI'}: {m.content}" for m in history])
+    history_str = "\n".join([f"{'Customer' if m.sender_type=='user' else 'AI'}: {m.content}" for m in history])
 
-    biz_context = owner.business_profile.products_services if owner.business_profile else "General Business Operations"
-    biz_instructions = owner.business_profile.custom_instructions if owner.business_profile else "Provide helpful and polite responses."
-
+    # Sales Brain Context Construction
+    biz = owner.business_profile
     system_prompt = f"""
-    You are the Virtual Secretary for '{owner.business_name}'. 
-    Context: {biz_context}
-    Instructions: {biz_instructions}
+    You are 'Liron', the expert sales assistant for '{owner.business_name}'.
+    Goal: Assist the customer, represent the brand, and drive sales/bookings.
     
-    Rules:
-    - Answer based on chat history.
-    - If user asks for a human, representative, or manager, you MUST set needs_human_escalation to true.
+    Business Knowledge: {biz.products_services if biz else 'Professional service provider'}
+    Tone/Style: {biz.ai_tone if biz else 'Professional and friendly'}
+    Owner Notes: {biz.custom_instructions if biz else 'Answer questions helpfully.'}
     
-    History:
-    {history_context}
+    Context History:
+    {history_str}
+    
+    IMPORTANT RULES:
+    1. If the user asks for a real person, human, manager, or representative, set 'needs_human_escalation' to true.
+    2. Be concise and speak ONLY in Hebrew.
     """
 
-    # Safety initialization
-    ai_response = {}
-    reply_text = "סליחה, אני זמינה שוב בעוד רגע."
-
     try:
-        ai_response = await ai_engine.analyze_interaction(system_prompt=system_prompt, text_input=Body)
-        reply_text = ai_response.get("reply_text", "מצטער, חלה שגיאה.")
+        ai_res = await ai_engine.analyze_interaction(system_prompt=system_prompt, text_input=Body, sender_name=lead_record.name)
+        reply_text = ai_res.get("reply_text", "תודה על ההודעה, נציג יחזור אליך בהקדם.")
     except Exception as e:
-        print(f"[TWILIO WEBHOOK] ❌ AI Generation Failed: {e}")
+        logger.error(f"AI Engine failure: {e}")
+        reply_text = "תודה, נציג אנושי יצור איתך קשר בדקות הקרובות."
+        ai_res = {"needs_human_escalation": True}
 
-    # 🛟 SAFETY NET: Hardcoded Handoff Keywords (Bypasses AI if it fails/ignores)
-    handoff_keywords = ["human", "representative", "manager", "נציג", "אנושי", "מנהל", "שירות לקוחות"]
-    needs_human_ai = ai_response.get("needs_human_escalation", False)
-    needs_human_fallback = any(word in Body.lower() for word in handoff_keywords)
-
-    if needs_human_ai or needs_human_fallback or "[HANDOFF]" in reply_text:
-        print(f"[TWILIO WEBHOOK] 🚨 HANDOFF TRIGGERED! AI thought: {needs_human_ai}, Fallback thought: {needs_human_fallback}")
-        reply_text = reply_text.replace("[HANDOFF]", "").strip()
-        
-        # Mute the bot
+    # Handoff Safety Net: AI Flag OR Keyword match
+    handoff_keys = ["נציג", "אנושי", "מנהל", "human", "representative", "manager"]
+    if ai_res.get("needs_human_escalation") or any(k in Body.lower() for k in handoff_keys):
+        logger.info(f"🚨 Handoff triggered for {clean_from}")
         lead_record.bot_active = False
         lead_record.requires_human = True
-        
-        # Optional: Change reply text to confirm handoff if it's still default
-        if "שגיאה" in reply_text or "רגע" in reply_text:
-            reply_text = "מיד אעביר אותך לנציג אנושי, תודה על הסבלנות."
+        db.commit()
 
+    # Save bot response and send
     db.add(Message(lead_id=lead_record.id, sender_type="bot", content=reply_text))
     db.commit()
-    
     whatsapp_adapter.send_message(to_phone=clean_from, text=reply_text)
-    print(f"[TWILIO WEBHOOK] ✅ Successfully replied to {clean_from}")
 
     return Response(content=str(MessagingResponse()), media_type="application/xml")

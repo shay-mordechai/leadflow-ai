@@ -1,5 +1,5 @@
 # Professional English Comment:
-# Optimized Dockerfile for FastAPI. 
+# Optimized Dockerfile for FastAPI with AI processing capabilities (Whisper).
 # Uses a non-root user and slim base for enhanced security and reduced footprint.
 
 FROM python:3.11-slim
@@ -9,10 +9,14 @@ ENV PYTHONDONTWRITEBYTECODE=1
 ENV PYTHONUNBUFFERED=1
 ENV PYTHONPATH=/app
 
+# Set HuggingFace Cache directory to a writable location for the non-root user
+# This is critical for faster-whisper to download models without permission errors
+ENV HF_HOME=/app/data/huggingface_cache
+
 WORKDIR /app
 
 # Install system dependencies (Removed Postgres libs since we use SQLite)
-# FIXED: Replaced gcc with build-essential to include stdlib.h and C headers needed for PyAV
+# Includes ffmpeg and libraries for audio processing (PyAV/faster-whisper)
 RUN apt-get update && apt-get install -y --no-install-recommends \
     ffmpeg \
     libmagic1 \
@@ -32,14 +36,15 @@ COPY requirements.txt .
 
 # SECURITY & SIZE OPTIMIZATION: 
 # Using --no-cache-dir for all installations to keep the image lean.
+# Installing PyTorch CPU version explicitly to save massive amounts of space.
 RUN pip install --no-cache-dir torch torchvision torchaudio --index-url https://download.pytorch.org/whl/cpu
 RUN pip install --no-cache-dir -r requirements.txt
 
 # Copy the rest of the application code
 COPY . .
 
-# Create storage and data directories for SQLite and media
-RUN mkdir -p storage/audio data
+# Create storage and data directories for SQLite, media, and AI model caching
+RUN mkdir -p storage/audio data/huggingface_cache
 
 # SECURITY: Run as a non-privileged user. 
 # Prevents container breakout attacks and follows the Principle of Least Privilege.
@@ -51,6 +56,7 @@ EXPOSE 8000
 
 # Professional English Comment:
 # Gunicorn is configured with 1 worker for SQLite concurrency safety.
+# Timeout is set to 120s to allow AI models (Whisper/Gemini) time to process.
 # Logs are piped directly to the container engine.
 CMD ["gunicorn", "src.main:app", \
     "--workers", "1", \
