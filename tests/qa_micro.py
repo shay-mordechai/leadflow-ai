@@ -76,7 +76,7 @@ def run_micro_qa():
     
     # First, inject the lead so the system recognizes the incoming phone number
     webhook_url = f"{base_url}/api/v1/leads/webhook/{user_id}"
-    requests.post(webhook_url, json={"name": "Angry Lead", "phone": lead_phone, "source": "QA_Micro"})
+    requests.post(webhook_url, json={"name": "Angry Lead", "phone": lead_phone, "source": "MANUAL"})
     time.sleep(2) # Give the DB a moment to save the lead
     
     # Now, send the "angry" message triggering the Handoff protocol

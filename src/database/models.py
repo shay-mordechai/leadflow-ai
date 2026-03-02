@@ -10,7 +10,7 @@ from sqlalchemy.orm import relationship
 # --- IMPORT BASE & GUID FROM SESSION ---
 from src.database.session import Base, GUID
 
-# Security: Encryption wrapper for PII and OTPs
+# Security: Encryption wrapper for OTPs (Kept for security)
 from src.security.encryption import protector 
 
 # --- ENUMS ---
@@ -192,9 +192,9 @@ class Lead(Base):
     
     idempotency_key = Column(String, index=True, nullable=True)
     
-    # Security: Encrypted PII Fields
-    _name_encrypted = Column("name", String, nullable=True)
-    _phone_encrypted = Column("phone_number", String, nullable=True)
+    # Standard String Columns for High-Performance Queries
+    name = Column(String, nullable=True)
+    phone_number = Column(String, index=True, nullable=True)
     
     email = Column(String, nullable=True)
     city = Column(String, nullable=True)
@@ -224,21 +224,6 @@ class Lead(Base):
     sessions = relationship("CoachingSession", back_populates="lead")
     messages = relationship("Message", back_populates="lead", cascade="all, delete-orphan", order_by="Message.created_at")
     tags = relationship("Tag", secondary=lead_tag_association, back_populates="leads")
-
-    # Security: Encryption Getters/Setters
-    @property
-    def name(self):
-        return protector.decrypt(self._name_encrypted) if self._name_encrypted else None
-    @name.setter
-    def name(self, value):
-        self._name_encrypted = protector.encrypt(value) if value else None
-    
-    @property
-    def phone_number(self):
-        return protector.decrypt(self._phone_encrypted) if self._phone_encrypted else None
-    @phone_number.setter
-    def phone_number(self, value):
-        self._phone_encrypted = protector.encrypt(value) if value else None
 
 
 class Message(Base):

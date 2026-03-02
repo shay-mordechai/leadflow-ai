@@ -102,6 +102,7 @@ async def incoming_sms_message(
     # ------------------------------------------------------------------
     print(f"[TWILIO WEBHOOK] 👤 Processing Lead Message from {clean_from}")
     
+    # Identify or Create Lead - Reverting to the fast, index-optimized .like() query
     lead_record = db.query(Lead).filter(
         Lead.user_id == owner.id,
         Lead.phone_number.like(f"%{clean_from[-9:]}%")
