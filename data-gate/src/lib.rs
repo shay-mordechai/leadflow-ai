@@ -8,24 +8,23 @@ use serde_json::{json, Value};
 // Expanded to include common SSM secrets and tokens to prevent data leakage.
 const SENSITIVE_FIELDS: &[&str] = &[
     "password",
-"credit_card",
-"internal_token",
-"ssn",
-"api_key",
-"access_token",     // Added for OAuth/API token protection
-"refresh_token",    // Added for session token protection
-"db_password",      // Added for database credential protection
-"client_secret",    // Added for application secret protection
-"auth_token"        // General catch-all for auth tokens
+    "credit_card",
+    "internal_token",
+    "ssn",
+    "api_key",
+    "access_token",     // Added for OAuth/API token protection
+    "refresh_token",    // Added for session token protection
+    "db_password",      // Added for database credential protection
+    "client_secret",    // Added for application secret protection
+    "auth_token"        // General catch-all for auth tokens
 ];
 
-#[no_mangle]
-pub fn _start() {
+proxy_wasm::main! {{
     proxy_wasm::set_log_level(LogLevel::Info);
     proxy_wasm::set_root_context(|_| -> Box<dyn RootContext> {
         Box::new(DataHopRootContext)
     });
-}
+}}
 
 struct DataHopRootContext;
 
@@ -50,47 +49,17 @@ struct DataHopHttpContext {
 impl Context for DataHopHttpContext {}
 
 impl HttpContext for DataHopHttpContext {
-    fn on_http_response_body(&mut self, body_size: usize, end_of_stream: bool) -> Action {
-        if !self.should_redact {
-            return Action::Continue;
-        }
-
-        // Wait until we have the entire body
-        if !end_of_stream {
-            return Action::Pause;
-        }
-
-        // Get the response body. If we can't get it, just safely continue.
-        if let Some(body_bytes) = self.get_http_response_body(0, body_size) {
-            
-            // Convert to string. If not valid UTF-8, ignore and continue.
-            if let Ok(body_str) = String::from_utf8(body_bytes) {
+    fn on_http_response_headers(&mut self, _: usize, _: bool) -> Action {
+        // Check if the backend explicitly requested redaction via header
+        if let Some(ttl) = self.get_http_response_header("X-Data-TTL") {
+            if ttl == "1" {
+                info!("Data Hop Firewall: TTL restriction detected (TTL=1). Enabling redaction.");
+                self.should_redact = true;
                 
-                // Try to parse as JSON
-                match serde_json::from_str::<Value>(&body_str) {
-                    Ok(mut json_body) => {
-                        // Success parsing JSON! Now redact it.
-                        Self::redact_sensitive_fields(&mut json_body);
-
-                        // Convert back to string and replace the body
-                        let redacted_body_str = serde_json::to_string(&json_body).unwrap();
-                        
-                        // NOTE: proxy-wasm expects Bytes, not string slices.
-                        self.set_http_response_body(0, body_size, redacted_body_str.as_bytes());
-                    }
-                    Err(e) => {
-                        // NOT a valid JSON (could be a 503, 404 HTML, or empty body)
-                        // We log the warning but DO NOT panic! We let the original body pass through.
-                        warn!("Data Hop Firewall: Failed to parse response body as JSON (Error: {}). Passing raw body.", e);
-                    }
-                }
-            } else {
-                warn!("Data Hop Firewall: Response body is not valid UTF-8. Passing raw body.");
+                // Optionally remove the header so the client doesn't see it
+                self.set_http_response_header("X-Data-TTL", None);
             }
-        } else {
-            warn!("Data Hop Firewall: Empty body received.");
         }
-
         Action::Continue
     }
 
@@ -120,20 +89,16 @@ impl HttpContext for DataHopHttpContext {
                             info!("Data Hop Firewall: Response body redacted successfully.");
                         }
                         Err(e) => {
-                            warn!("Data Hop Firewall: Failed to serialize redacted JSON: {}", e);
-                            // In a fail-closed scenario, we might clear the body or return an error.
-                            // Here, we choose to clear the body to prevent data leakage.
-                            self.set_http_response_body(0, body_size, b"{\"error\": \"Internal Server Error: Serialization Failure\"}");
-                            self.set_http_response_header("Content-Type", Some("application/json"));
+                            warn!("Data Hop Firewall: Failed to serialize redacted JSON: {}. Passing raw body.", e);
+                            // Fail-safe: pass original body if serialization fails
+                            self.set_http_response_body(0, body_size, &body_bytes);
                         }
                     }
                 }
                 Err(e) => {
-                    warn!("Data Hop Firewall: Failed to parse response body as JSON: {}", e);
-                    // If parsing fails but redaction was required, we must not let the raw body pass.
-                    // Fail closed.
-                    self.set_http_response_body(0, body_size, b"{\"error\": \"Internal Server Error: Data Validation Failure\"}");
-                    self.set_http_response_header("Content-Type", Some("application/json"));
+                    warn!("Data Hop Firewall: Failed to parse response body as JSON: {}. Passing raw body.", e);
+                    // Fail-safe: If it's an HTML error page or empty, just pass it through without panicking
+                    self.set_http_response_body(0, body_size, &body_bytes);
                 }
             }
         }
