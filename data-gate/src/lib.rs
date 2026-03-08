@@ -50,33 +50,45 @@ struct DataHopHttpContext {
 impl Context for DataHopHttpContext {}
 
 impl HttpContext for DataHopHttpContext {
-    fn on_http_response_headers(&mut self, _num_headers: usize, _end_of_stream: bool) -> Action {
-        // Check for the "X-Data-TTL" header.
-        // If the TTL is 1 or less, it implies the data should not leave the current boundary unredacted.
-        if let Some(ttl_str) = self.get_http_response_header("X-Data-TTL") {
-            if let Ok(ttl) = ttl_str.parse::<i32>() {
-                if ttl <= 1 {
-                    info!("Data Hop Firewall: TTL restriction detected (TTL={}). Enabling redaction.", ttl);
-                    self.should_redact = true;
+    fn on_http_response_body(&mut self, body_size: usize, end_of_stream: bool) -> Action {
+        if !self.should_redact {
+            return Action::Continue;
+        }
+
+        // Wait until we have the entire body
+        if !end_of_stream {
+            return Action::Pause;
+        }
+
+        // Get the response body. If we can't get it, just safely continue.
+        if let Some(body_bytes) = self.get_http_response_body(0, body_size) {
+            
+            // Convert to string. If not valid UTF-8, ignore and continue.
+            if let Ok(body_str) = String::from_utf8(body_bytes) {
+                
+                // Try to parse as JSON
+                match serde_json::from_str::<Value>(&body_str) {
+                    Ok(mut json_body) => {
+                        // Success parsing JSON! Now redact it.
+                        Self::redact_sensitive_fields(&mut json_body);
+
+                        // Convert back to string and replace the body
+                        let redacted_body_str = serde_json::to_string(&json_body).unwrap();
+                        
+                        // NOTE: proxy-wasm expects Bytes, not string slices.
+                        self.set_http_response_body(0, body_size, redacted_body_str.as_bytes());
+                    }
+                    Err(e) => {
+                        // NOT a valid JSON (could be a 503, 404 HTML, or empty body)
+                        // We log the warning but DO NOT panic! We let the original body pass through.
+                        warn!("Data Hop Firewall: Failed to parse response body as JSON (Error: {}). Passing raw body.", e);
+                    }
                 }
+            } else {
+                warn!("Data Hop Firewall: Response body is not valid UTF-8. Passing raw body.");
             }
-        }
-
-        // Check for the "X-Data-Context" header.
-        // If the context is explicitly marked as "External", enforce redaction.
-        if let Some(context_str) = self.get_http_response_header("X-Data-Context") {
-            if context_str.eq_ignore_ascii_case("External") {
-                info!("Data Hop Firewall: External context detected. Enabling redaction.");
-                self.should_redact = true;
-            }
-        }
-
-        // If redaction is required, we must intercept the body.
-        // We remove the Content-Length header because the body size will change after redaction.
-        if self.should_redact {
-            self.set_http_response_header("Content-Length", None);
-            // We need to buffer the entire body to parse it as JSON.
-            // Returning Action::Continue here allows headers to pass, but we will pause in on_http_response_body.
+        } else {
+            warn!("Data Hop Firewall: Empty body received.");
         }
 
         Action::Continue
