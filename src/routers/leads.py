@@ -3,7 +3,7 @@ import logging
 import uuid
 from uuid import UUID
 import hashlib
-from datetime import datetime
+from datetime import datetime, timezone  # FIXED: Imported timezone for strict UTC handling
 from fastapi import APIRouter, HTTPException, status, Depends, Query, Request
 from sqlalchemy.orm import Session
 from pydantic import BaseModel, Field, EmailStr
@@ -148,7 +148,8 @@ async def receive_external_lead(
         if lead_data.idempotency_key:
             idemp_key = lead_data.idempotency_key
         else:
-            raw_key = f"{lead_data.phone}-{lead_data.source}-{datetime.utcnow().strftime('%Y-%m-%d')}"
+            # TIER 1 RELIABILITY: Using timezone-aware UTC datetime instead of naive utcnow()
+            raw_key = f"{lead_data.phone}-{lead_data.source}-{datetime.now(timezone.utc).strftime('%Y-%m-%d')}"
             idemp_key = hashlib.md5(raw_key.encode()).hexdigest()
 
         existing_lead = db.query(Lead).filter(
