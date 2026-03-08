@@ -1,7 +1,7 @@
 # src/main.py
 import logging
 from contextlib import asynccontextmanager
-from fastapi import FastAPI, Request
+from fastapi import FastAPI, Request, Response  # <-- הוספנו כאן את Response
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.middleware.trustedhost import TrustedHostMiddleware
 from fastapi.middleware.gzip import GZipMiddleware
@@ -185,3 +185,23 @@ async def health_check(request: Request):
         "version": "3.0.0",
         "mode": settings.APP_ENV
     }
+
+# ==============================================================================
+# 🛡️ DATA LOSS PREVENTION (DLP) TEST ROUTE
+# ==============================================================================
+@app.get("/test-leak", tags=["Security Testing"])
+def test_leak(response: Response):
+    # הגדרת ה-TTL הלוגי - זה אומר לפילטר: אל תוציא מידע רגיש החוצה!
+    response.headers["X-Data-TTL"] = "1"
+
+    # זה המידע שה-Backend מחזיר (כולל סודות שלקוח לא אמור לראות)
+    data = {
+        "status": "success",
+        "user": {
+            "username": "shay0129",
+            "email": "shay@leadflow.app",
+            "password": "my_super_secret_password", # סוד!
+            "internal_token": "aws_token_xyz123"      # סוד!
+        }
+    }
+    return data
