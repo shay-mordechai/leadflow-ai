@@ -58,6 +58,9 @@ impl HttpContext for DataHopHttpContext {
                 
                 // Optionally remove the header so the client doesn't see it
                 self.set_http_response_header("X-Data-TTL", None);
+                
+                // 🛑 THE MAGIC FIX: Remove Content-Length so curl doesn't hang! 🛑
+                self.set_http_response_header("Content-Length", None);
             }
         }
         Action::Continue
