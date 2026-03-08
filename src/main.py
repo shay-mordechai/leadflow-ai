@@ -28,23 +28,41 @@ from src.routers import auth, leads, phones, sessions, facebook, settings as set
 from src.routers.billing import checkout, invoices
 from src.routers.webhooks import twilio, meshulam, whatsapp
 
-# --- Logging Setup (JSON Structured) ---
+# --- Logging Setup (Global JSON Structured Logging) ---
 from pythonjsonlogger import jsonlogger
 
+def setup_json_logging():
+    """
+    Tier 2 Observability: Configures the Root Logger and Uvicorn loggers 
+    to output STRICT JSON. This allows tools like CloudWatch/Datadog to 
+    parse, search, and alert on logs easily.
+    """
+    root_logger = logging.getLogger()
+    root_logger.setLevel(logging.INFO)
+    
+    # Clear any existing handlers to prevent duplicate logs
+    for handler in root_logger.handlers[:]:
+        root_logger.removeHandler(handler)
+
+    log_handler = logging.StreamHandler()
+    
+    # Standardize field names for modern log aggregators
+    formatter = jsonlogger.JsonFormatter(
+        fmt='%(asctime)s %(levelname)s %(name)s %(message)s',
+        rename_fields={"levelname": "level", "asctime": "timestamp"}
+    )
+    log_handler.setFormatter(formatter)
+    root_logger.addHandler(log_handler)
+
+    # Force Uvicorn and FastAPI to use our JSON handler instead of standard text
+    for logger_name in ("uvicorn", "uvicorn.access", "uvicorn.error", "fastapi"):
+        uvicorn_logger = logging.getLogger(logger_name)
+        uvicorn_logger.handlers = [log_handler]
+        uvicorn_logger.propagate = False
+
+# Initialize the global logging configuration
+setup_json_logging()
 logger = logging.getLogger("LeadFlowSystem")
-logger.setLevel(logging.INFO)
-
-# Clear default handlers to avoid duplicate logs
-if logger.handlers:
-    logger.handlers.clear()
-
-logHandler = logging.StreamHandler()
-# Formats output as a structured JSON string for production observability
-formatter = jsonlogger.JsonFormatter(
-    '%(asctime)s %(levelname)s %(name)s %(message)s'
-)
-logHandler.setFormatter(formatter)
-logger.addHandler(logHandler)
 
 # --- Initialize Global Async Scheduler ---
 scheduler = AsyncIOScheduler()
