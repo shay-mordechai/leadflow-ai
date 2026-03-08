@@ -6,7 +6,8 @@ export default function robots(): MetadataRoute.Robots {
     rules: {
       userAgent: '*',
       allow: '/',
-      disallow: ['/dashboard/', '/api/'],
+      // Security/SEO: Prevent search engines from indexing private or API routes
+      disallow: ['/dashboard/', '/api/', '/webhooks/', '/onboarding/'],
     },
     sitemap: 'https://my-leads.app/sitemap.xml',
   };
