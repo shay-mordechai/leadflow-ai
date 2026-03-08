@@ -14,7 +14,8 @@ from slowapi import Limiter
 from slowapi.util import get_remote_address
 
 from src.database.session import get_db
-from src.database.models import Lead, User, LeadSource, LeadStatus
+# TIER 1 RELIABILITY: Imported WebhookDLQ and WebhookProvider for Fail-Safe queue
+from src.database.models import Lead, User, LeadSource, LeadStatus, WebhookDLQ, WebhookProvider
 from src.security.dependencies import get_current_user
 from src.services.communication.whatsapp import whatsapp_adapter
 
@@ -121,7 +122,15 @@ async def receive_external_lead(
     Webhook Endpoint.
     Security Risks: Public endpoint.
     Mitigation: Rate Limited. Validates UUID format. Idempotency Key protection.
+    Reliability: Wrapped in DLQ logic to prevent data loss on crashes.
     """
+    raw_payload = {}
+    try:
+        # Attempt to capture raw request JSON for DLQ fallback (Fail-Safe)
+        raw_payload = await request.json()
+    except Exception:
+        pass # Ignore parsing errors here, we'll use Pydantic model dump instead
+
     try:
         # 1. Security: Validate UUID format
         try:
@@ -193,9 +202,26 @@ async def receive_external_lead(
     except HTTPException as he:
         raise he
     except Exception as e:
+        # Rollback the broken transaction
         db.rollback()
         logger.error(f"Error processing webhook: {str(e)}")
+        
+        # --- TIER 1 RELIABILITY: DEAD LETTER QUEUE (DLQ) ---
+        try:
+            fallback_payload = raw_payload if raw_payload else (lead_data.model_dump(mode='json') if lead_data else {"raw": "Unknown payload"})
+            
+            dlq_entry = WebhookDLQ(
+                provider=WebhookProvider.CUSTOM,
+                payload=fallback_payload,
+                error_reason=str(e)
+            )
+            db.add(dlq_entry)
+            db.commit()
+            logger.warning(f"🚨 Webhook failed but saved to Dead Letter Queue (DLQ) for User {user_id}. Lead Data saved for manual retry.")
+        except Exception as dlq_err:
+            logger.critical(f"🔥 FATAL: Could not save failed webhook to DLQ. Data Loss Risk! Error: {str(dlq_err)}")
+
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail="Error processing lead"
+            detail="Error processing lead. Our team has been notified."
         )

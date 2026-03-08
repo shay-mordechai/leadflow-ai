@@ -3,7 +3,7 @@ import uuid
 import enum
 from datetime import datetime
 from sqlalchemy import (
-    Column, String, DateTime, Boolean, Text, ForeignKey, Enum, Integer, func, Table
+    Column, String, DateTime, Boolean, Text, ForeignKey, Enum, Integer, func, Table, JSON
 )
 from sqlalchemy.orm import relationship
 
@@ -57,6 +57,12 @@ class SessionStatus(str, enum.Enum):
     COMPLETED = "COMPLETED"
     FAILED = "FAILED"
 
+class WebhookProvider(str, enum.Enum):
+    TWILIO = "TWILIO"
+    VONAGE = "VONAGE"
+    META = "META"
+    CUSTOM = "CUSTOM"
+
 
 # --- ASSOCIATION TABLES ---
 # Many-to-Many relationship between Leads and Tags
@@ -84,9 +90,10 @@ class User(Base):
     subscription_status = Column(Enum(SubscriptionStatus), default=SubscriptionStatus.TRIAL, nullable=False)
     
     is_active = Column(Boolean, default=True)
-    created_at = Column(DateTime(timezone=True), server_default=func.now())
+    created_at = Column(DateTime(timezone=True), server_default=func.now(), index=True)
+    updated_at = Column(DateTime(timezone=True), onupdate=func.now())
+    
     last_login_ip = Column(String, nullable=True)
-
     last_known_city = Column(String, nullable=True)
     last_known_country = Column(String, nullable=True)
 
@@ -131,8 +138,9 @@ class Tag(Base):
     __tablename__ = "tags"
 
     id = Column(GUID(), primary_key=True, default=uuid.uuid4)
-    user_id = Column(GUID(), ForeignKey("users.id", ondelete="CASCADE"), nullable=False)
-    name = Column(String, nullable=False)
+    user_id = Column(GUID(), ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True)
+    name = Column(String, nullable=False, index=True)
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
     
     user = relationship("User", back_populates="tags")
     leads = relationship("Lead", secondary=lead_tag_association, back_populates="tags")
@@ -148,7 +156,8 @@ class PhoneNumber(Base):
     provider_id = Column(String, nullable=True)
     is_active = Column(Boolean, default=True)
     created_at = Column(DateTime(timezone=True), server_default=func.now())
-    owner_id = Column(GUID(), ForeignKey("users.id"))
+    owner_id = Column(GUID(), ForeignKey("users.id", ondelete="CASCADE"), index=True)
+    
     owner = relationship("User", back_populates="phone_numbers")
 
 
@@ -164,6 +173,7 @@ class BusinessProfile(Base):
     custom_instructions = Column(Text, nullable=True)
     created_at = Column(DateTime(timezone=True), server_default=func.now())
     updated_at = Column(DateTime(timezone=True), onupdate=func.now())
+    
     user = relationship("User", back_populates="business_profile")
 
 
@@ -179,6 +189,7 @@ class AIAgent(Base):
     is_active = Column(Boolean, default=True)
     created_at = Column(DateTime(timezone=True), server_default=func.now())
     updated_at = Column(DateTime(timezone=True), onupdate=func.now())
+    
     user = relationship("User", back_populates="ai_agent")
     phone_number = relationship("PhoneNumber")
 
@@ -190,14 +201,15 @@ class Lead(Base):
     # Security: Indexed user_id for fast IDOR-safe queries
     user_id = Column(GUID(), ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True)
     
+    # Tier 1 Security: Protects against double webhook processing
     idempotency_key = Column(String, index=True, nullable=True)
     
     # Standard String Columns for High-Performance Queries
     name = Column(String, nullable=True)
     phone_number = Column(String, index=True, nullable=True)
-    
-    email = Column(String, nullable=True)
+    email = Column(String, index=True, nullable=True)
     city = Column(String, nullable=True)
+    
     source = Column(Enum(LeadSource), default=LeadSource.MANUAL, nullable=False)
     status = Column(Enum(LeadStatus), default=LeadStatus.NEW, nullable=False, index=True)
 
@@ -210,9 +222,11 @@ class Lead(Base):
     coach_feedback = Column(Text, nullable=True)
     suggested_reply = Column(Text, nullable=True)
     
-    needs_followup = Column(Boolean, default=False)
-    followup_date = Column(DateTime, nullable=True)
+    needs_followup = Column(Boolean, default=False, index=True)
+    followup_date = Column(DateTime(timezone=True), nullable=True, index=True)
+    
     created_at = Column(DateTime(timezone=True), server_default=func.now(), index=True)
+    updated_at = Column(DateTime(timezone=True), onupdate=func.now())
     
     # --- AI Feedback Loop (Tier 2) ---
     ai_rating = Column(Integer, nullable=True)  # 1 for Like, -1 for Dislike
@@ -234,24 +248,44 @@ class Message(Base):
     __tablename__ = "messages"
 
     id = Column(String(36), primary_key=True, default=lambda: str(uuid.uuid4()))
-    lead_id = Column(GUID(), ForeignKey("leads.id", ondelete="CASCADE"), nullable=False)
+    lead_id = Column(GUID(), ForeignKey("leads.id", ondelete="CASCADE"), nullable=False, index=True)
     
     # 'user' means the Lead/Customer sent it. 'bot' means the AI sent it.
     sender_type = Column(String(10), nullable=False) 
-    
     content = Column(Text, nullable=False)
-    created_at = Column(DateTime(timezone=True), server_default=func.now())
+    
+    created_at = Column(DateTime(timezone=True), server_default=func.now(), index=True)
 
     # Relationship back to the Lead
     lead = relationship("Lead", back_populates="messages")
+
+
+class WebhookDLQ(Base):
+    """
+    Tier 1 Reliability: Dead Letter Queue (DLQ).
+    Stores incoming webhooks that failed processing (e.g., Gemini API timeout)
+    so they can be replayed later. Ensures no lead is ever lost.
+    """
+    __tablename__ = "webhook_dlq"
+    
+    id = Column(GUID(), primary_key=True, default=uuid.uuid4)
+    provider = Column(Enum(WebhookProvider), nullable=False, index=True)
+    payload = Column(JSON, nullable=False)
+    error_reason = Column(Text, nullable=True)
+    
+    is_resolved = Column(Boolean, default=False, index=True)
+    retry_count = Column(Integer, default=0)
+    
+    created_at = Column(DateTime(timezone=True), server_default=func.now(), index=True)
+    updated_at = Column(DateTime(timezone=True), onupdate=func.now())
 
 
 class MediaInteraction(Base):
     __tablename__ = "media_interactions"
     
     id = Column(GUID(), primary_key=True, default=uuid.uuid4)
-    user_id = Column(GUID(), ForeignKey("users.id", ondelete="CASCADE"), nullable=False)
-    lead_id = Column(GUID(), ForeignKey("leads.id", ondelete="SET NULL"), nullable=True)
+    user_id = Column(GUID(), ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True)
+    lead_id = Column(GUID(), ForeignKey("leads.id", ondelete="SET NULL"), nullable=True, index=True)
     
     file_path = Column(String, nullable=False)
     message_text = Column(Text, nullable=True) 
@@ -273,12 +307,13 @@ class Integration(Base):
     __tablename__ = "integrations"
     
     id = Column(GUID(), primary_key=True, default=uuid.uuid4)
-    user_id = Column(GUID(), ForeignKey("users.id", ondelete="CASCADE"), nullable=False)
+    user_id = Column(GUID(), ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True)
     
     platform_name = Column(String, nullable=False)
     access_token = Column(String, nullable=False)
     webhook_url = Column(String, nullable=True)
     created_at = Column(DateTime(timezone=True), server_default=func.now())
+    
     user = relationship("User", back_populates="integrations")
 
 
@@ -287,15 +322,15 @@ class CoachingSession(Base):
 
     id = Column(GUID(), primary_key=True, default=uuid.uuid4)
     
-    user_id = Column(GUID(), ForeignKey("users.id"), nullable=False)
-    user = relationship("User", back_populates="coaching_sessions")
-
-    lead_id = Column(GUID(), ForeignKey("leads.id"), nullable=True)
-    lead = relationship("Lead", back_populates="sessions")
+    user_id = Column(GUID(), ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True)
+    lead_id = Column(GUID(), ForeignKey("leads.id", ondelete="CASCADE"), nullable=True, index=True)
     
     audio_file_path = Column(String, nullable=False)
-    status = Column(Enum(SessionStatus), default=SessionStatus.QUEUED)
+    status = Column(Enum(SessionStatus), default=SessionStatus.QUEUED, index=True)
     transcript = Column(Text, nullable=True)
     summary = Column(Text, nullable=True)
     
-    created_at = Column(DateTime(timezone=True), server_default=func.now())
+    created_at = Column(DateTime(timezone=True), server_default=func.now(), index=True)
+    
+    user = relationship("User", back_populates="coaching_sessions")
+    lead = relationship("Lead", back_populates="sessions")
