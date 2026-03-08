@@ -1,10 +1,14 @@
 # src/routers/billing/invoices.py
 import logging
+import io
+import uuid
 from datetime import datetime
-from typing import List, Optional
+from typing import List
 from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi.responses import StreamingResponse
 from pydantic import BaseModel
 from sqlalchemy.orm import Session
+from fpdf import FPDF
 
 # Internal Project Imports
 from src.security.dependencies import get_current_user
@@ -20,7 +24,6 @@ class SubscriptionInfo(BaseModel):
     """Schema representing the user's active subscription state."""
     plan_tier: PlanTier
     is_active: bool
-    # TODO: Add fields for next_billing_date, payment_method_last4, etc., once integrated.
 
 class InvoiceResponse(BaseModel):
     """Schema representing a single historical invoice/receipt."""
@@ -30,6 +33,69 @@ class InvoiceResponse(BaseModel):
     currency: str = "ILS"
     date: datetime
     download_url: str
+
+# --- PDF Generation Helper ---
+
+def generate_invoice_pdf(invoice_id: str, user_name: str, user_email: str, amount: float, date_str: str) -> io.BytesIO:
+    """
+    Generates a professional PDF Tax Invoice / Receipt in memory.
+    Using English to avoid RTL/Font embedding complexities in the MVP phase.
+    """
+    pdf = FPDF()
+    pdf.add_page()
+    
+    # Header
+    pdf.set_font("helvetica", "B", 20)
+    pdf.cell(0, 15, "TAX INVOICE / RECEIPT", ln=True, align="C")
+    pdf.ln(10)
+    
+    # Company Info (Your SaaS)
+    pdf.set_font("helvetica", "B", 12)
+    pdf.cell(0, 6, "MyLeads AI", ln=True)
+    pdf.set_font("helvetica", "", 10)
+    pdf.cell(0, 6, "Email: support@my-leads.app", ln=True)
+    pdf.cell(0, 6, "Website: https://my-leads.app", ln=True)
+    pdf.ln(10)
+    
+    # Customer Info & Invoice Details
+    pdf.set_font("helvetica", "B", 12)
+    pdf.cell(100, 8, "Billed To:", border=0)
+    pdf.cell(90, 8, "Invoice Details:", border=0, ln=True)
+    
+    pdf.set_font("helvetica", "", 10)
+    pdf.cell(100, 6, f"Name: {user_name}", border=0)
+    pdf.cell(90, 6, f"Invoice No: {invoice_id}", border=0, ln=True)
+    pdf.cell(100, 6, f"Email: {user_email}", border=0)
+    pdf.cell(90, 6, f"Date: {date_str}", border=0, ln=True)
+    pdf.ln(10)
+    
+    # Table Header
+    pdf.set_font("helvetica", "B", 11)
+    pdf.set_fill_color(240, 240, 240)
+    pdf.cell(140, 10, " Description", border=1, fill=True)
+    pdf.cell(50, 10, " Amount (ILS)", border=1, ln=True, align="C", fill=True)
+    
+    # Table Row
+    pdf.set_font("helvetica", "", 11)
+    pdf.cell(140, 10, " MyLeads AI - PRO Plan (Monthly Subscription)", border=1)
+    pdf.cell(50, 10, f" {amount:.2f}", border=1, ln=True, align="C")
+    
+    # Total
+    pdf.ln(5)
+    pdf.set_font("helvetica", "B", 12)
+    pdf.cell(140, 10, "TOTAL PAID:", border=0, align="R")
+    pdf.cell(50, 10, f" ILS {amount:.2f}", border=0, ln=True, align="C")
+    
+    # Footer
+    pdf.ln(20)
+    pdf.set_font("helvetica", "I", 10)
+    pdf.cell(0, 10, "Thank you for upgrading your business with MyLeads AI!", ln=True, align="C")
+    pdf.cell(0, 5, "This is a computer-generated document. No signature is required.", ln=True, align="C")
+    
+    # Output to BytesIO buffer
+    pdf_bytes = pdf.output()
+    return io.BytesIO(pdf_bytes)
+
 
 # --- Routes ---
 
@@ -53,13 +119,22 @@ async def list_user_invoices(
     db: Session = Depends(get_db)
 ):
     """
-    TODO: Core B2B SaaS Requirement.
-    Retrieves a history of all generated invoices/receipts for the user's accounting needs.
-    Currently acts as a placeholder until a digital invoicing provider is integrated.
+    Retrieves a history of all generated invoices/receipts.
+    Mocked implementation until DB Table 'invoices' is created.
     """
     logger.info(f"User {user.email} requested invoice history.")
     
-    # Returning an empty list safely handles frontend requests without breaking the UI.
+    if user.plan_tier == PlanTier.PRO:
+        # Generate a mock invoice for PRO users to demonstrate the UI
+        return [{
+            "id": f"INV-{str(user.id)[:8].upper()}",
+            "transaction_id": f"TXN-{uuid.uuid4().hex[:10].upper()}",
+            "amount": 199.00,
+            "currency": "ILS",
+            "date": datetime.utcnow(),
+            "download_url": f"/api/billing/invoices/INV-{str(user.id)[:8].upper()}/pdf"
+        }]
+    
     return []
 
 
@@ -70,16 +145,30 @@ async def download_invoice_pdf(
     db: Session = Depends(get_db)
 ):
     """
-    TODO: Core B2B SaaS Requirement.
-    Fetches the official PDF tax invoice/receipt for a specific transaction.
+    Generates and returns the official PDF tax invoice for download.
     """
-    logger.warning(
-        f"User {user.email} attempted to download invoice PDF: {invoice_id}. "
-        "Feature not implemented yet."
+    logger.info(f"Generating PDF invoice {invoice_id} for user {user.email}.")
+    
+    # Ensure only PRO users (or users who actually paid) can download
+    if user.plan_tier != PlanTier.PRO:
+        raise HTTPException(status_code=403, detail="No active paid invoices found.")
+    
+    date_str = datetime.utcnow().strftime("%B %d, %Y")
+    
+    # Generate the PDF in memory
+    pdf_buffer = generate_invoice_pdf(
+        invoice_id=invoice_id,
+        user_name=user.name,
+        user_email=user.email,
+        amount=199.00, # Mocked price for now
+        date_str=date_str
     )
     
-    # HTTP 501 Not Implemented is the REST standard for future endpoints
-    raise HTTPException(
-        status_code=status.HTTP_501_NOT_IMPLEMENTED,
-        detail="PDF Invoice generation is currently under development."
+    # Stream the file back to the client directly
+    return StreamingResponse(
+        pdf_buffer,
+        media_type="application/pdf",
+        headers={
+            "Content-Disposition": f"attachment; filename=MyLeads_Invoice_{invoice_id}.pdf"
+        }
     )

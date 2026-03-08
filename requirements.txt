@@ -1,54 +1,146 @@
-# --- Core Framework & Server ---
-fastapi==0.110.0
-uvicorn[standard]==0.27.1
-gunicorn==23.0.0            # FIXED: Was 21.2.0 (High Vuln)
-prettytable==3.10.0
-
-# --- Database & Models ---
-SQLAlchemy==2.0.28
-psycopg2-binary==2.9.9
-pydantic==2.6.3
-pydantic-settings==2.2.1
-boto3==1.34.58
-alembic==1.13.1
-python-dotenv==1.0.1
-
-# --- UI & Utilities ---
-jinja2==3.1.6                # FIXED: Was 3.1.3 (Vuln found)
-python-multipart==0.0.22    # FIXED: Was 0.0.9 (Path Traversal Vuln)
-aiofiles==23.2.1
-email-validator==2.1.1
-
-# --- HTTP Clients & Networking ---
-httpx==0.27.0
-requests==2.32.5            # FIXED: Was 2.31.0 (Leak Vuln)
-
-# --- Email & Communication ---
-fastapi-mail==1.4.1
-
-# --- PDF Generation ---
-fpdf2==2.8.5                # FIXED: Was 2.7.8 (ReDoS Vuln)
-
-# --- AI & Processing ---
-#openai-whisper>=20231117 
-faster-whisper>=1.0.3       # OPTIMIZED: Replaced openai-whisper for low RAM (1GB EC2)
-openai==1.13.3
-google-generativeai==0.4.0
-
-# --- Security & Auth ---
-bleach==6.1.0
-cryptography==44.0.2        # FIXED: Was 42.0.5 (Multiple Vulns)
+aiofiles==25.1.0
+aiohappyeyeballs==2.6.1
+aiohttp==3.13.3
+aiohttp-retry==2.9.1
+aiosignal==1.4.0
+alembic==1.18.3
+annotated-doc==0.0.4
+annotated-types==0.7.0
+anyio==4.12.1
+APScheduler==3.11.2
+attrs==25.4.0
+Authlib==1.6.7
+bandit==1.9.3
 bcrypt==4.0.1
-passlib[bcrypt]==1.7.4
-python-jose[cryptography]==3.5.0 # FIXED: Was 3.3.0 (Algorithm Confusion Vuln)
+beautifulsoup4==4.14.3
+bleach==6.1.0
+boto3==1.42.37
+botocore==1.42.37
+certifi==2026.1.4
+cffi==2.0.0
+charset-normalizer==3.4.4
+click==8.3.1
+cryptography==46.0.4
+decorator==5.2.1
+defusedxml==0.7.1
+Deprecated==1.3.1
+distro==1.9.0
+dnspython==2.8.0
+dparse==0.6.4
+ecdsa==0.19.1
+email-validator==2.3.0
+fastapi==0.128.0
+filelock==3.20.3
+fonttools==4.61.1
+fpdf2==2.8.6
+frozenlist==1.8.0
+google-ai-generativelanguage==0.6.15
+google-api-core==2.25.2
+google-api-python-client==2.189.0
+google-auth==2.49.0.dev0
+google-auth-httplib2==0.3.0
+google-generativeai==0.8.6
+googleapis-common-protos==1.72.0
+greenlet==3.3.1
+grpcio==1.76.0
+grpcio-status==1.71.2
+gunicorn==25.0.1
+h11==0.16.0
+httpcore==1.0.9
+httplib2==0.31.2
+httptools==0.7.1
+httpx==0.28.1
+idna==3.11
+Jinja2==3.1.6
+jiter==0.13.0
+jmespath==1.1.0
+joblib==1.5.3
+limits==5.7.0
+lxml==6.0.2
+Mako==1.3.10
+markdown-it-py==4.0.0
+MarkupSafe==3.0.3
+marshmallow==4.2.2
+mdurl==0.1.2
+multidict==6.7.1
+nltk==3.9.2
+openai==2.16.0
+packaging==26.0
+passlib==1.7.4
+pillow==12.1.1
+plivo==4.59.5
+prettytable==3.17.0
+propcache==0.4.1
+proto-plus==1.27.1
+protobuf==5.29.5
+psycopg2-binary==2.9.11
+pyasn1==0.6.2
+pyasn1_modules==0.4.2
+pycparser==3.0
+pydantic==2.12.5
+pydantic-settings==2.12.0
+pydantic_core==2.41.5
+Pygments==2.19.2
+PyJWT==2.10.1
+pyparsing==3.3.2
+python-dateutil==2.9.0.post0
+python-dotenv==1.2.1
+python-jose==3.5.0
+python-json-logger==4.0.0
+python-multipart==0.0.22
+PyYAML==6.0.3
+regex==2026.1.15
+requests==2.32.5
+rich==14.3.2
+rsa==4.9.1
+ruamel.yaml==0.19.1
+s3transfer==0.16.0
+safety==3.7.0
+safety-schemas==0.0.16
+sentry-sdk==2.53.0
+shellingham==1.5.4
+six==1.17.0
 slowapi==0.1.9
-
-# --- Telephony Providers ---
-twilio==9.10.1              # FIXED: Was 8.13.0 (CRITICAL Vuln)
-plivo>=4.36.0
-vonage==3.14.0
-
-# --- Observability & Background Tasks (NEW: Tier 2) ---
-sentry-sdk==2.0.1           # Error tracking and performance monitoring
-python-json-logger==2.0.7   # Structured JSON logging for production
-apscheduler==3.10.4         # Background task scheduling (Billing/Trials)
+sniffio==1.3.1
+soupsieve==2.8.3
+SQLAlchemy==2.0.46
+starlette==0.50.0
+stevedore==5.6.0
+telnyx==4.14.0
+tenacity==9.1.4
+tomlkit==0.14.0
+tqdm==4.67.3
+twilio==9.10.0
+typer==0.21.2
+typing-inspection==0.4.2
+typing_extensions==4.15.0
+tzlocal==5.3.1
+uritemplate==4.2.0
+urllib3==2.6.3
+uvicorn==0.40.0
+uvloop==0.22.1
+vonage==4.7.2
+vonage-account==1.1.1
+vonage-application==2.0.1
+vonage-http-client==1.5.1
+vonage-jwt==1.1.5
+vonage-messages==1.6.2
+vonage-network-auth==1.0.2
+vonage-network-number-verification==1.0.2
+vonage-network-sim-swap==1.1.2
+vonage-number-insight==1.0.7
+vonage-numbers==1.0.5
+vonage-sms==1.1.6
+vonage-subaccounts==1.0.4
+vonage-users==1.2.1
+vonage-utils==1.1.4
+vonage-verify==2.1.0
+vonage-verify-legacy==1.0.1
+vonage-video==1.5.1
+vonage-voice==1.4.0
+watchfiles==1.1.1
+wcwidth==0.5.3
+webencodings==0.5.1
+websockets==16.0
+wrapt==2.1.1
+yarl==1.22.0
