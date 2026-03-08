@@ -3,6 +3,7 @@ import { cookies } from "next/headers";
 import { redirect } from "next/navigation";
 import { Activity, Users, PhoneCall, Zap, ArrowLeft, Link as LinkIcon, ExternalLink } from "lucide-react";
 import Link from "next/link";
+import CopyWebhook from "@/components/CopyWebhook";
 
 async function getUserData() {
     const cookieStore = await cookies();
@@ -131,16 +132,12 @@ export default async function DashboardOverview() {
                             <li className="flex items-start gap-3">
                                 <div className="bg-blue-100 text-blue-600 w-6 h-6 rounded-full flex items-center justify-center font-bold text-xs shrink-0 mt-0.5">2</div>
                                 <div className="w-full">
-                                    <span className="font-bold block text-slate-800">אפשרות ב': לאנשי מקצוע / בוני אתרים</span>
-                                    העתיקו את "כתובת הקליטה" הסודית שלכם והעבירו אותה לאיש הטכני שלכם:
-                                    <div className="flex items-center justify-between bg-white border border-slate-300 rounded-xl p-3 w-full shadow-inner mt-2">
-                                        <code className="text-xs text-blue-600 font-mono text-left block w-full overflow-x-auto select-all" dir="ltr">
-                                            {webhookUrl}
-                                        </code>
-                                    </div>
-                                </div>
-                            </li>
-                        </ul>
+                                <span className="font-bold block text-slate-800">אפשרות ב': לאנשי מקצוע / בוני אתרים</span>
+                                העתיקו את "כתובת הקליטה" הסודית שלכם והעבירו אותה לאיש הטכני שלכם:
+                                <CopyWebhook url={webhookUrl} />
+                            </div>
+                        </li>
+                    </ul>
                     </div>
 
                 </div>
