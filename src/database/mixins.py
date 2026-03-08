@@ -1,4 +1,4 @@
-# Professional English Comment:
+# src/database/mixins.py
 # Multi-tenancy mixin with cross-database support.
 # Uses a custom GUID type to ensure compatibility between SQLite and PostgreSQL.
 

@@ -1,6 +1,6 @@
 # 🔒 MyLeads AI - Internal Architecture & Secrets
 **CLASSIFICATION: TOP SECRET / INTERNAL USE ONLY**
-**LAST AUDIT:** March 1, 2026
+**LAST AUDIT:** March 9, 2026
 
 This document maps the Production configuration requirements.
 ⚠️ **SECURITY NOTE:** NEVER hardcode real secret values in this document. All sensitive values are injected at runtime via AWS Systems Manager (SSM) or GitHub Secrets.
@@ -59,6 +59,7 @@ Database changes are strictly managed via **Alembic Migrations** to ensure zero 
 * **`messages`**: Stores Conversational Memory (Chat history) between the AI and Leads to prevent the "Goldfish Problem".
 * **`tags` & `lead_tag_association`**: Stores logical groupings for leads (e.g., 'Morning Class', 'Kiryat Netafim') to allow targeted AI voice broadcasts.
 * **`sessions`**: Stores metadata for uploaded audio files transcribed via local Faster-Whisper.
+* **`webhook_dlq`**: Dead Letter Queue. Stores failed incoming webhooks to ensure 0% data loss during API outages.
 
 ---
 
@@ -94,23 +95,34 @@ podman exec -it leadflow-backend alembic upgrade head
 
 ## 4. 🛡️ Implemented Core Capabilities (Tier 1 & Tier 2)
 
-* **Security & Network:**
-* Cloudflare-aware Rate Limiting (`slowapi`) deployed on Auth (`/login`, `/register`) to block brute-force attacks.
-* HSTS, CSP, and XSS Protection Headers active via global middleware.
+* **Security & Network (Zero Trust Architecture):**
+* **WASM DLP Firewall:** A custom Rust-compiled WebAssembly filter runs directly inside the Envoy proxy. It uses a "Fail-Closed" architecture to inspect outbound JSON payloads and redact sensitive credentials (Passwords, Tokens) in real-time, preventing Information Disclosure (Data Bleed).
+* **Rate Limiting:** Cloudflare-aware Rate Limiting (`slowapi`) deployed on Auth (`/login`, `/register`) to block brute-force attacks.
+* **Hardened Headers:** HSTS, CSP, and XSS Protection Headers active via global middleware.
 
 
 * **Reliability & Ops:**
-* Sentry SDK integrated for instant crash reporting (with PII obfuscation setup).
-* Webhook Idempotency active (`leads.idempotency_key`) to silently absorb duplicate requests.
-* Graceful Shutdown implemented (waits for active DB transactions to finish before server stops).
+* **Dead Letter Queue (DLQ):** Webhooks are wrapped in robust transactional logic. If a webhook processing fails, it rolls back the DB and saves the raw payload into `webhook_dlq` for manual recovery.
+* **Idempotency Shield:** Webhook Idempotency active (`leads.idempotency_key`) to silently absorb duplicate requests and prevent retry storms.
+* **Crash Reporting:** Sentry SDK integrated for instant crash reporting (with PII obfuscation setup).
+* **Graceful Shutdown:** Implemented to wait for active DB transactions to finish before the server stops.
+
+
+* **Business & Billing:**
+* **Automated PDF Invoices:** High-performance, on-the-fly generation of Tax Invoices/Receipts using `fpdf2`, streamed directly to the client without polluting the server disk.
+* **Subscription Enforcer:** Background Task Scheduler (`APScheduler`) active. Runs at 00:00 UTC to downgrade expired Trials.
+
+
+* **UX & SEO:**
+* **Dynamic SEO:** Fully implemented `sitemap.xml`, `robots.txt`, and OpenGraph/Twitter Cards for social media sharing.
+* **Typography:** Upgraded to 'Heebo' font globally for crisp, modern Hebrew (RTL) rendering.
 
 
 * **AI, CRM & Advanced Features:**
 * **Omnichannel Inbox & Human Handoff:** Protects the owner's personal WhatsApp. The AI detects when a human is needed (using `[HANDOFF]` keyword), mutes itself (`bot_active=False`), and flags the lead in the dashboard.
-* **Voice-to-Action Broadcasts:** Business owners can send audio notes to the system. The local Whisper AI transcribes the audio, parses intent, identifies the target `Tags`, and executes a broadcast to matching leads.
-* **Conversational Memory:** AI dynamically remembers past interactions with specific leads for deep, context-aware sales flows.
-* **Privacy-First Audio Transcription:** Local `faster-whisper` model processes sensitive audio directly on the EC2 server using FFmpeg (No 3rd party audio API calls).
-* **Background Task Scheduler** (`APScheduler`) active. Runs at 00:00 UTC to downgrade expired Trials.
+* **Voice-to-Action Broadcasts:** Local Whisper AI transcribes audio notes, parses intent, identifies target `Tags`, and executes broadcasts.
+* **Conversational Memory:** AI dynamically remembers past interactions with specific leads.
+* **AI Feedback Loop:** Dedicated endpoint to track user ratings (Thumbs Up/Down) on AI responses to continuously improve prompts.
 
 
 
