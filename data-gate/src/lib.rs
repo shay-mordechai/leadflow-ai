@@ -1,22 +1,36 @@
-// src/lib.rs
+/*
+ * Data Hop Firewall - Envoy WebAssembly Filter (Rust)
+ * --------------------------------------------------
+ * Architecture:
+ * - Layer 7 Egress Inspection: Operates as a Transparent Proxy within Envoy's filter chain.
+ * - Zero-Trust Redaction: Only activates when the backend signals sensitive data via 'X-Data-TTL: 1'.
+ * - Performance-Oriented: Compiled to WASM for near-native execution speed with memory isolation.
+ * - Fail-Closed Design: If JSON parsing or serialization fails during a sensitive response, 
+ * the filter intercepts and blocks the payload, returning a generic security exception 
+ * to prevent accidental data leakage (Information Disclosure).
+ * - Protocol Integrity: Automatically strips 'Content-Length' during redaction to allow 
+ * Envoy to recalculate size or use chunked encoding, preventing HTTP client hangs.
+
+ Designed by: Shay Mordechai
+ */
+
 use log::{info, warn};
 use proxy_wasm::traits::*;
 use proxy_wasm::types::*;
 use serde_json::{json, Value};
 
 // Define the sensitive fields that must be redacted.
-// Expanded to include common SSM secrets and tokens to prevent data leakage.
 const SENSITIVE_FIELDS: &[&str] = &[
     "password",
     "credit_card",
     "internal_token",
     "ssn",
     "api_key",
-    "access_token",     // Added for OAuth/API token protection
-    "refresh_token",    // Added for session token protection
-    "db_password",      // Added for database credential protection
-    "client_secret",    // Added for application secret protection
-    "auth_token"        // General catch-all for auth tokens
+    "access_token",
+    "refresh_token",
+    "db_password",
+    "client_secret",
+    "auth_token"
 ];
 
 proxy_wasm::main! {{
@@ -56,10 +70,8 @@ impl HttpContext for DataHopHttpContext {
                 info!("Data Hop Firewall: TTL restriction detected (TTL=1). Enabling redaction.");
                 self.should_redact = true;
                 
-                // Optionally remove the header so the client doesn't see it
+                // Remove headers to prevent leakage and avoid Content-Length mismatches
                 self.set_http_response_header("X-Data-TTL", None);
-                
-                // 🛑 THE MAGIC FIX: Remove Content-Length so curl doesn't hang! 🛑
                 self.set_http_response_header("Content-Length", None);
             }
         }
@@ -72,36 +84,38 @@ impl HttpContext for DataHopHttpContext {
         }
 
         if !end_of_stream {
-            // Buffer the body until the stream is complete.
-            // This is necessary for JSON parsing, as partial JSON is invalid.
+            // Buffer the body until the stream is complete for full JSON validation.
             return Action::Pause;
         }
 
-        // Retrieve the full response body.
+        // Retrieve the response body for inspection.
         if let Some(body_bytes) = self.get_http_response_body(0, body_size) {
             match serde_json::from_slice::<Value>(&body_bytes) {
                 Ok(mut json_body) => {
-                    // Recursively redact sensitive fields.
+                    // Recursive redaction logic.
                     redact_sensitive_fields(&mut json_body);
 
-                    // Serialize the modified JSON back to a string.
                     match serde_json::to_string(&json_body) {
                         Ok(new_body) => {
-                            // Replace the response body with the redacted version.
                             self.set_http_response_body(0, body_size, new_body.as_bytes());
                             info!("Data Hop Firewall: Response body redacted successfully.");
                         }
                         Err(e) => {
-                            warn!("Data Hop Firewall: Failed to serialize redacted JSON: {}. Passing raw body.", e);
-                            // Fail-safe: pass original body if serialization fails
-                            self.set_http_response_body(0, body_size, &body_bytes);
+                            // FAIL-CLOSED: Block the response if serialization fails.
+                            warn!("Data Hop Firewall: Serialization error: {}. Blocking response.", e);
+                            let err = b"{\"error\": \"Security Exception: Content Processing Failed\"}";
+                            self.set_http_response_body(0, body_size, err);
+                            self.set_http_response_header("Content-Type", Some("application/json"));
                         }
                     }
                 }
                 Err(e) => {
-                    warn!("Data Hop Firewall: Failed to parse response body as JSON: {}. Passing raw body.", e);
-                    // Fail-safe: If it's an HTML error page or empty, just pass it through without panicking
-                    self.set_http_response_body(0, body_size, &body_bytes);
+                    // FAIL-CLOSED: Block if JSON is malformed while redaction is active.
+                    // This prevents attackers from bypassing redaction via malformed payloads.
+                    warn!("Data Hop Firewall: JSON parse error: {}. Blocking response.", e);
+                    let err = b"{\"error\": \"Security Exception: Data Integrity Failure\"}";
+                    self.set_http_response_body(0, body_size, err);
+                    self.set_http_response_header("Content-Type", Some("application/json"));
                 }
             }
         }
@@ -110,19 +124,16 @@ impl HttpContext for DataHopHttpContext {
     }
 }
 
-/// Recursively traverses a JSON Value and redacts sensitive fields.
+/// Recursively traverses a JSON Value and redacts sensitive fields defined in SENSITIVE_FIELDS.
 fn redact_sensitive_fields(value: &mut Value) {
     match value {
         Value::Object(map) => {
-            // Use clone to iterate safely while modifying the original map
             let keys: Vec<String> = map.keys().cloned().collect();
             for key in keys {
-                // Check if the key is in our list of sensitive fields (case-insensitive check is safer).
                 let key_lower = key.to_lowercase();
                 if SENSITIVE_FIELDS.iter().any(|&s| s == key_lower.as_str()) {
                     map.insert(key, json!("[REDACTED]"));
                 } else if let Some(val) = map.get_mut(&key) {
-                    // Recursively process nested objects and arrays.
                     redact_sensitive_fields(val);
                 }
             }

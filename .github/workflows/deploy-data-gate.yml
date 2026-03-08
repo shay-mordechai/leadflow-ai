@@ -86,6 +86,7 @@ jobs:
           # so Envoy can reach localhost:8000 and the outside world via port 10000
           podman run -d --name leadflow-data-gate \
             --network host \
+            -e ENVOY_UID=0 \
             --replace \
             ${{ secrets.AWS_ACCOUNT_ID }}.dkr.ecr.eu-north-1.amazonaws.com/leadflow-data-gate:latest
             
