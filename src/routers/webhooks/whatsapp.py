@@ -2,6 +2,8 @@
 import logging
 import hmac
 import hashlib
+from datetime import datetime
+from zoneinfo import ZoneInfo # FIXED: Modern timezone handling for AI temporal awareness
 from fastapi import APIRouter, Request, Query, HTTPException, Depends, status
 from fastapi.responses import PlainTextResponse
 from sqlalchemy.orm import Session
@@ -169,8 +171,16 @@ async def whatsapp_event_listener(request: Request):
             if msg_type == "text":
                 text_body = message["text"]["body"]
                 
+                # --- TIER 1 RELIABILITY: TEMPORAL AWARENESS ---
+                # Inject current local time so the AI Agent correctly calculates "tomorrow" or "next week"
+                israel_tz = ZoneInfo("Asia/Jerusalem")
+                current_time_il = datetime.now(israel_tz).strftime("%A, %Y-%m-%d %H:%M:%S")
+                
+                time_aware_system_prompt = f"{agent.system_prompt}\n\n[SYSTEM CLOCK]\nThe current Date and Time in Israel is: {current_time_il}\nUse this exact time as your reference point for scheduling or answering temporal questions."
+                
+                # Note: Next step in Phase 3 is injecting 'chat_history' here from the Message table
                 ai_response = await ai_engine.analyze_interaction(
-                    system_prompt=agent.system_prompt,
+                    system_prompt=time_aware_system_prompt,
                     text_input=text_body,
                     sender_name=sender_name
                 )
