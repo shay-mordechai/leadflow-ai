@@ -3,6 +3,7 @@
 .env.*
 !.env.example
 certs/
+target/
 *.pem
 *.key
 *.crt

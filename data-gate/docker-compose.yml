@@ -1,0 +1,16 @@
+# docker-compose.yml
+services:
+  envoy:
+    build: .
+    image: 804594767511.dkr.ecr.eu-north-1.amazonaws.com/leadflow-data-gate:latest
+    container_name: leadflow-data-gate
+    ports:
+      - "10000:10000"
+      - "9901:9901"
+    networks:
+      - envoy-net
+    restart: unless-stopped
+
+networks:
+  envoy-net:
+    driver: bridge

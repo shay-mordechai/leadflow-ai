@@ -1,0 +1,20 @@
+[package]
+name = "data-hop-firewall"
+version = "0.1.0"
+edition = "2021"
+description = "Envoy Wasm Filter for L7 Data Bleed Prevention"
+
+[lib]
+crate-type = ["cdylib"]
+
+[dependencies]
+proxy-wasm = "0.2.2"
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"
+log = "0.4"
+
+[profile.release]
+opt-level = 3
+lto = true
+codegen-units = 1
+panic = "abort"

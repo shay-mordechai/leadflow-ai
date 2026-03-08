@@ -1,0 +1,102 @@
+# .github/workflows/deploy-data-gate.yml
+name: Deploy Data Gate (Envoy WASM Firewall)
+
+on:
+  push:
+    branches: [ "main" ]
+    paths:
+      - 'data-gate/**' # Only run if the firewall code/config changes
+
+jobs:
+  build-and-deploy:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+
+      - name: Install Rust Toolchain (WASM)
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: wasm32-unknown-unknown
+
+      - name: Build WASM Filter
+        working-directory: ./data-gate
+        run: cargo build --target wasm32-unknown-unknown --release
+
+      - name: Configure AWS Credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: eu-north-1
+
+      - name: Login to Amazon ECR
+        id: login-ecr
+        uses: aws-actions/amazon-ecr-login@v2
+
+      - name: Build, Tag, and Push Docker Image
+        working-directory: ./data-gate
+        env:
+          ECR_REGISTRY: ${{ steps.login-ecr.outputs.registry }}
+          ECR_REPOSITORY: leadflow-data-gate
+          IMAGE_TAG: latest
+        run: |
+          docker build -t $ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG .
+          docker push $ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG
+
+      # --- SECURE SSH CONNECTION (Matches production.yml) ---
+      - name: Setup SSH & Cloudflared
+        run: |
+          wget -q https://github.com/cloudflare/cloudflared/releases/latest/download/cloudflared-linux-amd64.deb
+          sudo dpkg -i cloudflared-linux-amd64.deb
+          mkdir -p ~/.ssh/
+          echo "${{ secrets.EC2_SSH_KEY }}" > ~/.ssh/id_rsa
+          chmod 600 ~/.ssh/id_rsa
+          cat > ~/.ssh/config <<EOF
+          Host production
+            HostName ${{ secrets.CF_SSH_HOSTNAME }}
+            User ec2-user
+            IdentityFile ~/.ssh/id_rsa
+            StrictHostKeyChecking no
+            UserKnownHostsFile /dev/null
+            ProxyCommand /usr/local/bin/cloudflared access ssh --hostname %h --id ${{ secrets.CF_SERVICE_ID }} --secret ${{ secrets.CF_SERVICE_SECRET }}
+          EOF
+
+      - name: Generate Deploy Script
+        run: |
+          ECR_TEMP_TOKEN=$(aws ecr get-login-password --region eu-north-1)
+          
+          cat <<EOF > deploy_data_gate.sh
+          #!/bin/bash
+          set -e
+          
+          echo "🔐 Logging into AWS ECR using temporary CI token..."
+          echo "${ECR_TEMP_TOKEN}" | podman login --username AWS --password-stdin ${{ secrets.AWS_ACCOUNT_ID }}.dkr.ecr.eu-north-1.amazonaws.com
+          
+          echo "🔄 Pulling fresh Data Gate image..."
+          podman pull ${{ secrets.AWS_ACCOUNT_ID }}.dkr.ecr.eu-north-1.amazonaws.com/leadflow-data-gate:latest
+          
+          echo "🛑 Stopping old Data Gate container..."
+          podman stop leadflow-data-gate || true
+          podman rm -f leadflow-data-gate || true
+          
+          echo "🚀 Starting new Data Gate container..."
+          # Note: We use --network host to align with the rest of your architecture 
+          # so Envoy can reach localhost:8000 and the outside world via port 10000
+          podman run -d --name leadflow-data-gate \
+            --network host \
+            --replace \
+            ${{ secrets.AWS_ACCOUNT_ID }}.dkr.ecr.eu-north-1.amazonaws.com/leadflow-data-gate:latest
+            
+          echo "🧹 Cleaning up old images..."
+          podman image prune -a -f
+          
+          echo "✅ Data Gate Deployment Finished!"
+          EOF
+
+      - name: Execute on Production
+        run: |
+          chmod +x deploy_data_gate.sh
+          scp deploy_data_gate.sh production:~/deploy_data_gate.sh
+          ssh production "~/deploy_data_gate.sh && rm -f ~/deploy_data_gate.sh"

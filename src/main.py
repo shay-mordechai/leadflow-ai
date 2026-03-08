@@ -89,6 +89,10 @@ if settings.SENTRY_DSN:
 
 app = FastAPI(title=settings.APP_NAME, version="3.0.0", lifespan=lifespan)
 
+# ==============================================================================
+# 🛡️ SECURITY MIDDLEWARE
+# ==============================================================================
+
 @app.middleware("http")
 async def add_security_headers(request: Request, call_next):
     """
@@ -107,6 +111,22 @@ async def add_security_headers(request: Request, call_next):
     # Strict Content Security Policy
     response.headers["Content-Security-Policy"] = "default-src 'self' https: data: 'unsafe-inline' 'unsafe-eval';"
     
+    return response
+
+@app.middleware("http")
+async def dlp_trigger_middleware(request: Request, call_next):
+    """
+    Tier 2 Security Middleware: Data Loss Prevention (DLP) Trigger.
+    Automatically appends the 'X-Data-TTL' header to all API and Webhook responses.
+    This header signals the Envoy WASM filter to scan the payload for sensitive data.
+    """
+    response = await call_next(request)
+    
+    # Target only specific API boundaries for DLP scanning to optimize performance
+    path = request.url.path
+    if path.startswith("/api/v1") or path.startswith("/webhooks") or path == "/test-leak":
+        response.headers["X-Data-TTL"] = "1"
+        
     return response
     
 # --- Rate Limiting Configuration ---
@@ -129,7 +149,7 @@ async def global_exception_handler(request: Request, exc: Exception):
         content={"detail": "Internal Server Error. Our team has been notified."}
     )
 
-# --- Middleware Stack ---
+# --- General Middleware Stack ---
 
 # 1. Trusted Host Middleware (Mitigates Host Header injection attacks)
 app.add_middleware(
@@ -194,7 +214,7 @@ def test_leak(response: Response):
     Test endpoint designed to verify Envoy WASM Filter (DLP) functionality.
     The X-Data-TTL header triggers the filter to redact sensitive fields.
     """
-    # Trigger Envoy WASM censorship logic
+    # Trigger Envoy WASM censorship logic (Now mostly handled by middleware, kept here for direct testing)
     response.headers["X-Data-TTL"] = "1"
 
     # Simulated response containing sensitive credentials
