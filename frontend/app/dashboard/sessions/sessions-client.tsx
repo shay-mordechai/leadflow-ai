@@ -2,6 +2,7 @@
 "use client";
 
 import { useState } from "react";
+import toast from "react-hot-toast"; // Added toast import
 import { Upload, FileAudio, Loader2, ChevronLeft, CheckCircle2, Clock, AlertCircle, FileText } from "lucide-react";
 
 export default function SessionsClient({ initialSessions, leads, token }: any) {
@@ -11,7 +12,10 @@ export default function SessionsClient({ initialSessions, leads, token }: any) {
     const [selectedFile, setSelectedFile] = useState<File | null>(null);
 
     const handleUpload = async () => {
-        if (!selectedFile || !selectedLead) return;
+        if (!selectedFile || !selectedLead) {
+            toast.error("אנא בחר ליד וקובץ הקלטה.");
+            return;
+        }
         setIsUploading(true);
 
         const formData = new FormData();
@@ -28,10 +32,21 @@ export default function SessionsClient({ initialSessions, leads, token }: any) {
                 const newSession = await res.json();
                 setSessions([newSession, ...sessions]);
                 setSelectedFile(null);
-                alert("ההקלטה הועלתה והתמלול התחיל ברקע!");
+                
+                // Replaced alert with a stylish success toast
+                toast.success("ההקלטה הועלתה והתמלול התחיל ברקע! 🎙️", {
+                    duration: 4000,
+                    style: {
+                        borderRadius: '12px',
+                        background: '#1e293b', // slate-800
+                        color: '#fff',
+                    },
+                });
+            } else {
+                toast.error("שגיאה בהעלאת הקובץ.");
             }
         } catch (e) {
-            alert("שגיאה בהעלאת הקובץ.");
+            toast.error("שגיאת תקשורת בהעלאת הקובץ.");
         } finally {
             setIsUploading(false);
         }
