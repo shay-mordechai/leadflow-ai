@@ -5,6 +5,7 @@ import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { Search, Loader2, Lock, PhoneCall, AlertCircle, Clock, CheckCircle2, MapPin } from "lucide-react";
 import Link from "next/link";
+import toast from "react-hot-toast"; // Added toast import
 
 interface PhoneResult {
     number: string;
@@ -108,7 +109,7 @@ export default function PhoneForm({ userData, token }: { userData: UserData, tok
     // Scenario 3: User is PRO and needs to choose a region and number
     const handleSearch = async () => {
         if (!selectedRegion) {
-            setError("אנא בחר אזור פעילות תחילה");
+            toast.error("אנא בחר אזור פעילות תחילה");
             return;
         }
 
@@ -131,12 +132,17 @@ export default function PhoneForm({ userData, token }: { userData: UserData, tok
             const data = await res.json();
             
             if (data.length === 0) {
-                setError(`לא מצאנו מספרים פנויים לאזור ${REGIONS.find(r => r.id === selectedRegion)?.label}. נסה אזור אחר או "ארצי".`);
+                const errMsg = `לא מצאנו מספרים פנויים לאזור ${REGIONS.find(r => r.id === selectedRegion)?.label}. נסה אזור אחר או "ארצי".`;
+                setError(errMsg);
+                toast.error("אין מספרים פנויים כרגע לאזור זה");
             } else {
                 setAvailableNumbers(data);
+                toast.success(`נמצאו ${data.length} מספרים פנויים!`, { icon: '🔍' });
             }
         } catch (err) {
-            setError("שגיאה בחיפוש מספרים. אנא נסה שוב מאוחר יותר.");
+            const errMsg = "שגיאה בחיפוש מספרים. אנא נסה שוב מאוחר יותר.";
+            setError(errMsg);
+            toast.error(errMsg);
         } finally {
             setIsSearching(false);
         }
@@ -163,13 +169,25 @@ export default function PhoneForm({ userData, token }: { userData: UserData, tok
             const data = await res.json();
 
             if (res.ok) {
-                alert("🎉 המספר נרכש בהצלחה! צוות המערכת מחבר אותו כעת למטא.");
+                // Replaced alert with a stylish success toast
+                toast.success("המספר נרכש בהצלחה! מחברים למטא... 🚀", {
+                    duration: 5000,
+                    style: {
+                        borderRadius: '12px',
+                        background: '#334155',
+                        color: '#fff',
+                    },
+                });
                 router.refresh(); 
             } else {
-                setError(data.detail || "שגיאה ברכישת המספר.");
+                const errMsg = data.detail || "שגיאה ברכישת המספר.";
+                setError(errMsg);
+                toast.error(errMsg);
             }
         } catch (err) {
-            setError("שגיאת תקשורת עם השרת.");
+            const errMsg = "שגיאת תקשורת עם השרת.";
+            setError(errMsg);
+            toast.error(errMsg);
         } finally {
             setPurchasingNumber(null);
         }

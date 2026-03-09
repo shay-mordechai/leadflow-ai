@@ -4,6 +4,7 @@
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { Gift, CreditCard, Loader2 } from "lucide-react";
+import toast from "react-hot-toast"; // Added toast import
 
 export default function BillingForm({ token }: { token: string }) {
     const router = useRouter();
@@ -29,13 +30,24 @@ export default function BillingForm({ token }: { token: string }) {
             const data = await res.json();
 
             if (res.ok) {
-                alert(`🎉 ${data.message}`);
+                // Replaced alert with a beautiful success toast
+                toast.success(`🎉 ${data.message}`, {
+                    style: {
+                        borderRadius: '12px',
+                        background: '#1e293b',
+                        color: '#fff',
+                    },
+                });
                 router.refresh(); // Reload the page to show the new PRO banner
             } else {
-                setError(data.detail || "קוד קופון לא חוקי או שפג תוקפו.");
+                const errorMsg = data.detail || "קוד קופון לא חוקי או שפג תוקפו.";
+                setError(errorMsg);
+                toast.error(errorMsg); // Added error toast
             }
         } catch (err) {
-            setError("שגיאת תקשורת עם השרת.");
+            const errMsg = "שגיאת תקשורת עם השרת.";
+            setError(errMsg);
+            toast.error(errMsg);
         } finally {
             setIsLoading(false);
         }
@@ -43,8 +55,14 @@ export default function BillingForm({ token }: { token: string }) {
 
     const handlePaymentClick = () => {
         // Here you would redirect to Meshulam's payment page URL
-        // Example: window.location.href = "https://meshulam.co.il/p/your-page-code";
-        alert("מעבר לדף תשלום מאובטח של משולם... (בקרוב)");
+        toast("מעבר לדף תשלום מאובטח של משולם... (בקרוב)", {
+            icon: '💳',
+            style: {
+                borderRadius: '12px',
+                background: '#1e293b',
+                color: '#fff',
+            },
+        });
     };
 
     return (

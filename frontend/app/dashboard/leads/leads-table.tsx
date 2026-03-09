@@ -2,7 +2,8 @@
 "use client";
 
 import { useState } from "react";
-import { Search, Phone, Mail, FileText, ChevronDown } from "lucide-react";
+import { Search, Phone, Mail, FileText, ChevronDown, Copy } from "lucide-react";
+import toast from "react-hot-toast"; // Added toast import for UX improvements
 
 interface Lead {
     id: string;
@@ -27,6 +28,21 @@ export default function LeadsTable({ initialLeads }: { initialLeads: Lead[] }) {
 
     const toggleExpand = (id: string) => {
         setExpandedLeadId(expandedLeadId === id ? null : id);
+    };
+
+    // UX Touch: Click to copy lead information
+    const handleCopyToClipboard = (text: string, label: string, e: React.MouseEvent) => {
+        e.stopPropagation(); // Prevent opening the accordion
+        navigator.clipboard.writeText(text);
+        toast.success(`${label} הועתק ללוח`, {
+            icon: '📋',
+            style: {
+                borderRadius: '10px',
+                background: '#1e293b',
+                color: '#fff',
+                fontSize: '14px'
+            },
+        });
     };
 
     if (initialLeads.length === 0) {
@@ -71,7 +87,11 @@ export default function LeadsTable({ initialLeads }: { initialLeads: Lead[] }) {
                                 onClick={() => toggleExpand(lead.id)}
                             >
                                 <div className="col-span-3 font-medium text-slate-800">{lead.name}</div>
-                                <div className="col-span-3 flex items-center gap-2 text-slate-600">
+                                <div 
+                                    className="col-span-3 flex items-center gap-2 text-slate-600 hover:text-blue-600 transition"
+                                    onClick={(e) => handleCopyToClipboard(lead.phone_number, "מספר הטלפון", e)}
+                                    title="לחץ להעתקה"
+                                >
                                     <Phone className="w-3 h-3" />
                                     <span dir="ltr">{lead.phone_number}</span>
                                 </div>
@@ -99,7 +119,10 @@ export default function LeadsTable({ initialLeads }: { initialLeads: Lead[] }) {
                                 <div className="px-4 pb-4 pt-2 bg-slate-50/50 border-t border-slate-50">
                                     <div className="grid grid-cols-2 gap-4 text-sm">
                                         <div className="space-y-3">
-                                            <div className="flex items-center gap-2 text-slate-600">
+                                            <div 
+                                                className={`flex items-center gap-2 text-slate-600 ${lead.email ? 'cursor-pointer hover:text-blue-600' : ''}`}
+                                                onClick={(e) => lead.email ? handleCopyToClipboard(lead.email, "האימייל", e) : e.stopPropagation()}
+                                            >
                                                 <Mail className="w-4 h-4" />
                                                 <span>{lead.email || "אין אימייל"}</span>
                                             </div>
@@ -110,9 +133,20 @@ export default function LeadsTable({ initialLeads }: { initialLeads: Lead[] }) {
                                         
                                         {/* AI Summary / Transcript */}
                                         <div className="bg-white p-3 rounded-lg border border-slate-200 shadow-sm">
-                                            <div className="flex items-center gap-2 mb-2 font-bold text-slate-700 text-xs">
-                                                <FileText className="w-4 h-4 text-blue-500" />
-                                                תקציר שיחה (AI)
+                                            <div className="flex items-center justify-between mb-2">
+                                                <div className="flex items-center gap-2 font-bold text-slate-700 text-xs">
+                                                    <FileText className="w-4 h-4 text-blue-500" />
+                                                    תקציר שיחה (AI)
+                                                </div>
+                                                {lead.summary_text && (
+                                                    <button 
+                                                        onClick={(e) => handleCopyToClipboard(lead.summary_text!, "תקציר השיחה", e)}
+                                                        className="text-slate-400 hover:text-blue-500 p-1"
+                                                        title="העתק תקציר"
+                                                    >
+                                                        <Copy className="w-3 h-3" />
+                                                    </button>
+                                                )}
                                             </div>
                                             <p className="text-xs text-slate-600 leading-relaxed whitespace-pre-wrap">
                                                 {lead.summary_text || "עדיין אין תקציר לשיחה זו."}
