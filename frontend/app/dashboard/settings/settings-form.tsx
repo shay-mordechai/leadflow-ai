@@ -4,6 +4,7 @@
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { Loader2, Info } from "lucide-react";
+import toast from "react-hot-toast"; // Added toast import
 
 export default function SettingsForm({ initialData, token }: { initialData: any, token: string }) {
     const router = useRouter();
@@ -67,13 +68,20 @@ export default function SettingsForm({ initialData, token }: { initialData: any,
             });
 
             if (res.ok) {
-                alert("✅ מוח ה-AI עודכן בהצלחה!");
+                // Replaced alert with a beautiful success toast
+                toast.success("מוח ה-AI עודכן בהצלחה! 🧠", {
+                    style: {
+                        borderRadius: '12px',
+                        background: '#334155', // slate-700
+                        color: '#fff',
+                    },
+                });
                 router.refresh();
             } else {
-                alert("❌ שגיאה בשמירת ההגדרות.");
+                toast.error("שגיאה בשמירת ההגדרות.");
             }
         } catch (error) {
-            alert("❌ שגיאת תקשורת.");
+            toast.error("שגיאת תקשורת עם השרת.");
         } finally {
             setIsLoading(false);
         }
