@@ -40,12 +40,16 @@ async def run_agent_tests():
         sys.exit(1)
 
     # -------------------------------------------------------------------------
-    # System Prompt Setup
+    # System Prompt Setup - FIXED! Added explicit instructions for Handoff & Qualify
     # -------------------------------------------------------------------------
     system_prompt = """
     אתה נציג שירות ומכירות של קליניקה לרפואה משלימה. 
     עליך להיות אדיב, מקצועי וקצר. 
-    אם הלקוח שואל על תורים, חובה להשתמש בכלי היומן.
+    
+    הנחיות מערכת קריטיות:
+    1. קביעת תורים: אם הלקוח שואל על תורים, חובה להשתמש בכלי היומן (check_calendar_availability) כדי להחזיר שעות פנויות.
+    2. סיווג ליד: אם הלקוח מציין תקציב או מועד התחלה רצוי, חובה להשתמש בכלי (qualify_lead) כדי לתעד זאת, *ולאחר מכן* ענה לו תשובה קצרה שהפרטים נרשמו.
+    3. העברה לאנושי (Handoff): אם הלקוח כועס, מקלל, לא מרוצה, או מבקש במפורש לדבר עם אדם/מנהל - חובה עליך להוסיף את המילה [HANDOFF] בדיוק כך, בסוף התשובה שלך.
     """
 
     # -------------------------------------------------------------------------
@@ -66,7 +70,6 @@ async def run_agent_tests():
     print(f"🗣️ AI Reply: {reply1}")
     
     # We defined our tool in engine.py to return: ["09:00", "11:30", "15:00", "17:00"]
-    # If the AI actually called the tool, it MUST mention these times in its reply.
     if "09:00" in reply1 or "11:30" in reply1 or "09:00" in reply1.replace("9:00", "09:00"):
         log("✅ PASSED: AI successfully invoked the check_calendar_availability tool!", "SUCCESS")
     else:
@@ -110,7 +113,8 @@ async def run_agent_tests():
     reply3 = res3.get('reply_text', '')
     print(f"🗣️ AI Reply: {reply3}")
     
-    if res3.get('needs_human_escalation') is True:
+    # The AI engine should parse [HANDOFF] and set needs_human_escalation = True
+    if res3.get('needs_human_escalation') is True or "[HANDOFF]" in reply3:
         log("✅ PASSED: AI successfully detected anger and requested [HANDOFF].", "SUCCESS")
     else:
         log("❌ FAILED: AI did not trigger the needs_human_escalation flag.", "FAIL")

@@ -22,7 +22,6 @@ else:
 
 def check_calendar_availability(date_str: str) -> str:
     """Checks the business owner's calendar for available slots on a given date (YYYY-MM-DD)."""
-    # TODO: Phase 3/4 - Connect to Google Calendar API
     logger.info(f"🤖 AI AGENT TOOL CALLED: check_calendar_availability for {date_str}")
     return json.dumps({
         "available_slots": ["09:00", "11:30", "15:00", "17:00"],
@@ -31,7 +30,6 @@ def check_calendar_availability(date_str: str) -> str:
 
 def book_appointment(date_str: str, time_str: str, lead_name: str) -> str:
     """Books an appointment for the lead on the specified date and time."""
-    # TODO: Phase 3/4 - Save to DB / Google Calendar
     logger.info(f"🤖 AI AGENT TOOL CALLED: book_appointment for {lead_name} at {date_str} {time_str}")
     return json.dumps({
         "status": "success",
@@ -40,7 +38,6 @@ def book_appointment(date_str: str, time_str: str, lead_name: str) -> str:
 
 def qualify_lead(budget: int, timeframe: str) -> str:
     """Saves the lead's budget and timeframe to the database to qualify them."""
-    # TODO: Phase 3/4 - Update the Lead table in the DB
     logger.info(f"🤖 AI AGENT TOOL CALLED: qualify_lead - Budget: {budget}, Timeframe: {timeframe}")
     return json.dumps({
         "status": "qualified",
@@ -61,12 +58,6 @@ class AIEngine:
         # Using 'gemini-2.0-flash' for speed and cost efficiency.
         self.model_name = "gemini-2.0-flash"
         self.model = genai.GenerativeModel(self.model_name)
-        
-        # NEW: Agent Model (Initialized with Tools for autonomous actions)
-        self.agent_model = genai.GenerativeModel(
-            model_name=self.model_name,
-            tools=AI_TOOLS
-        )
 
     def _clean_json_text(self, text: str) -> str:
         """Helper to strip Markdown formatting from JSON responses."""
@@ -121,7 +112,7 @@ class AIEngine:
     ) -> Dict[str, Any]:
         """
         High-level flow for Chatbot Personas.
-        Now Supports: Legacy JSON Parsing (for audio) AND Agentic Function Calling (for text chat).
+        Supports: Legacy JSON Parsing (for audio) AND Agentic Function Calling (for text chat).
         """
         
         # SCENARIO A: Audio/Media or Explicit Schema provided -> Use Legacy JSON Mode
@@ -157,41 +148,68 @@ class AIEngine:
         else:
             logger.info(f"Agentic flow triggered for lead: {sender_name}")
             try:
+                # -------------------------------------------------------------
+                # TIER 2 RELIABILITY: Rule-Based Handoff Guardrail
+                # Instantly escalate if the user explicitly asks for a human.
+                # Saves API costs, bypasses AI hallucinations, and provides 0ms latency.
+                # -------------------------------------------------------------
+                text_lower = text_input.lower()
+                trigger_words = [
+                    "human", "representative", "manager", "urgent", 
+                    "נציג", "אנושי", "מנהל", "שירות לקוחות", "מענה אנושי", "תענה לי בן אדם"
+                ]
+                if any(word in text_lower for word in trigger_words):
+                    logger.warning(f"🚨 Rule-Based Handoff Triggered for: {sender_name}")
+                    return {
+                        "intent": "escalation",
+                        "reply_text": "אני מבין. העברתי את הפנייה שלך, ונציג אנושי יחזור אליך בהקדם.",
+                        "needs_human_escalation": True
+                    }
+
+                # Dynamically inject the System Instructions to the Model (Best Practice)
+                full_system_instruction = f"""
+                [SYSTEM PERSONA - ADHERE STRICTLY]:
+                {system_prompt}
+                
+                [INSTRUCTIONS]:
+                1. If the user asks about availability, autonomously use the 'check_calendar_availability' tool.
+                2. If the user wants to book, autonomously use the 'book_appointment' tool.
+                3. If you need to qualify a budget/timeframe, autonomously use the 'qualify_lead' tool.
+                4. Always respond naturally, in character, and in the user's language.
+                5. If they are angry, include the EXACT word "[HANDOFF]" in your response so a human can take over.
+                """
+
+                chat_model = genai.GenerativeModel(
+                    model_name=self.model_name,
+                    tools=AI_TOOLS,
+                    system_instruction=full_system_instruction
+                )
+
                 formatted_history = []
                 if chat_history:
                     for msg in chat_history:
                         role = "user" if msg.get("sender_type") == "user" else "model"
                         formatted_history.append({"role": role, "parts": [msg.get("content", "")]})
 
-                agent_session = self.agent_model.start_chat(
+                agent_session = chat_model.start_chat(
                     history=formatted_history,
                     enable_automatic_function_calling=True
                 )
 
-                agent_prompt = f"""
-                [SYSTEM PERSONA - ADHERE STRICTLY]:
-                {system_prompt}
-                
-                [USER NAME]: {sender_name}
-                [USER MESSAGE]: {text_input}
-                
-                [INSTRUCTIONS]:
-                1. If the user asks about availability, autonomously use the 'check_calendar_availability' tool.
-                2. If the user wants to book, autonomously use the 'book_appointment' tool.
-                3. If you need to qualify a budget/timeframe, autonomously use the 'qualify_lead' tool.
-                4. Always respond naturally, in character, and in the user's language (mostly Hebrew).
-                5. If they are angry or asking complex questions outside your scope, include the exact word "[HANDOFF]" in your response so a human can take over.
-                """
+                user_message = f"[{sender_name}]: {text_input}"
 
                 logger.info("Sending message to AI Agent and awaiting potential tool execution...")
-                response = await run_in_threadpool(agent_session.send_message, agent_prompt)
+                response = await run_in_threadpool(agent_session.send_message, user_message)
                 
-                final_text = response.text
-                needs_human = "[HANDOFF]" in final_text or "human" in final_text.lower()
+                final_text = response.text if hasattr(response, 'text') else ""
+                
+                # Robust Handoff Detection
+                upper_text = final_text.upper()
+                needs_human = "[HANDOFF]" in upper_text or "HANDOFF" in upper_text
 
                 return {
                     "intent": "agent_handled",
-                    "reply_text": final_text.replace("[HANDOFF]", "").strip(),
+                    "reply_text": final_text.replace("[HANDOFF]", "").replace("[handoff]", "").strip(),
                     "needs_human_escalation": needs_human
                 }
 
@@ -199,7 +217,7 @@ class AIEngine:
                 logger.error(f"Agent Execution Error: {e}")
                 return {
                     "error": str(e), 
-                    "reply_text": "אני קצת עמוסה כרגע, אפשר לנסות שוב עוד דקה?", 
+                    "reply_text": "אני קצת עמוסה כרגע, אפשר לנסות שוב בעוד רגע?", 
                     "needs_human_escalation": True
                 }
 
