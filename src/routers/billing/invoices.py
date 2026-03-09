@@ -132,7 +132,7 @@ async def list_user_invoices(
             "amount": 199.00,
             "currency": "ILS",
             "date": datetime.utcnow(),
-            "download_url": f"/api/billing/invoices/INV-{str(user.id)[:8].upper()}/pdf"
+            "download_url": f"/api/v1/billing/invoices/{f'INV-{str(user.id)[:8].upper()}'}/pdf"
         }]
     
     return []
