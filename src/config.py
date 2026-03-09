@@ -3,7 +3,7 @@ import os
 import boto3
 import logging
 import requests
-from pydantic_settings import BaseSettings
+from pydantic_settings import BaseSettings, SettingsConfigDict
 from botocore.exceptions import ClientError
 from typing import List, Dict, Optional
 
@@ -80,6 +80,10 @@ load_aws_configurations()
 
 # --- 3. Define Settings Class ---
 class Settings(BaseSettings):
+    """
+    Centralized Application Settings.
+    Migrated to Pydantic V2 SettingsConfigDict.
+    """
     # --- Core Configuration ---
     APP_NAME: str = "LeadFlow AI"
     APP_ENV: str = "development"
@@ -105,7 +109,7 @@ class Settings(BaseSettings):
     # --- Telephony Providers ---
     TWILIO_ACCOUNT_SID: str = ""
     TWILIO_AUTH_TOKEN: str = ""
-    TWILIO_WHATSAPP_NUMBER: str = ""  # NEW: The WhatsApp sender number from Twilio
+    TWILIO_WHATSAPP_NUMBER: str = ""
     
     VONAGE_API_KEY: str = ""
     VONAGE_API_SECRET: str = ""
@@ -116,7 +120,7 @@ class Settings(BaseSettings):
     SIGNALWIRE_AUTH_TOKEN: str = ""
     SIGNALWIRE_SPACE_URL: str = ""
     
-    # --- Meta / WhatsApp (Kept for backwards compatibility if needed) ---
+    # --- Meta / WhatsApp ---
     META_ACCESS_TOKEN: str = ""
     WHATSAPP_PHONE_ID: str = ""
     WHATSAPP_VERIFY_TOKEN: str = "my_secure_token"
@@ -137,9 +141,12 @@ class Settings(BaseSettings):
 
     SENTRY_DSN: Optional[str] = None
     
-    class Config:
-        case_sensitive = True
-        extra = "ignore" 
+    # Pydantic V2 Configuration
+    model_config = SettingsConfigDict(
+        case_sensitive=True,
+        extra="ignore",
+        env_file=".env"
+    )
 
 # --- 4. Validation Helper ---
 def validate_config(s: Settings):
