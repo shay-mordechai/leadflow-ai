@@ -1,4 +1,4 @@
-// frontend/app/SupportWidget.tsx
+// frontend/components/SupportWidget.tsx
 'use client';
 
 import { MessageCircle } from 'lucide-react';
