@@ -19,6 +19,8 @@ celery_app.conf.update(
     enable_utc=True,
     # This prevents Celery from consuming too much memory
     worker_max_tasks_per_child=50,
+    # Auto-discover tasks in specific modules
+    imports=['src.tasks.audio_tasks']
 )
 
 logger = logging.getLogger("CeleryWorker")
@@ -30,5 +32,3 @@ def ping_test(message: str):
     """
     logger.info(f"🏓 PONG! Received message: {message}")
     return f"Processed: {message}"
-
-# Note: In the next step, we will import audio_tasks.py here!

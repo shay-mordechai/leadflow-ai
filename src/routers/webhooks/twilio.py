@@ -13,6 +13,7 @@ from src.services.ai.engine import ai_engine
 # Assuming you have a whisper service for local transcription
 from src.services.ai.whisper import whisper_service 
 from src.services.communication.whatsapp import whatsapp_adapter
+from src.tasks.audio_tasks import process_audio_message
 
 router = APIRouter(tags=["Webhooks - Twilio"])
 logger = logging.getLogger("TwilioWebhook")
@@ -54,6 +55,8 @@ async def incoming_sms_message(
         logger.info(f"👑 Owner Command detected from {clean_from}")
         command_text = Body
         
+        # Keeping this synchronous for now as Owner commands are usually short 
+        # and we want immediate feedback for the business owner.
         if NumMedia > 0 and "audio" in (MediaContentType0 or ""):
             command_text = await whisper_service.transcribe_from_url(MediaUrl0)
 
@@ -86,6 +89,8 @@ async def incoming_sms_message(
     # ------------------------------------------------------------------
     # 👤 PHASE B: SALES BRAIN - LEAD INTERACTION
     # ------------------------------------------------------------------
+    
+    # 1. Lead Resolution
     lead_record = db.query(Lead).filter(
         Lead.user_id == owner.id,
         Lead.phone_number.like(f"%{clean_from[-9:]}%")
@@ -95,13 +100,29 @@ async def incoming_sms_message(
         lead_record = Lead(user_id=owner.id, name="New Lead", phone_number=clean_from, source=LeadSource.WHATSAPP)
         db.add(lead_record); db.commit(); db.refresh(lead_record)
 
-    # Save user message
-    db.add(Message(lead_id=lead_record.id, sender_type="user", content=Body))
-    db.commit()
-
     if not lead_record.bot_active:
         logger.info(f"Muted lead {clean_from} - skipping AI.")
         return Response(content=str(MessagingResponse()), media_type="application/xml")
+
+    # 2. AUDIO ROUTING (ASYNC CELERY QUEUE)
+    if NumMedia > 0 and "audio" in (MediaContentType0 or ""):
+        logger.info(f"🎧 Customer Audio Detected. Offloading to Celery Worker.")
+        # Push to Redis queue for background processing
+        process_audio_message.delay(
+            media_url=MediaUrl0, 
+            sender_id=clean_from, 
+            bot_phone_number=clean_to
+        )
+        
+        # Instantly reply to the customer so they know we are "listening"
+        # This prevents Twilio from timing out waiting for a slow transcription
+        whatsapp_adapter.send_message(to_phone=clean_from, text="מקשיב להודעה הקולית שלך... 🎧")
+        return Response(content=str(MessagingResponse()), media_type="application/xml")
+
+    # 3. TEXT ROUTING (STANDARD SYNC PROCESSING)
+    # Save user text message
+    db.add(Message(lead_id=lead_record.id, sender_type="user", content=Body))
+    db.commit()
 
     # Conversational Memory (Last 10 messages)
     history = db.query(Message).filter(Message.lead_id == lead_record.id).order_by(Message.created_at.desc()).limit(10).all()
