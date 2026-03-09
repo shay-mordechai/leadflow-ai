@@ -136,6 +136,11 @@ class Settings(BaseSettings):
     MESHULAM_PAGE_CODE: str = ""
     MESHULAM_API_KEY: str = ""
 
+    # --- Analytics (PostHog) ---
+    NEXT_PUBLIC_POSTHOG_HOST: str = "https://eu.i.posthog.com"
+    NEXT_PUBLIC_POSTHOG_KEY: str = ""
+    POSTHOG_PROJECT_ID: str = ""
+
     # --- Feature Flags ---
     ENABLE_REAL_PHONE_PURCHASE: bool = True
 
@@ -170,7 +175,8 @@ def validate_config(s: Settings):
         "Telephony (Twilio)": ["TWILIO_ACCOUNT_SID", "TWILIO_AUTH_TOKEN", "TWILIO_WHATSAPP_NUMBER"],
         "Email (SMTP)": ["MAIL_USERNAME", "MAIL_PASSWORD"],
         "Billing (Meshulam)": ["MESHULAM_PAGE_CODE", "MESHULAM_API_KEY"],
-        "Security": ["ENCRYPTION_KEY"]
+        "Security": ["ENCRYPTION_KEY"],
+        "Analytics (PostHog)": ["NEXT_PUBLIC_POSTHOG_KEY", "POSTHOG_PROJECT_ID"]
     }
 
     for group_name, keys in groups.items():
