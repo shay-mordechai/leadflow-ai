@@ -1,3 +1,4 @@
+# alembic/env.py
 from logging.config import fileConfig
 from sqlalchemy import engine_from_config
 from sqlalchemy import pool
@@ -58,7 +59,10 @@ def run_migrations_online() -> None:
             connection=connection, 
             target_metadata=target_metadata,
             compare_type=True,          # Detects changes like String -> Text
-            compare_server_default=True # Detects changes in default values
+            compare_server_default=True, # Detects changes in default values
+            # --- TIER 2 RELIABILITY: SQLite Batch Mode ---
+            # This allows SQLite to handle ALTER TABLE operations by recreating tables
+            render_as_batch=True 
         )
 
         with context.begin_transaction():
