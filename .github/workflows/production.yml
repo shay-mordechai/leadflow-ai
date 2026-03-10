@@ -204,6 +204,8 @@ jobs:
           mkdir -p ~/.ssh/
           echo "${{ secrets.EC2_SSH_KEY }}" > ~/.ssh/id_rsa
           chmod 600 ~/.ssh/id_rsa
+          
+          # FIXED: Added ServerAliveInterval to prevent 'Broken pipe' drops
           cat > ~/.ssh/config <<EOF
           Host production
             HostName ${{ secrets.CF_SSH_HOSTNAME }}
@@ -211,6 +213,8 @@ jobs:
             IdentityFile ~/.ssh/id_rsa
             StrictHostKeyChecking no
             UserKnownHostsFile /dev/null
+            ServerAliveInterval 15
+            ServerAliveCountMax 3
             ProxyCommand /usr/local/bin/cloudflared access ssh --hostname %h --id ${{ secrets.CF_SERVICE_ID }} --secret ${{ secrets.CF_SERVICE_SECRET }}
           EOF
 
@@ -324,6 +328,9 @@ jobs:
 
       - name: Execute on Production
         run: |
-          chmod +x deploy.sh
-          scp deploy.sh production:~/deploy.sh
+          # FIXED: Bypassing 'scp' completely and streaming the file directly over SSH
+          # This is much more stable over Cloudflare Tunnels
+          cat deploy.sh | ssh production "cat > ~/deploy.sh && chmod +x ~/deploy.sh"
+          
+          # Execute the script on the server
           ssh production "~/deploy.sh && rm -f ~/deploy.sh"
