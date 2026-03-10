@@ -9,8 +9,12 @@ target/
 *.crt
 secrets.json
 
+# --- Logs ---
+# Keep local runtime logs out of version control
+*.log
+celery_dev.log
+
 # --- Database (SQLite Specific) ---
-# Crucial: Don't push your local DB or journals to Git
 *.db
 *.db-journal
 *.db-shm
@@ -19,15 +23,16 @@ secrets.json
 /data/
 
 # --- Local AI & Storage ---
-# Whisper models and uploaded audio files are huge - keep them out
+# Crucial: Audio uploads and AI models stay on the server/local only
 storage/
+audio_uploads/
 models/
 .cache/
 huggingface/
 downloads/
 
 # --- Python & Backend ---
-__pycache__/
+pycache/
 *.py[cod]
 *$py.class
 venv/
@@ -46,8 +51,8 @@ node_modules/
 .next/
 out/
 .vercel
-*.tsbuildinfo
-npm-debug.log*
+.tsbuildinfo
+npm-debug.log
 yarn-debug.log*
 yarn-error.log*
 .pnpm-debug.log*
@@ -69,4 +74,4 @@ Thumbs.db
 # --- Legacy/Infra ---
 postgres_data/
 caddy_data/
-caddy_config/celery_dev.log
+caddy_config/

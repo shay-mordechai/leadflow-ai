@@ -14,12 +14,14 @@ export default function SettingsForm({ initialData, token }: { initialData: any,
     const [bookingLink, setBookingLink] = useState("");
     const [cancellationPolicy, setCancellationPolicy] = useState("ביטולים יתקבלו עד 24 שעות לפני מועד הפגישה. במקרה של ביטול, הצע ללקוח לקבוע מועד חדש.");
 
+    // Added summary_template to the initial state mapping
     const [formData, setFormData] = useState({
         business_name: initialData.business_name || "",
         business_type: initialData.business_type || "אחר",
         ai_tone: initialData.ai_tone || "חברי",
         products_services: initialData.products_services || "",
-        custom_instructions: initialData.custom_instructions || ""
+        custom_instructions: initialData.custom_instructions || "",
+        summary_template: initialData.summary_template || "" // NEW: NLP Summary Template
     });
 
     const handleChange = (e: any) => {
@@ -250,6 +252,32 @@ export default function SettingsForm({ initialData, token }: { initialData: any,
                     placeholder="אל תציע הנחות בשום אופן. תמיד תשאל את הלקוח אם יש לו פציעות ספורט בעבר לפני שאתה מתאם לו אימון."
                     className="w-full px-4 py-3 bg-slate-50 rounded-xl border border-slate-200 focus:ring-2 focus:ring-blue-500 outline-none text-sm leading-relaxed resize-none placeholder:text-slate-400"
                 />
+            </div>
+
+            {/* NEW SECTION: NLP Coaching Session Summary Template */}
+            <div className="bg-gradient-to-br from-purple-50 to-fuchsia-50 p-6 rounded-2xl shadow-sm border border-purple-100 space-y-4">
+                <div className="flex items-center gap-2 border-b border-purple-200 pb-2">
+                    <h2 className="font-bold text-purple-900">תבנית סיכום פגישות (NLP / אימון)</h2>
+                    
+                    <div className="relative group cursor-help">
+                        <Info className="w-4 h-4 text-purple-400 hover:text-purple-600 transition-colors" />
+                        <div className="absolute right-0 bottom-6 w-64 bg-purple-900 text-white text-xs p-3 rounded-lg opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none z-10 shadow-xl">
+                            הגדר כיצד ה-AI יסכם עבורך הקלטות שמע ארוכות של פגישות טיפול/אימון.
+                        </div>
+                    </div>
+                </div>
+
+                <textarea
+                    name="summary_template"
+                    value={formData.summary_template}
+                    onChange={handleChange}
+                    rows={5}
+                    placeholder="הזן את מבנה הסיכום הרצוי, לדוגמה:&#10;📋 נושאים מרכזיים:&#10;🧠 אמונות מגבילות שזיהיתי:&#10;🛠️ טכניקות טיפול שהופעלו:&#10;🎯 שיעורי בית למטופל:"
+                    className="w-full px-4 py-3 bg-white rounded-xl border border-purple-200 focus:ring-2 focus:ring-purple-500 outline-none text-sm leading-relaxed resize-none placeholder:text-purple-300"
+                />
+                <p className="text-[10px] text-purple-600 mt-1">
+                    * השאר ריק כדי להשתמש בתבנית הקלינית המובנית של המערכת. התבנית תשמש אוטומטית בכל פעם שתעלה הקלטת פגישה.
+                </p>
             </div>
 
             {/* Submit Button */}
