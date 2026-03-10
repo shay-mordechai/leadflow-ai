@@ -240,27 +240,54 @@ jobs:
             SYSTEMD_DIR="\$HOME/.config/systemd/user"
             
             echo "🔐 Logging into AWS ECR using temporary CI token..."
-            echo "${ECR_TEMP_TOKEN}" | podman login --username AWS --password-stdin ${{ secrets.AWS_ACCOUNT_ID }}.dkr.ecr.eu-north-1.amazonaws.com
+            
+            # --- FIXED: Added Retry Loop for ECR Login ---
+            # Handles transient "TLS handshake timeout" network glitches on AWS
+            MAX_LOGIN_RETRIES=5
+            for i in \$(seq 1 \$MAX_LOGIN_RETRIES); do
+                echo "Attempt \$i of \$MAX_LOGIN_RETRIES..."
+                if echo "${ECR_TEMP_TOKEN}" | podman login --username AWS --password-stdin ${{ secrets.AWS_ACCOUNT_ID }}.dkr.ecr.eu-north-1.amazonaws.com; then
+                    echo "✅ ECR Login Succeeded!"
+                    break
+                fi
+                if [ \$i -eq \$MAX_LOGIN_RETRIES ]; then
+                    echo "❌ ECR Login failed after \$MAX_LOGIN_RETRIES attempts."
+                    exit 1
+                fi
+                echo "⏳ Network timeout detected. Retrying in 5 seconds..."
+                sleep 5
+            done
             
             mkdir -p ~/leadflow-ai/storage ~/leadflow-ai/data "\$SYSTEMD_DIR"
 
-            # --- ANTI-TIMEOUT KEEPALIVE FUNCTION ---
+            # --- ANTI-TIMEOUT KEEPALIVE FUNCTION WITH RETRIES ---
             pull_with_keepalive() {
                 IMAGE_URL=\$1
-                echo "⏳ Pulling \$IMAGE_URL"
-                podman pull -q "\$IMAGE_URL" &
-                PID=\$!
-                while kill -0 \$PID 2>/dev/null; do
-                    echo -n "."
-                    sleep 10
+                MAX_PULL_RETRIES=3
+                
+                for attempt in \$(seq 1 \$MAX_PULL_RETRIES); do
+                    echo "⏳ Pulling \$IMAGE_URL (Attempt \$attempt of \$MAX_PULL_RETRIES)..."
+                    podman pull -q "\$IMAGE_URL" &
+                    PID=\$!
+                    
+                    while kill -0 \$PID 2>/dev/null; do
+                        echo -n "."
+                        sleep 10
+                    done
+                    wait \$PID
+                    EXIT_CODE=\$?
+                    
+                    if [ \$EXIT_CODE -eq 0 ]; then
+                        echo " ✅ Done pulling!"
+                        return 0
+                    fi
+                    
+                    echo " ⚠️ Pull failed with code \$EXIT_CODE. Retrying in 5s..."
+                    sleep 5
                 done
-                wait \$PID
-                EXIT_CODE=\$?
-                if [ \$EXIT_CODE -ne 0 ]; then
-                    echo " ❌ Pull failed with code \$EXIT_CODE"
-                    exit \$EXIT_CODE
-                fi
-                echo " ✅ Done pulling!"
+                
+                echo " ❌ Pull failed permanently after \$MAX_PULL_RETRIES attempts."
+                exit 1
             }
             
             if [ "${UPDATE_BACKEND}" == "true" ]; then
