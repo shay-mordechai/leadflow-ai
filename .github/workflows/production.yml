@@ -272,14 +272,22 @@ jobs:
               # CRITICAL FIX: Memory Capping for Worker
               podman run -d --name leadflow-worker --network host --replace --memory="400m" --memory-swap="2.4g" --env APP_ENV=production --env AWS_REGION=$AWS_REGION --env DATABASE_URL=sqlite:////app/data/leads.db --env REDIS_URL=redis://127.0.0.1:6379/0 -v ~/leadflow-ai/storage:/app/storage:Z -v ~/leadflow-ai/data:/app/data:Z "$BACKEND_IMG" celery -A src.worker.celery_app worker --loglevel=info --concurrency=2
               
-              echo "⚙️ Generating Backend SystemD units..."
+              echo "⚙️ Generating Backend SystemD units (Restored mv approach to fix bad unit files)..."
               podman stop leadflow-redis leadflow-backend leadflow-worker || true
-              podman generate systemd --new --name leadflow-redis -f > "$SYSTEMD_DIR/container-leadflow-redis.service"
-              podman generate systemd --new --name leadflow-backend -f > "$SYSTEMD_DIR/container-leadflow-backend.service"
-              podman generate systemd --new --name leadflow-worker -f > "$SYSTEMD_DIR/container-leadflow-worker.service"
+              podman generate systemd --new --name leadflow-redis -f
+              podman generate systemd --new --name leadflow-backend -f
+              podman generate systemd --new --name leadflow-worker -f
+              
+              # Ensure clean target directory
+              rm -f "$SYSTEMD_DIR"/container-leadflow-*.service
+              
+              # Move newly generated files safely
+              mv container-leadflow-*.service "$SYSTEMD_DIR/"
               
               systemctl --user daemon-reload
-              systemctl --user enable --now container-leadflow-redis.service container-leadflow-backend.service container-leadflow-worker.service
+              systemctl --user enable --now container-leadflow-redis.service
+              systemctl --user enable --now container-leadflow-backend.service
+              systemctl --user enable --now container-leadflow-worker.service
           fi
           
           if [ "$UPDATE_FRONTEND" == "true" ]; then
@@ -292,7 +300,12 @@ jobs:
               
               podman run -d --name leadflow-frontend --network host --replace --env NEXT_PUBLIC_API_URL=https://my-leads.app "$FRONTEND_IMG"
               podman stop leadflow-frontend
-              podman generate systemd --new --name leadflow-frontend -f > "$SYSTEMD_DIR/container-leadflow-frontend.service"
+              
+              echo "⚙️ Generating Frontend SystemD units..."
+              podman generate systemd --new --name leadflow-frontend -f
+              rm -f "$SYSTEMD_DIR"/container-leadflow-frontend.service
+              mv container-leadflow-frontend.service "$SYSTEMD_DIR/"
+              
               systemctl --user daemon-reload
               systemctl --user enable --now container-leadflow-frontend.service
           fi
