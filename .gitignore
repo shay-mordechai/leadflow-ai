@@ -69,4 +69,4 @@ Thumbs.db
 # --- Legacy/Infra ---
 postgres_data/
 caddy_data/
-caddy_config/
+caddy_config/celery_dev.log
