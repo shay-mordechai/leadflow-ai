@@ -135,7 +135,6 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@v3
 
-      # UPGRADED to v4 to fix the Node.js deprecation warning
       - name: Configure AWS credentials
         uses: aws-actions/configure-aws-credentials@v4
         with:
@@ -163,7 +162,6 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@v3
 
-      # UPGRADED to v4
       - name: Configure AWS credentials
         uses: aws-actions/configure-aws-credentials@v4
         with:
@@ -192,7 +190,6 @@ jobs:
       needs.build-frontend.result != 'failure'
     runs-on: ubuntu-latest
     steps:
-      # UPGRADED to v4
       - name: Configure AWS credentials
         uses: aws-actions/configure-aws-credentials@v4
         with:
@@ -208,8 +205,7 @@ jobs:
           echo "${{ secrets.EC2_SSH_KEY }}" > ~/.ssh/id_rsa
           chmod 600 ~/.ssh/id_rsa
           
-          # FIXED: TCPKeepAlive no prevents Cloudflare from dropping the tunnel due to empty OS-level packets
-          # ServerAliveInterval 30 ensures SSH application-level pings keep the tunnel open
+          # SUPER-ROBUST SSH CONFIG
           cat > ~/.ssh/config <<EOF
           Host production
             HostName ${{ secrets.CF_SSH_HOSTNAME }}
@@ -217,8 +213,8 @@ jobs:
             IdentityFile ~/.ssh/id_rsa
             StrictHostKeyChecking no
             UserKnownHostsFile /dev/null
-            ServerAliveInterval 30
-            ServerAliveCountMax 60
+            ServerAliveInterval 10
+            ServerAliveCountMax 120
             TCPKeepAlive no
             ProxyCommand /usr/local/bin/cloudflared access ssh --hostname %h --id ${{ secrets.CF_SERVICE_ID }} --secret ${{ secrets.CF_SERVICE_SECRET }}
           EOF
@@ -230,7 +226,6 @@ jobs:
         run: |
           ECR_TEMP_TOKEN=$(aws ecr get-login-password --region ${{ env.AWS_REGION }})
           
-          # We run the deployment completely inline over SSH to avoid file transfer issues
           ssh production << EOF
             set -e
             
@@ -240,9 +235,6 @@ jobs:
             SYSTEMD_DIR="\$HOME/.config/systemd/user"
             
             echo "🔐 Logging into AWS ECR using temporary CI token..."
-            
-            # --- FIXED: Added Retry Loop for ECR Login ---
-            # Handles transient "TLS handshake timeout" network glitches on AWS
             MAX_LOGIN_RETRIES=5
             for i in \$(seq 1 \$MAX_LOGIN_RETRIES); do
                 echo "Attempt \$i of \$MAX_LOGIN_RETRIES..."
@@ -251,28 +243,26 @@ jobs:
                     break
                 fi
                 if [ \$i -eq \$MAX_LOGIN_RETRIES ]; then
-                    echo "❌ ECR Login failed after \$MAX_LOGIN_RETRIES attempts."
+                    echo "❌ ECR Login failed."
                     exit 1
                 fi
-                echo "⏳ Network timeout detected. Retrying in 5 seconds..."
                 sleep 5
             done
             
             mkdir -p ~/leadflow-ai/storage ~/leadflow-ai/data "\$SYSTEMD_DIR"
 
-            # --- ANTI-TIMEOUT KEEPALIVE FUNCTION WITH RETRIES ---
             pull_with_keepalive() {
                 IMAGE_URL=\$1
                 MAX_PULL_RETRIES=3
                 
                 for attempt in \$(seq 1 \$MAX_PULL_RETRIES); do
-                    echo "⏳ Pulling \$IMAGE_URL (Attempt \$attempt of \$MAX_PULL_RETRIES)..."
+                    echo "⏳ Pulling \$IMAGE_URL (Attempt \$attempt)..."
                     podman pull -q "\$IMAGE_URL" &
                     PID=\$!
                     
                     while kill -0 \$PID 2>/dev/null; do
                         echo -n "."
-                        sleep 10
+                        sleep 3
                     done
                     wait \$PID
                     EXIT_CODE=\$?
@@ -282,17 +272,25 @@ jobs:
                         return 0
                     fi
                     
-                    echo " ⚠️ Pull failed with code \$EXIT_CODE. Retrying in 5s..."
+                    echo " ⚠️ Pull failed with code \$EXIT_CODE. Retrying..."
                     sleep 5
                 done
-                
-                echo " ❌ Pull failed permanently after \$MAX_PULL_RETRIES attempts."
                 exit 1
             }
             
             if [ "${UPDATE_BACKEND}" == "true" ]; then
                 echo "🔄 Updating Backend & Redis Infrastructure..."
                 
+                # --- THE FIX: FREE UP RESOURCES BEFORE PULLING ---
+                echo "🛑 Stopping backend & worker to free up RAM & CPU..."
+                systemctl --user stop container-leadflow-backend 2>/dev/null || true
+                systemctl --user stop container-leadflow-worker 2>/dev/null || true
+                podman rm -f leadflow-backend leadflow-worker 2>/dev/null || true
+                
+                echo "🧹 Pruning old Docker images to free Disk Space..."
+                podman image prune -a -f || true
+                
+                # NOW we pull, when the server is empty and relaxed
                 pull_with_keepalive "\$BACKEND_IMG"
                 
                 # 1. Start Redis Engine
@@ -301,8 +299,6 @@ jobs:
                 podman run -d --name leadflow-redis --network host --replace docker.io/library/redis:7-alpine
                 
                 # 2. Start Main FastAPI Backend
-                systemctl --user stop container-leadflow-backend 2>/dev/null || true
-                podman rm -f leadflow-backend 2>/dev/null || true
                 podman run -d \
                   --name leadflow-backend \
                   --network host \
@@ -317,8 +313,6 @@ jobs:
                   gunicorn src.main:app --workers 1 --worker-class uvicorn.workers.UvicornWorker --bind 0.0.0.0:8000
                   
                 # 3. Start Celery Async Worker
-                systemctl --user stop container-leadflow-worker 2>/dev/null || true
-                podman rm -f leadflow-worker 2>/dev/null || true
                 podman run -d \
                   --name leadflow-worker \
                   --network host \
@@ -332,7 +326,7 @@ jobs:
                   \$BACKEND_IMG \
                   celery -A src.worker.celery_app worker --loglevel=info --concurrency=2
                   
-                # 4. Generate and Enable SystemD Services for auto-restart
+                # 4. Generate and Enable SystemD Services
                 echo "⚙️ Generating SystemD units..."
                 podman stop leadflow-redis leadflow-backend leadflow-worker || true
                 
@@ -347,17 +341,21 @@ jobs:
                 systemctl --user enable --now container-leadflow-backend.service
                 systemctl --user enable --now container-leadflow-worker.service
             else
-                echo "⏭️ Backend code unchanged. Skipping backend deploy."
+                echo "⏭️ Backend code unchanged."
             fi
             
             if [ "${UPDATE_FRONTEND}" == "true" ]; then
                 echo "🔄 Updating Frontend..."
                 
-                pull_with_keepalive "\$FRONTEND_IMG"
-  
+                echo "🛑 Stopping frontend to free up resources..."
                 systemctl --user stop container-leadflow-frontend 2>/dev/null || true
                 podman rm -f leadflow-frontend 2>/dev/null || true
                 
+                echo "🧹 Pruning old Frontend images..."
+                podman image prune -a -f || true
+                
+                pull_with_keepalive "\$FRONTEND_IMG"
+  
                 podman run -d \
                   --name leadflow-frontend \
                   --network host \
@@ -372,10 +370,8 @@ jobs:
                 systemctl --user daemon-reload
                 systemctl --user enable --now container-leadflow-frontend.service
             else
-                echo "⏭️ Frontend code unchanged. Skipping frontend deploy."
+                echo "⏭️ Frontend code unchanged."
             fi
             
-            echo "🧹 Cleaning up old images..."
-            podman image prune -a -f
             echo "✅ Deployment Process Finished!"
           EOF
