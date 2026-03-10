@@ -3,7 +3,7 @@ import logging
 from celery import shared_task
 from sqlalchemy.orm import Session
 from src.database.session import SessionLocal
-from src.database.models import Message, Lead, User
+from src.database.models import Message, Lead, User, CoachingSession, SessionStatus
 from src.services.ai.engine import ai_engine
 # Make sure your faster-whisper service is imported here!
 from src.services.ai.whisper import whisper_service
@@ -87,5 +87,87 @@ def process_audio_message(self, media_url: str, sender_id: str, bot_phone_number
         # Retry logic if transient failure
         raise self.retry(exc=e, countdown=10)
         
+    finally:
+        db.close()
+
+# --- NEW TIER 3 FEATURE: NLP COACHING SESSION ANALYSIS ---
+
+@shared_task(name="process_coaching_session", bind=True, max_retries=1)
+def process_coaching_session(self, session_id: str, user_id: str, file_path: str):
+    """
+    Heavy task forced into SWAP. Transcribes a long audio file locally (Privacy First) 
+    and uses AI to generate an NLP-structured summary.
+    """
+    logger.info(f"🎙️ Starting heavy NLP Coaching Session task for {session_id}")
+    import os
+    import asyncio
+    
+    db: Session = SessionLocal()
+    try:
+        session_record = db.query(CoachingSession).filter(CoachingSession.id == session_id).first()
+        if not session_record:
+            logger.error(f"Session {session_id} not found in DB.")
+            return "Session not found"
+        
+        session_record.status = SessionStatus.PROCESSING
+        db.commit()
+
+        # 1. Transcribe (Heavy task, CPU & RAM Intensive - Relies on SWAP)
+        transcription = asyncio.run(whisper_service.transcribe_local_file(file_path))
+        
+        if "Error" in transcription or not transcription.strip():
+            raise Exception("Local transcription failed or returned empty.")
+
+        # 2. NLP Coaching Summary Template (Default structure)
+        prompt = f"""
+        You are an expert NLP Master Trainer and clinical supervisor.
+        Analyze the following session transcription and provide a highly professional, structured clinical summary.
+        
+        Format your response in Hebrew exactly like this, using bullet points and clear paragraphs:
+        
+        📋 **נושאים מרכזיים (Key Themes)**
+        [פרט את הנושאים שעלו בשיחה]
+        
+        🧠 **אמונות מגבילות ודפוסי חשיבה (Limiting Beliefs)**
+        [אילו אמונות מעכבות זיהית אצל המטופל?]
+        
+        🛠️ **טכניקות והתערבויות שבוצעו (Interventions Used)**
+        [אילו כלים מתחום ה-NLP או האימון הופעלו בשיחה?]
+        
+        🎯 **משימות ושיעורי בית (Action Items)**
+        [מה המטופל לקח על עצמו לעשות עד הפגישה הבאה?]
+        
+        Transcription of the session:
+        {transcription}
+        """
+        
+        # 3. Generate structured summary using Gemini Agent
+        ai_response = asyncio.run(ai_engine.analyze_interaction(
+            system_prompt=prompt,
+            text_input="אנא נתח את הפגישה והחזר סיכום קליני מדויק לפי התבנית.",
+            sender_name="System"
+        ))
+        
+        # 4. Save results securely to DB
+        session_record.transcript = transcription
+        session_record.summary = ai_response.get("reply_text", "לא הצלחנו לייצר סיכום עקב שגיאת AI.")
+        session_record.status = SessionStatus.COMPLETED
+        db.commit()
+        
+        logger.info(f"✅ NLP Session {session_id} processed successfully.")
+        
+        # 5. Cleanup local audio file to save disk space
+        if os.path.exists(file_path):
+            os.remove(file_path)
+            
+        return "Success"
+            
+    except Exception as e:
+        db.rollback()
+        logger.error(f"🔥 Coaching session processing failed: {e}")
+        if 'session_record' in locals() and session_record:
+            session_record.status = SessionStatus.FAILED
+            db.commit()
+        return f"Failed: {str(e)}"
     finally:
         db.close()

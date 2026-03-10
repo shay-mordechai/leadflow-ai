@@ -126,11 +126,14 @@ class AISettingsSchema(BaseModel):
     Input/Output schema for the Settings page.
     Combines BusinessProfile data and AIAgent data.
     """
-    business_name: str
-    business_type: str
-    ai_tone: str
-    products_services: Optional[str] = None
-    custom_instructions: Optional[str] = None
+    business_name: str = Field(..., description="שם העסק")
+    business_type: str = Field(..., description="תחום העיסוק")
+    ai_tone: str = Field(default="Professional", description="סגנון דיבור (רשמי/חברי/מכירתי)")
+    products_services: Optional[str] = Field(None, description="ידע עסקי: שירותים ומחירים")
+    custom_instructions: Optional[str] = Field(None, description="הנחיות אישיות לבוט")
+    
+    # --- NEW: Summary Template for NLP Coaching Sessions ---
+    summary_template: Optional[str] = Field(None, description="תבנית סיכום פגישות מותאמת אישית")
     
     # Optional nested agent info if it exists
     ai_agent: Optional[AIAgentSchema] = None

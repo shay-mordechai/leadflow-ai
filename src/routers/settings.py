@@ -30,6 +30,7 @@ def get_settings(
             ai_tone="Professional",
             products_services="",
             custom_instructions="",
+            summary_template="", # NEW
             ai_agent=None
         )
     
@@ -48,6 +49,7 @@ def get_settings(
         ai_tone=profile.ai_tone,
         products_services=profile.products_services,
         custom_instructions=profile.custom_instructions,
+        summary_template=profile.summary_template, # NEW
         ai_agent=agent_data
     )
 
@@ -73,7 +75,8 @@ def update_settings(
                 business_type=data.business_type,
                 ai_tone=data.ai_tone,
                 products_services=data.products_services,
-                custom_instructions=data.custom_instructions
+                custom_instructions=data.custom_instructions,
+                summary_template=data.summary_template # NEW
             )
             db.add(profile)
         else:
@@ -82,6 +85,7 @@ def update_settings(
             profile.ai_tone = data.ai_tone
             profile.products_services = data.products_services
             profile.custom_instructions = data.custom_instructions
+            profile.summary_template = data.summary_template # NEW
             
         # 2. Upsert AI Agent (The Brain)
         agent = db.query(AIAgent).filter(AIAgent.user_id == current_user.id).first()

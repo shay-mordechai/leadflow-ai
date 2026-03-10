@@ -3,7 +3,7 @@ import uuid
 import os
 import shutil
 import logging
-from fastapi import APIRouter, Depends, HTTPException, UploadFile, File, BackgroundTasks
+from fastapi import APIRouter, Depends, HTTPException, UploadFile, File
 from sqlalchemy.orm import Session
 
 # Database & Models
@@ -16,14 +16,8 @@ from src.security.dependencies import get_current_user
 # Config
 from src.config import settings
 
-# Services
-# Ensure this service exists or create a placeholder for it
-try:
-    from src.services.background_processor import process_audio_analysis
-except ImportError:
-    # Fallback if service doesn't exist yet
-    def process_audio_analysis(*args, **kwargs):
-        logging.warning("Background processor not found. Audio analysis skipped.")
+# Services - Using Celery Worker instead of FastAPI BackgroundTasks
+from src.tasks.audio_tasks import process_coaching_session
 
 router = APIRouter(tags=["Sessions"])
 logger = logging.getLogger("SessionsRouter")
@@ -33,7 +27,6 @@ UPLOAD_DIR = "storage/audio"
 @router.post("/upload/{lead_id}")
 async def upload_audio(
     lead_id: str,
-    background_tasks: BackgroundTasks,
     file: UploadFile = File(...),
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user)
@@ -50,7 +43,7 @@ async def upload_audio(
         raise HTTPException(status_code=404, detail="Lead not found")
     
     # Optional: Verify the lead belongs to the user
-    if lead.owner_id != current_user.id:
+    if lead.user_id != current_user.id:
         logger.warning(f"Unauthorized access attempt by User {current_user.id} on Lead {lead_id}")
         raise HTTPException(status_code=403, detail="Not authorized to access this lead")
 
@@ -76,19 +69,18 @@ async def upload_audio(
     new_session = CoachingSession(
         id=new_session_id,
         lead_id=lead_id,
-        user_id=current_user.id, # Replaced tenant_id with user_id
+        user_id=current_user.id,
         audio_file_path=full_path,
-        status="queued"
+        status="QUEUED"
     )
     
     db.add(new_session)
     db.commit()
     db.refresh(new_session)
 
-    # 5. Trigger Background Analysis (Non-blocking)
-    logger.info(f"Queuing analysis for Session {new_session_id}")
-    background_tasks.add_task(
-        process_audio_analysis,
+    # 5. Trigger Background Analysis via Celery Worker (Non-blocking, uses SWAP)
+    logger.info(f"Queuing NLP analysis for Session {new_session_id}")
+    process_coaching_session.delay(
         session_id=new_session_id,
         user_id=str(current_user.id),
         file_path=full_path

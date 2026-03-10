@@ -174,6 +174,10 @@ class BusinessProfile(Base):
     ai_tone = Column(String, default="Professional")
     products_services = Column(Text, nullable=True)
     custom_instructions = Column(Text, nullable=True)
+    
+    # NEW: Template for Coaching Session Summaries
+    summary_template = Column(Text, nullable=True)
+    
     created_at = Column(DateTime(timezone=True), server_default=func.now())
     updated_at = Column(DateTime(timezone=True), onupdate=func.now())
     
