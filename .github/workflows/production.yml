@@ -205,7 +205,7 @@ jobs:
           echo "${{ secrets.EC2_SSH_KEY }}" > ~/.ssh/id_rsa
           chmod 600 ~/.ssh/id_rsa
           
-          # FIXED: High tolerance SSH Keep-Alive to survive network saturation during image pulls
+          # FIXED: High frequency Keep-Alive for unstable Cloudflare NATs
           cat > ~/.ssh/config <<EOF
           Host production
             HostName ${{ secrets.CF_SSH_HOSTNAME }}
@@ -213,8 +213,8 @@ jobs:
             IdentityFile ~/.ssh/id_rsa
             StrictHostKeyChecking no
             UserKnownHostsFile /dev/null
-            ServerAliveInterval 60
-            ServerAliveCountMax 10
+            ServerAliveInterval 15
+            ServerAliveCountMax 20
             TCPKeepAlive no
             ProxyCommand /usr/local/bin/cloudflared access ssh --hostname %h --id ${{ secrets.CF_SERVICE_ID }} --secret ${{ secrets.CF_SERVICE_SECRET }}
           EOF
@@ -242,8 +242,17 @@ jobs:
           
           if [ "${UPDATE_BACKEND}" == "true" ]; then
               echo "🔄 Updating Backend & Redis Infrastructure..."
-              # FIXED: Added -q (quiet) to prevent massive console output from breaking the SSH tunnel
-              podman pull -q \$BACKEND_IMG
+              
+              # FIXED: Run podman pull in background and ping SSH connection to prevent Cloudflare drops
+              podman pull -q \$BACKEND_IMG &
+              PULL_PID=\$!
+              while kill -0 \$PULL_PID 2>/dev/null; do
+                  echo "⏳ Pulling backend image... keeping connection alive."
+                  sleep 10
+              done
+              wait \$PULL_PID
+              if [ \$? -ne 0 ]; then echo "❌ Backend Image Pull Failed!"; exit 1; fi
+              echo "✅ Backend Image Pulled Successfully!"
               
               # 1. Start Redis Engine (No user-data, strictly in-memory cache)
               systemctl --user stop container-leadflow-redis 2>/dev/null || true
@@ -302,8 +311,18 @@ jobs:
           
           if [ "${UPDATE_FRONTEND}" == "true" ]; then
               echo "🔄 Updating Frontend..."
-              # FIXED: Added -q (quiet) here as well
-              podman pull -q \$FRONTEND_IMG
+              
+              # FIXED: Run podman pull in background and ping SSH connection
+              podman pull -q \$FRONTEND_IMG &
+              PULL_PID=\$!
+              while kill -0 \$PULL_PID 2>/dev/null; do
+                  echo "⏳ Pulling frontend image... keeping connection alive."
+                  sleep 10
+              done
+              wait \$PULL_PID
+              if [ \$? -ne 0 ]; then echo "❌ Frontend Image Pull Failed!"; exit 1; fi
+              echo "✅ Frontend Image Pulled Successfully!"
+
               systemctl --user stop container-leadflow-frontend 2>/dev/null || true
               podman rm -f leadflow-frontend 2>/dev/null || true
               
@@ -331,7 +350,7 @@ jobs:
 
       - name: Execute on Production
         run: |
-          # FIXED: Bypassing 'scp' completely and streaming the file directly over SSH
+          # Bypassing 'scp' completely and streaming the file directly over SSH
           # This is much more stable over Cloudflare Tunnels
           cat deploy.sh | ssh production "cat > ~/deploy.sh && chmod +x ~/deploy.sh"
           
