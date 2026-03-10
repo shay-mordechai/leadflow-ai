@@ -4,7 +4,7 @@
 # Target Server OS: Amazon Linux 2023 / RHEL 10
 # Container Runtime: PODMAN
 # Architecture: Zero Trust (Cloudflare Tunnel)
-# Registry: AWS ECR (Replaced GHCR)
+# Registry: AWS ECR
 # ==============================================================================
 name: LeadFlow Production Deploy
 
@@ -205,10 +205,9 @@ jobs:
           echo "${{ secrets.EC2_SSH_KEY }}" > ~/.ssh/id_rsa
           chmod 600 ~/.ssh/id_rsa
           
-          # --- THE ULTIMATE SSH FIX ---
-          # 1. Increased ServerAliveInterval to 60 (check every minute, not every 10s)
-          # 2. ServerAliveCountMax to 15 (allow up to 15 minutes of silence!)
-          # This gives the server breathing room during heavy I/O operations like pulling large Docker images.
+          # EXTREMELY FORGIVING SSH CONFIGURATION
+          # Will wait 2 minutes between checks, and allow 30 missed checks (1 hour total wait time)
+          # This guarantees SSH won't drop even if the server is at 100% CPU unpacking Docker images.
           cat > ~/.ssh/config <<EOF
           Host production
             HostName ${{ secrets.CF_SSH_HOSTNAME }}
@@ -216,8 +215,8 @@ jobs:
             IdentityFile ~/.ssh/id_rsa
             StrictHostKeyChecking no
             UserKnownHostsFile /dev/null
-            ServerAliveInterval 60
-            ServerAliveCountMax 15
+            ServerAliveInterval 120
+            ServerAliveCountMax 30
             TCPKeepAlive no
             ProxyCommand /usr/local/bin/cloudflared access ssh --hostname %h --id ${{ secrets.CF_SERVICE_ID }} --secret ${{ secrets.CF_SERVICE_SECRET }}
           EOF
@@ -227,18 +226,14 @@ jobs:
           UPDATE_BACKEND: ${{ needs.detect-changes.outputs.backend }}
           UPDATE_FRONTEND: ${{ needs.detect-changes.outputs.frontend }}
         run: |
-          # 1. Fetch AWS Token
           ECR_TEMP_TOKEN=$(aws ecr get-login-password --region ${{ env.AWS_REGION }})
           
-          # 2. Create optimized deployment script
           cat > deploy_script.sh << 'EOF'
           set -e
           
           SYSTEMD_DIR="$HOME/.config/systemd/user"
           
-          # --- STEP 1: CRITICAL RAM RECOVERY ---
           echo "🧹 Clearing System Cache & Buffers to free physical RAM..."
-          # Note: This helps immensely before a heavy pull on small instances
           sudo sync && echo 3 | sudo tee /proc/sys/vm/drop_caches || true
           
           echo "🛑 Stopping heavy containers to free up RAM..."
@@ -265,7 +260,7 @@ jobs:
               echo "🔄 Updating Backend..."
               echo "⏳ Pulling Backend Image (High RAM Operation)..."
               podman pull "$BACKEND_IMG"
-              echo "✅ Pull successful!"
+              echo "✅ Backend Pull successful!"
               
               systemctl --user stop container-leadflow-redis 2>/dev/null || true
               podman rm -f leadflow-redis 2>/dev/null || true
@@ -274,9 +269,10 @@ jobs:
               echo "🚀 Starting Backend & Worker..."
               podman run -d --name leadflow-backend --network host --replace --env APP_ENV=production --env AWS_REGION=$AWS_REGION --env DATABASE_URL=sqlite:////app/data/leads.db --env REDIS_URL=redis://127.0.0.1:6379/0 -v ~/leadflow-ai/storage:/app/storage:Z -v ~/leadflow-ai/data:/app/data:Z "$BACKEND_IMG" gunicorn src.main:app --workers 1 --worker-class uvicorn.workers.UvicornWorker --bind 0.0.0.0:8000
               
-              podman run -d --name leadflow-worker --network host --replace --env APP_ENV=production --env AWS_REGION=$AWS_REGION --env DATABASE_URL=sqlite:////app/data/leads.db --env REDIS_URL=redis://127.0.0.1:6379/0 -v ~/leadflow-ai/storage:/app/storage:Z -v ~/leadflow-ai/data:/app/data:Z "$BACKEND_IMG" celery -A src.worker.celery_app worker --loglevel=info --concurrency=2
+              # CRITICAL FIX: Memory Capping for Worker
+              podman run -d --name leadflow-worker --network host --replace --memory="400m" --memory-swap="2.4g" --env APP_ENV=production --env AWS_REGION=$AWS_REGION --env DATABASE_URL=sqlite:////app/data/leads.db --env REDIS_URL=redis://127.0.0.1:6379/0 -v ~/leadflow-ai/storage:/app/storage:Z -v ~/leadflow-ai/data:/app/data:Z "$BACKEND_IMG" celery -A src.worker.celery_app worker --loglevel=info --concurrency=2
               
-              echo "⚙️ Generating SystemD units..."
+              echo "⚙️ Generating Backend SystemD units..."
               podman stop leadflow-redis leadflow-backend leadflow-worker || true
               podman generate systemd --new --name leadflow-redis -f > "$SYSTEMD_DIR/container-leadflow-redis.service"
               podman generate systemd --new --name leadflow-backend -f > "$SYSTEMD_DIR/container-leadflow-backend.service"
@@ -288,6 +284,9 @@ jobs:
           
           if [ "$UPDATE_FRONTEND" == "true" ]; then
               echo "🔄 Updating Frontend..."
+              echo "🧹 Clearing System Cache AGAIN before Frontend Pull..."
+              sudo sync && echo 3 | sudo tee /proc/sys/vm/drop_caches || true
+              
               echo "⏳ Pulling Frontend Image..."
               podman pull "$FRONTEND_IMG"
               
@@ -300,7 +299,7 @@ jobs:
           echo "✅ Deployment Process Finished!"
           EOF
           
-          # 3. Execute with robust SSH retry logic
+          # Execute with robust SSH retry logic
           MAX_SSH_RETRIES=3
           for attempt in $(seq 1 $MAX_SSH_RETRIES); do
               echo "🚀 Connecting via SSH to production (Attempt $attempt of $MAX_SSH_RETRIES)..."
