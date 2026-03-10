@@ -239,12 +239,27 @@ jobs:
             echo "${ECR_TEMP_TOKEN}" | podman login --username AWS --password-stdin ${{ secrets.AWS_ACCOUNT_ID }}.dkr.ecr.eu-north-1.amazonaws.com
             
             mkdir -p ~/leadflow-ai/storage ~/leadflow-ai/data "\$SYSTEMD_DIR"
+
+            # --- ANTI-TIMEOUT KEEPALIVE FUNCTION ---
+            # Forces STDOUT traffic to prevent Cloudflare from dropping the connection
+            pull_with_keepalive() {
+                IMAGE_URL=\$1
+                echo "⏳ Pulling \$IMAGE_URL"
+                podman pull -q "\$IMAGE_URL" &
+                PID=\$!
+                while kill -0 \$PID 2>/dev/null; do
+                    echo -n "."
+                    sleep 5
+                done
+                wait \$PID
+                echo " ✅ Done pulling!"
+            }
             
             if [ "${UPDATE_BACKEND}" == "true" ]; then
                 echo "🔄 Updating Backend & Redis Infrastructure..."
                 
-                # FIXED: Simple quiet pull. The inline execution avoids buffer issues.
-                podman pull -q \$BACKEND_IMG
+                # FIXED: Pulling with active echo to keep tunnel alive
+                pull_with_keepalive "\$BACKEND_IMG"
                 
                 # 1. Start Redis Engine
                 systemctl --user stop container-leadflow-redis 2>/dev/null || true
@@ -304,7 +319,8 @@ jobs:
             if [ "${UPDATE_FRONTEND}" == "true" ]; then
                 echo "🔄 Updating Frontend..."
                 
-                podman pull -q \$FRONTEND_IMG
+                # FIXED: Pulling with active echo to keep tunnel alive
+                pull_with_keepalive "\$FRONTEND_IMG"
   
                 systemctl --user stop container-leadflow-frontend 2>/dev/null || true
                 podman rm -f leadflow-frontend 2>/dev/null || true
