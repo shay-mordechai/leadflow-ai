@@ -10,6 +10,9 @@ from sqlalchemy.orm import relationship
 # --- IMPORT BASE & GUID FROM SESSION ---
 from src.database.session import Base, GUID
 
+# FIXED: Exposing AuditLog through the central models file to prevent ImportErrors
+from .audit_model import AuditLog
+
 # Security: Encryption wrapper for OTPs (Kept for security)
 from src.security.encryption import protector 
 

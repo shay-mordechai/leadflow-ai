@@ -6,7 +6,7 @@ from sqlalchemy.orm import Session
 
 from src.security.dependencies import get_current_user
 from src.database.session import get_db
-from src.database.models import User, PlanTier
+from src.database.models import User, PlanTier, AuditLog, SubscriptionStatus
 from src.services.billing.grow_service import grow_service
 from src.security.audit import audit_service
 from src.config import settings
@@ -80,13 +80,13 @@ async def grow_payment_webhook(request: Request, db: Session = Depends(get_db)):
         if str(payment_status) == "1" and user_id:
             user = db.query(User).filter(User.id == user_id).first()
             if user:
-                # Upgrade the user
+                # 1. Upgrade User State
                 user.plan_tier = PlanTier.PRO
-                db.commit()
-                
-                # Security: Log the payment and upgrade
-                audit_service.log(
-                    db=db,
+                user.subscription_status = SubscriptionStatus.ACTIVE
+                db.flush() # Ensure user updates are tracked before creating the audit log
+
+                # 2. Create Audit Log in the same transaction
+                new_log = AuditLog(
                     user_id=str(user.id),
                     action="SUBSCRIPTION_PAID",
                     details={
@@ -95,6 +95,10 @@ async def grow_payment_webhook(request: Request, db: Session = Depends(get_db)):
                         "provider": "Grow/Meshulam"
                     }
                 )
+                db.add(new_log)
+                
+                # 3. Final atomic commit
+                db.commit()
                 
                 logger.info(f"💰 User {user.email} upgraded to PRO via Grow Webhook. TXN: {transaction_id}")
                 return {"status": "success", "message": "Subscription activated."}
@@ -104,6 +108,7 @@ async def grow_payment_webhook(request: Request, db: Session = Depends(get_db)):
         return {"status": "ignored", "message": "Not a successful transaction or missing user ID."}
 
     except Exception as e:
+        db.rollback()
         logger.error(f"🔥 Webhook Processing Error: {e}")
         raise HTTPException(status_code=400, detail="Webhook processing failed")
 
@@ -127,19 +132,24 @@ async def redeem_coupon(
         if user.plan_tier == PlanTier.PRO:
              return {"message": "Plan is already PRO", "plan": user.plan_tier.value}
 
+        # 1. Atomic User Upgrade
         user.plan_tier = PlanTier.PRO
-        db.commit()
-        db.refresh(user)
-        
-        logger.info(f"✅ COUPON SUCCESS: User {user.id} upgraded to {benefit['plan']}.")
+        user.subscription_status = SubscriptionStatus.ACTIVE
+        db.flush()
 
-        # Security: Log coupon usage
-        audit_service.log(
-            db=db,
+        # 2. Create Log within same session to avoid IntegrityErrors
+        new_log = AuditLog(
             user_id=str(user.id),
             action="COUPON_REDEEMED",
             details={"coupon_code": code}
         )
+        db.add(new_log)
+        
+        # 3. Single commit for both user and log
+        db.commit()
+        db.refresh(user)
+        
+        logger.info(f"✅ COUPON SUCCESS: User {user.id} upgraded to {benefit['plan']}.")
 
         return {
             "status": "success",
@@ -149,6 +159,6 @@ async def redeem_coupon(
         }
 
     except Exception as e:
-        logger.error(f"Database error during coupon redemption: {e}")
         db.rollback()
+        logger.error(f"Database error during coupon redemption: {e}")
         raise HTTPException(status_code=500, detail="Internal server error")

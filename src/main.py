@@ -24,7 +24,10 @@ from src.config import settings
 from src.database.session import engine, Base
 
 # --- Router Imports ---
+# 1. Base Routers - Registered in src/routers/__init__.py
 from src.routers import auth, leads, phones, sessions, facebook, settings as settings_router
+
+# 2. Submodule Imports - Billing & Webhooks
 from src.routers.billing import checkout, invoices
 from src.routers.webhooks import twilio, meshulam, whatsapp
 
@@ -199,8 +202,8 @@ app.include_router(auth.router, prefix="/api/v1/auth", tags=["Auth"])
 app.include_router(leads.router, prefix="/api/v1/leads", tags=["Leads"])
 app.include_router(phones.router, prefix="/api/v1/phones", tags=["Phones"])
 app.include_router(sessions.router, prefix="/api/v1/sessions", tags=["Sessions"])
-app.include_router(facebook.router, prefix="/api/v1")
 app.include_router(settings_router.router, prefix="/api/v1/settings", tags=["Settings"])
+app.include_router(facebook.router, prefix="/api/v1")
 
 # Billing Subsystem
 app.include_router(checkout.router, prefix="/api/v1/billing", tags=["Billing"])
@@ -210,6 +213,7 @@ app.include_router(invoices.router, prefix="/api/v1/billing", tags=["Billing"])
 app.include_router(twilio.router, prefix="/webhooks/twilio", tags=["Webhooks - Twilio"])
 app.include_router(whatsapp.router, prefix="/webhooks/whatsapp", tags=["Webhooks - WhatsApp"])
 app.include_router(meshulam.router, prefix="/webhooks/meshulam", tags=["Webhooks - Meshulam"])
+
 
 # ==============================================================================
 # 🏥 SYSTEM HEALTH CHECK
