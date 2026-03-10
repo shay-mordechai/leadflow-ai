@@ -205,7 +205,7 @@ jobs:
           echo "${{ secrets.EC2_SSH_KEY }}" > ~/.ssh/id_rsa
           chmod 600 ~/.ssh/id_rsa
           
-          # FIXED: Added ServerAliveInterval to prevent 'Broken pipe' drops
+          # FIXED: High tolerance SSH Keep-Alive to survive network saturation during image pulls
           cat > ~/.ssh/config <<EOF
           Host production
             HostName ${{ secrets.CF_SSH_HOSTNAME }}
@@ -213,8 +213,9 @@ jobs:
             IdentityFile ~/.ssh/id_rsa
             StrictHostKeyChecking no
             UserKnownHostsFile /dev/null
-            ServerAliveInterval 15
-            ServerAliveCountMax 3
+            ServerAliveInterval 60
+            ServerAliveCountMax 10
+            TCPKeepAlive no
             ProxyCommand /usr/local/bin/cloudflared access ssh --hostname %h --id ${{ secrets.CF_SERVICE_ID }} --secret ${{ secrets.CF_SERVICE_SECRET }}
           EOF
 
@@ -241,7 +242,8 @@ jobs:
           
           if [ "${UPDATE_BACKEND}" == "true" ]; then
               echo "🔄 Updating Backend & Redis Infrastructure..."
-              podman pull \$BACKEND_IMG
+              # FIXED: Added -q (quiet) to prevent massive console output from breaking the SSH tunnel
+              podman pull -q \$BACKEND_IMG
               
               # 1. Start Redis Engine (No user-data, strictly in-memory cache)
               systemctl --user stop container-leadflow-redis 2>/dev/null || true
@@ -300,7 +302,8 @@ jobs:
           
           if [ "${UPDATE_FRONTEND}" == "true" ]; then
               echo "🔄 Updating Frontend..."
-              podman pull \$FRONTEND_IMG
+              # FIXED: Added -q (quiet) here as well
+              podman pull -q \$FRONTEND_IMG
               systemctl --user stop container-leadflow-frontend 2>/dev/null || true
               podman rm -f leadflow-frontend 2>/dev/null || true
               
