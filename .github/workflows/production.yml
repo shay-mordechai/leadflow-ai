@@ -205,7 +205,10 @@ jobs:
           echo "${{ secrets.EC2_SSH_KEY }}" > ~/.ssh/id_rsa
           chmod 600 ~/.ssh/id_rsa
           
-          # SUPER-ROBUST SSH CONFIG
+          # --- THE ULTIMATE SSH FIX ---
+          # 1. Increased ServerAliveInterval to 60 (check every minute, not every 10s)
+          # 2. ServerAliveCountMax to 15 (allow up to 15 minutes of silence!)
+          # This gives the server breathing room during heavy I/O operations like pulling large Docker images.
           cat > ~/.ssh/config <<EOF
           Host production
             HostName ${{ secrets.CF_SSH_HOSTNAME }}
@@ -213,8 +216,8 @@ jobs:
             IdentityFile ~/.ssh/id_rsa
             StrictHostKeyChecking no
             UserKnownHostsFile /dev/null
-            ServerAliveInterval 10
-            ServerAliveCountMax 120
+            ServerAliveInterval 60
+            ServerAliveCountMax 15
             TCPKeepAlive no
             ProxyCommand /usr/local/bin/cloudflared access ssh --hostname %h --id ${{ secrets.CF_SERVICE_ID }} --secret ${{ secrets.CF_SERVICE_SECRET }}
           EOF
@@ -226,152 +229,90 @@ jobs:
         run: |
           ECR_TEMP_TOKEN=$(aws ecr get-login-password --region ${{ env.AWS_REGION }})
           
-          ssh production << EOF
-            set -e
-            
-            AWS_REGION="${{ env.AWS_REGION }}"
-            BACKEND_IMG="${{ secrets.AWS_ACCOUNT_ID }}.dkr.ecr.eu-north-1.amazonaws.com/${{ env.IMAGE_BACKEND }}:latest"
-            FRONTEND_IMG="${{ secrets.AWS_ACCOUNT_ID }}.dkr.ecr.eu-north-1.amazonaws.com/${{ env.IMAGE_FRONTEND }}:latest"
-            SYSTEMD_DIR="\$HOME/.config/systemd/user"
-            
-            echo "🔐 Logging into AWS ECR using temporary CI token..."
-            MAX_LOGIN_RETRIES=5
-            for i in \$(seq 1 \$MAX_LOGIN_RETRIES); do
-                echo "Attempt \$i of \$MAX_LOGIN_RETRIES..."
-                if echo "${ECR_TEMP_TOKEN}" | podman login --username AWS --password-stdin ${{ secrets.AWS_ACCOUNT_ID }}.dkr.ecr.eu-north-1.amazonaws.com; then
-                    echo "✅ ECR Login Succeeded!"
-                    break
-                fi
-                if [ \$i -eq \$MAX_LOGIN_RETRIES ]; then
-                    echo "❌ ECR Login failed."
-                    exit 1
-                fi
-                sleep 5
-            done
-            
-            mkdir -p ~/leadflow-ai/storage ~/leadflow-ai/data "\$SYSTEMD_DIR"
-
-            pull_with_keepalive() {
-                IMAGE_URL=\$1
-                MAX_PULL_RETRIES=3
-                
-                for attempt in \$(seq 1 \$MAX_PULL_RETRIES); do
-                    echo "⏳ Pulling \$IMAGE_URL (Attempt \$attempt)..."
-                    podman pull -q "\$IMAGE_URL" &
-                    PID=\$!
-                    
-                    while kill -0 \$PID 2>/dev/null; do
-                        echo -n "."
-                        sleep 3
-                    done
-                    wait \$PID
-                    EXIT_CODE=\$?
-                    
-                    if [ \$EXIT_CODE -eq 0 ]; then
-                        echo " ✅ Done pulling!"
-                        return 0
-                    fi
-                    
-                    echo " ⚠️ Pull failed with code \$EXIT_CODE. Retrying..."
-                    sleep 5
-                done
-                exit 1
-            }
-            
-            if [ "${UPDATE_BACKEND}" == "true" ]; then
-                echo "🔄 Updating Backend & Redis Infrastructure..."
-                
-                # --- THE FIX: FREE UP RESOURCES BEFORE PULLING ---
-                echo "🛑 Stopping backend & worker to free up RAM & CPU..."
-                systemctl --user stop container-leadflow-backend 2>/dev/null || true
-                systemctl --user stop container-leadflow-worker 2>/dev/null || true
-                podman rm -f leadflow-backend leadflow-worker 2>/dev/null || true
-                
-                echo "🧹 Pruning old Docker images to free Disk Space..."
-                podman image prune -a -f || true
-                
-                # NOW we pull, when the server is empty and relaxed
-                pull_with_keepalive "\$BACKEND_IMG"
-                
-                # 1. Start Redis Engine
-                systemctl --user stop container-leadflow-redis 2>/dev/null || true
-                podman rm -f leadflow-redis 2>/dev/null || true
-                podman run -d --name leadflow-redis --network host --replace docker.io/library/redis:7-alpine
-                
-                # 2. Start Main FastAPI Backend
-                podman run -d \
-                  --name leadflow-backend \
-                  --network host \
-                  --replace \
-                  --env APP_ENV=production \
-                  --env AWS_REGION=\$AWS_REGION \
-                  --env DATABASE_URL=sqlite:////app/data/leads.db \
-                  --env REDIS_URL=redis://127.0.0.1:6379/0 \
-                  -v ~/leadflow-ai/storage:/app/storage:Z \
-                  -v ~/leadflow-ai/data:/app/data:Z \
-                  \$BACKEND_IMG \
-                  gunicorn src.main:app --workers 1 --worker-class uvicorn.workers.UvicornWorker --bind 0.0.0.0:8000
-                  
-                # 3. Start Celery Async Worker
-                podman run -d \
-                  --name leadflow-worker \
-                  --network host \
-                  --replace \
-                  --env APP_ENV=production \
-                  --env AWS_REGION=\$AWS_REGION \
-                  --env DATABASE_URL=sqlite:////app/data/leads.db \
-                  --env REDIS_URL=redis://127.0.0.1:6379/0 \
-                  -v ~/leadflow-ai/storage:/app/storage:Z \
-                  -v ~/leadflow-ai/data:/app/data:Z \
-                  \$BACKEND_IMG \
-                  celery -A src.worker.celery_app worker --loglevel=info --concurrency=2
-                  
-                # 4. Generate and Enable SystemD Services
-                echo "⚙️ Generating SystemD units..."
-                podman stop leadflow-redis leadflow-backend leadflow-worker || true
-                
-                podman generate systemd --new --name leadflow-redis -f
-                podman generate systemd --new --name leadflow-backend -f
-                podman generate systemd --new --name leadflow-worker -f
-                
-                mv container-leadflow-*.service "\$SYSTEMD_DIR/"
-                
-                systemctl --user daemon-reload
-                systemctl --user enable --now container-leadflow-redis.service
-                systemctl --user enable --now container-leadflow-backend.service
-                systemctl --user enable --now container-leadflow-worker.service
-            else
-                echo "⏭️ Backend code unchanged."
-            fi
-            
-            if [ "${UPDATE_FRONTEND}" == "true" ]; then
-                echo "🔄 Updating Frontend..."
-                
-                echo "🛑 Stopping frontend to free up resources..."
-                systemctl --user stop container-leadflow-frontend 2>/dev/null || true
-                podman rm -f leadflow-frontend 2>/dev/null || true
-                
-                echo "🧹 Pruning old Frontend images..."
-                podman image prune -a -f || true
-                
-                pull_with_keepalive "\$FRONTEND_IMG"
-  
-                podman run -d \
-                  --name leadflow-frontend \
-                  --network host \
-                  --replace \
-                  --env NEXT_PUBLIC_API_URL=https://my-leads.app \
-                  \$FRONTEND_IMG
-                  
-                podman stop leadflow-frontend
-                podman generate systemd --new --name leadflow-frontend -f
-                mv container-leadflow-frontend.service "\$SYSTEMD_DIR/"
-                
-                systemctl --user daemon-reload
-                systemctl --user enable --now container-leadflow-frontend.service
-            else
-                echo "⏭️ Frontend code unchanged."
-            fi
-            
-            echo "✅ Deployment Process Finished!"
+          cat > deploy_script.sh << 'EOF'
+          set -e
+          
+          SYSTEMD_DIR="$HOME/.config/systemd/user"
+          
+          echo "🛑 Stopping heavy containers to free up RAM..."
+          systemctl --user stop container-leadflow-backend 2>/dev/null || true
+          systemctl --user stop container-leadflow-worker 2>/dev/null || true
+          systemctl --user stop container-leadflow-frontend 2>/dev/null || true
+          podman rm -f leadflow-backend leadflow-worker leadflow-frontend 2>/dev/null || true
+          
+          echo "🔐 Logging into AWS ECR..."
+          MAX_LOGIN_RETRIES=5
+          for i in $(seq 1 $MAX_LOGIN_RETRIES); do
+              if echo "$ECR_TOKEN" | podman login --username AWS --password-stdin "$ECR_REG"; then
+                  echo "✅ ECR Login Succeeded!"
+                  break
+              fi
+              if [ $i -eq $MAX_LOGIN_RETRIES ]; then exit 1; fi
+              sleep 5
+          done
+          
+          mkdir -p ~/leadflow-ai/storage ~/leadflow-ai/data "$SYSTEMD_DIR"
+          
+          if [ "$UPDATE_BACKEND" == "true" ]; then
+              echo "🔄 Updating Backend..."
+              echo "🧹 Pruning old Docker images..."
+              podman image prune -a -f || true
+              
+              echo "⏳ Pulling Backend Image (This might take a few minutes)..."
+              # Removed the custom keepalive loop. Letting podman pull natively.
+              # We rely on the robust SSH config above to keep the connection open.
+              podman pull "$BACKEND_IMG"
+              echo "✅ Pull successful!"
+              
+              systemctl --user stop container-leadflow-redis 2>/dev/null || true
+              podman rm -f leadflow-redis 2>/dev/null || true
+              podman run -d --name leadflow-redis --network host --replace docker.io/library/redis:7-alpine
+              
+              podman run -d --name leadflow-backend --network host --replace --env APP_ENV=production --env AWS_REGION=$AWS_REGION --env DATABASE_URL=sqlite:////app/data/leads.db --env REDIS_URL=redis://127.0.0.1:6379/0 -v ~/leadflow-ai/storage:/app/storage:Z -v ~/leadflow-ai/data:/app/data:Z "$BACKEND_IMG" gunicorn src.main:app --workers 1 --worker-class uvicorn.workers.UvicornWorker --bind 0.0.0.0:8000
+              
+              podman run -d --name leadflow-worker --network host --replace --env APP_ENV=production --env AWS_REGION=$AWS_REGION --env DATABASE_URL=sqlite:////app/data/leads.db --env REDIS_URL=redis://127.0.0.1:6379/0 -v ~/leadflow-ai/storage:/app/storage:Z -v ~/leadflow-ai/data:/app/data:Z "$BACKEND_IMG" celery -A src.worker.celery_app worker --loglevel=info --concurrency=2
+              
+              echo "⚙️ Generating SystemD units..."
+              podman stop leadflow-redis leadflow-backend leadflow-worker || true
+              podman generate systemd --new --name leadflow-redis -f
+              podman generate systemd --new --name leadflow-backend -f
+              podman generate systemd --new --name leadflow-worker -f
+              mv container-leadflow-*.service "$SYSTEMD_DIR/"
+              systemctl --user daemon-reload
+              systemctl --user enable --now container-leadflow-redis.service
+              systemctl --user enable --now container-leadflow-backend.service
+              systemctl --user enable --now container-leadflow-worker.service
+          fi
+          
+          if [ "$UPDATE_FRONTEND" == "true" ]; then
+              echo "🔄 Updating Frontend..."
+              podman image prune -a -f || true
+              
+              echo "⏳ Pulling Frontend Image..."
+              podman pull "$FRONTEND_IMG"
+              
+              podman run -d --name leadflow-frontend --network host --replace --env NEXT_PUBLIC_API_URL=https://my-leads.app "$FRONTEND_IMG"
+              podman stop leadflow-frontend
+              podman generate systemd --new --name leadflow-frontend -f
+              mv container-leadflow-frontend.service "$SYSTEMD_DIR/"
+              systemctl --user daemon-reload
+              systemctl --user enable --now container-leadflow-frontend.service
+          fi
+          echo "✅ Deployment Process Finished!"
           EOF
+          
+          MAX_SSH_RETRIES=3
+          for attempt in $(seq 1 $MAX_SSH_RETRIES); do
+              echo "🚀 Connecting via SSH to production (Attempt $attempt of $MAX_SSH_RETRIES)..."
+              
+              if ssh production "ECR_TOKEN=\"$ECR_TEMP_TOKEN\" ECR_REG=\"${{ secrets.AWS_ACCOUNT_ID }}.dkr.ecr.eu-north-1.amazonaws.com\" AWS_REGION=\"${{ env.AWS_REGION }}\" BACKEND_IMG=\"${{ secrets.AWS_ACCOUNT_ID }}.dkr.ecr.eu-north-1.amazonaws.com/${{ env.IMAGE_BACKEND }}:latest\" FRONTEND_IMG=\"${{ secrets.AWS_ACCOUNT_ID }}.dkr.ecr.eu-north-1.amazonaws.com/${{ env.IMAGE_FRONTEND }}:latest\" UPDATE_BACKEND=\"$UPDATE_BACKEND\" UPDATE_FRONTEND=\"$UPDATE_FRONTEND\" bash -s" < deploy_script.sh; then
+                  echo "✅ SSH script executed successfully!"
+                  exit 0
+              fi
+              
+              echo "⚠️ SSH connection dropped. Retrying in 15 seconds..."
+              sleep 15
+          done
+          
+          echo "❌ Deployment failed after $MAX_SSH_RETRIES SSH attempts."
+          exit 1
