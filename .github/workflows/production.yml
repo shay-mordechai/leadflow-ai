@@ -227,18 +227,26 @@ jobs:
           UPDATE_BACKEND: ${{ needs.detect-changes.outputs.backend }}
           UPDATE_FRONTEND: ${{ needs.detect-changes.outputs.frontend }}
         run: |
+          # 1. Fetch AWS Token
           ECR_TEMP_TOKEN=$(aws ecr get-login-password --region ${{ env.AWS_REGION }})
           
+          # 2. Create optimized deployment script
           cat > deploy_script.sh << 'EOF'
           set -e
           
           SYSTEMD_DIR="$HOME/.config/systemd/user"
           
+          # --- STEP 1: CRITICAL RAM RECOVERY ---
+          echo "🧹 Clearing System Cache & Buffers to free physical RAM..."
+          # Note: This helps immensely before a heavy pull on small instances
+          sudo sync && echo 3 | sudo tee /proc/sys/vm/drop_caches || true
+          
           echo "🛑 Stopping heavy containers to free up RAM..."
-          systemctl --user stop container-leadflow-backend 2>/dev/null || true
-          systemctl --user stop container-leadflow-worker 2>/dev/null || true
-          systemctl --user stop container-leadflow-frontend 2>/dev/null || true
+          systemctl --user stop container-leadflow-backend container-leadflow-worker container-leadflow-frontend 2>/dev/null || true
           podman rm -f leadflow-backend leadflow-worker leadflow-frontend 2>/dev/null || true
+          
+          echo "🧹 Pruning ALL unused images/containers to free Disk Space..."
+          podman system prune -a -f || true
           
           echo "🔐 Logging into AWS ECR..."
           MAX_LOGIN_RETRIES=5
@@ -255,12 +263,7 @@ jobs:
           
           if [ "$UPDATE_BACKEND" == "true" ]; then
               echo "🔄 Updating Backend..."
-              echo "🧹 Pruning old Docker images..."
-              podman image prune -a -f || true
-              
-              echo "⏳ Pulling Backend Image (This might take a few minutes)..."
-              # Removed the custom keepalive loop. Letting podman pull natively.
-              # We rely on the robust SSH config above to keep the connection open.
+              echo "⏳ Pulling Backend Image (High RAM Operation)..."
               podman pull "$BACKEND_IMG"
               echo "✅ Pull successful!"
               
@@ -268,48 +271,43 @@ jobs:
               podman rm -f leadflow-redis 2>/dev/null || true
               podman run -d --name leadflow-redis --network host --replace docker.io/library/redis:7-alpine
               
+              echo "🚀 Starting Backend & Worker..."
               podman run -d --name leadflow-backend --network host --replace --env APP_ENV=production --env AWS_REGION=$AWS_REGION --env DATABASE_URL=sqlite:////app/data/leads.db --env REDIS_URL=redis://127.0.0.1:6379/0 -v ~/leadflow-ai/storage:/app/storage:Z -v ~/leadflow-ai/data:/app/data:Z "$BACKEND_IMG" gunicorn src.main:app --workers 1 --worker-class uvicorn.workers.UvicornWorker --bind 0.0.0.0:8000
               
               podman run -d --name leadflow-worker --network host --replace --env APP_ENV=production --env AWS_REGION=$AWS_REGION --env DATABASE_URL=sqlite:////app/data/leads.db --env REDIS_URL=redis://127.0.0.1:6379/0 -v ~/leadflow-ai/storage:/app/storage:Z -v ~/leadflow-ai/data:/app/data:Z "$BACKEND_IMG" celery -A src.worker.celery_app worker --loglevel=info --concurrency=2
               
               echo "⚙️ Generating SystemD units..."
               podman stop leadflow-redis leadflow-backend leadflow-worker || true
-              podman generate systemd --new --name leadflow-redis -f
-              podman generate systemd --new --name leadflow-backend -f
-              podman generate systemd --new --name leadflow-worker -f
-              mv container-leadflow-*.service "$SYSTEMD_DIR/"
+              podman generate systemd --new --name leadflow-redis -f > "$SYSTEMD_DIR/container-leadflow-redis.service"
+              podman generate systemd --new --name leadflow-backend -f > "$SYSTEMD_DIR/container-leadflow-backend.service"
+              podman generate systemd --new --name leadflow-worker -f > "$SYSTEMD_DIR/container-leadflow-worker.service"
+              
               systemctl --user daemon-reload
-              systemctl --user enable --now container-leadflow-redis.service
-              systemctl --user enable --now container-leadflow-backend.service
-              systemctl --user enable --now container-leadflow-worker.service
+              systemctl --user enable --now container-leadflow-redis.service container-leadflow-backend.service container-leadflow-worker.service
           fi
           
           if [ "$UPDATE_FRONTEND" == "true" ]; then
               echo "🔄 Updating Frontend..."
-              podman image prune -a -f || true
-              
               echo "⏳ Pulling Frontend Image..."
               podman pull "$FRONTEND_IMG"
               
               podman run -d --name leadflow-frontend --network host --replace --env NEXT_PUBLIC_API_URL=https://my-leads.app "$FRONTEND_IMG"
               podman stop leadflow-frontend
-              podman generate systemd --new --name leadflow-frontend -f
-              mv container-leadflow-frontend.service "$SYSTEMD_DIR/"
+              podman generate systemd --new --name leadflow-frontend -f > "$SYSTEMD_DIR/container-leadflow-frontend.service"
               systemctl --user daemon-reload
               systemctl --user enable --now container-leadflow-frontend.service
           fi
           echo "✅ Deployment Process Finished!"
           EOF
           
+          # 3. Execute with robust SSH retry logic
           MAX_SSH_RETRIES=3
           for attempt in $(seq 1 $MAX_SSH_RETRIES); do
               echo "🚀 Connecting via SSH to production (Attempt $attempt of $MAX_SSH_RETRIES)..."
-              
               if ssh production "ECR_TOKEN=\"$ECR_TEMP_TOKEN\" ECR_REG=\"${{ secrets.AWS_ACCOUNT_ID }}.dkr.ecr.eu-north-1.amazonaws.com\" AWS_REGION=\"${{ env.AWS_REGION }}\" BACKEND_IMG=\"${{ secrets.AWS_ACCOUNT_ID }}.dkr.ecr.eu-north-1.amazonaws.com/${{ env.IMAGE_BACKEND }}:latest\" FRONTEND_IMG=\"${{ secrets.AWS_ACCOUNT_ID }}.dkr.ecr.eu-north-1.amazonaws.com/${{ env.IMAGE_FRONTEND }}:latest\" UPDATE_BACKEND=\"$UPDATE_BACKEND\" UPDATE_FRONTEND=\"$UPDATE_FRONTEND\" bash -s" < deploy_script.sh; then
                   echo "✅ SSH script executed successfully!"
                   exit 0
               fi
-              
               echo "⚠️ SSH connection dropped. Retrying in 15 seconds..."
               sleep 15
           done
