@@ -22,7 +22,6 @@ async def run_whisper_test():
     print(f"\n🚀 STARTING WHISPER (LOW-RAM OPTIMIZED) TEST")
     print("="*60)
     
-    # ניצור קובץ דמה פשוט
     test_file_path = "test_audio.ogg"
     
     with open(test_file_path, "wb") as f:
@@ -38,8 +37,7 @@ async def run_whisper_test():
              log(f"✅ [SUCCESS] Transcription Result: {result}", "SUCCESS")
         except Exception as e:
             error_str = str(e).lower()
-            # הווספנו בדיקה ל-"End of file" ולמספר השגיאה שקיבלת בלוג (541478725)
-            # זה מעיד שהמודל נטען בהצלחה וניסה לפענח את הקובץ.
+
             expected_failure_keywords = [
                 "invalid data found", 
                 "ffmpeg", 
