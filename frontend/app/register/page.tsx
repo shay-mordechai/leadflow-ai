@@ -1,4 +1,4 @@
-// app/register/page.tsx
+// frontend/app/register/page.tsx
 import { Metadata } from "next";
 import RegisterForm from "./register-form";
 

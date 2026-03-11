@@ -53,7 +53,7 @@ export default function Pricing() {
                         <h3 className="text-2xl font-bold text-white mb-2">PRO</h3>
                         <p className="text-blue-200 text-sm mb-6">המערכת המלאה. אוטומציה סוף לקצה.</p>
                         <div className="flex items-baseline gap-2 mb-8">
-                            <span className="text-5xl font-black text-white">199 ₪</span>
+                            <span className="text-5xl font-black text-white">499 ₪</span>
                             <span className="text-blue-300">/ לחודש</span>
                         </div>
                         
@@ -61,7 +61,7 @@ export default function Pricing() {
                             <li className="flex items-center gap-3"><Check className="w-5 h-5 text-blue-400" /> כל מה שכלול במסלול ההתנסות</li>
                             <li className="flex items-center gap-3"><Check className="w-5 h-5 text-blue-400" /> הקצאת מספר טלפון ישראלי/אמריקאי</li>
                             <li className="flex items-center gap-3"><Check className="w-5 h-5 text-blue-400" /> חיבור רשמי לוואטסאפ (Meta API)</li>
-                            <li className="flex items-center gap-3"><Check className="w-5 h-5 text-blue-400" /> תבניות Zapier מוכנות לחיבור לידים</li>
+                            <li className="flex items-center gap-3"><Check className="w-5 h-5 text-blue-400" /> תבניות Make מוכנות לחיבור לידים</li>
                             <li className="flex items-center gap-3"><Check className="w-5 h-5 text-blue-400" /> שיחות וואטסאפ ללא הגבלה</li>
                         </ul>
                         

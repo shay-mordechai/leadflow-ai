@@ -38,7 +38,7 @@ export default function RegisterForm() {
         password = password.split('').sort(() => 0.5 - Math.random()).join('');
         
         setGeneratedPassword(password);
-        toast.success("ג'נרנו עבורך סיסמה חזקה מאוד! 🔐", {
+        toast.success("נוצרה עבורך סיסמה חזקה מאוד! 🔐", {
             style: { background: '#1e293b', color: '#fff' }
         });
     };
@@ -47,7 +47,7 @@ export default function RegisterForm() {
         if (!generatedPassword) return;
         navigator.clipboard.writeText(generatedPassword);
         setCopied(true);
-        toast.success("הסיסמה הועתקה! שמור אותה במקום בטוח.");
+        toast.success("הסיסמה הועתקה, שמור במקום בטוח.");
         setTimeout(() => setCopied(false), 2000);
     };
 
