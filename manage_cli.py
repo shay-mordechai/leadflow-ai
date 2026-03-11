@@ -2,122 +2,95 @@
 import sys
 import argparse
 import asyncio
+import uuid
 from prettytable import PrettyTable
+from sqlalchemy.orm import Session
 from src.database.session import SessionLocal
-from src.database.models import User, PlanTier, SubscriptionStatus
+from src.database.models import User, PlanTier, SubscriptionStatus, BusinessProfile, AIAgent
 
 def list_users():
-    """
-    Lists all users in the database with key details.
-    """
+    """Lists all users in the database with key details."""
     db = SessionLocal()
     try:
         users = db.query(User).all()
         table = PrettyTable()
-        table.field_names = ["ID", "Name", "Email", "Plan", "Status", "Active", "Created"]
+        table.field_names = ["ID", "Name", "Email", "Plan", "Status", "Active"]
         
         for u in users:
-            created_date = u.created_at.strftime("%Y-%m-%d") if u.created_at else "N/A"
             table.add_row([
                 str(u.id)[:8],
                 u.name,
                 u.email,
                 u.plan_tier,
                 u.subscription_status,
-                "✅ YES" if u.is_active else "❌ NO",
-                created_date
+                "✅ YES" if u.is_active else "❌ NO"
             ])
         print(table)
     finally:
         db.close()
 
-def upgrade_user(email):
+def onboard_client(email, biz_name, biz_type, tone, prompt):
     """
-    Manually upgrades a user to PRO status.
+    Agency Command: Fully configures a client's AI brain in one shot.
+    This allows you to set up a client without ever logging into their dashboard.
     """
     db = SessionLocal()
     try:
         user = db.query(User).filter(User.email == email).first()
         if not user:
-            print(f"❌ User {email} not found.")
+            print(f"❌ User {email} not found. Create the user via /register first.")
             return
-        
+
+        # 1. Upgrade to PRO
         user.plan_tier = PlanTier.PRO
         user.subscription_status = SubscriptionStatus.ACTIVE
-        db.commit()
-        print(f"🚀 User {email} successfully upgraded to PRO!")
-    finally:
-        db.close()
 
-def toggle_user(email):
-    """
-    Toggles user status between Active/Frozen.
-    """
-    db = SessionLocal()
-    try:
-        user = db.query(User).filter(User.email == email).first()
-        if not user:
-            print(f"❌ User {email} not found.")
-            return
+        # 2. Setup/Update Business Profile
+        profile = db.query(BusinessProfile).filter(BusinessProfile.user_id == user.id).first()
+        if not profile:
+            profile = BusinessProfile(user_id=user.id)
+            db.add(profile)
         
-        user.is_active = not user.is_active
+        profile.business_name = biz_name
+        profile.business_type = biz_type
+        profile.ai_tone = tone
+
+        # 3. Setup AI Agent Prompt
+        agent = db.query(AIAgent).filter(AIAgent.user_id == user.id).first()
+        if not agent:
+            agent = AIAgent(user_id=user.id)
+            db.add(agent)
+        
+        agent.system_prompt = prompt
+        agent.is_active = True
+
         db.commit()
-        status = "ACTIVE" if user.is_active else "FROZEN"
-        print(f"✅ User {user.name} is now {status}")
+        print(f"🚀 Client '{biz_name}' ({email}) is now fully ONBOARDED and LIVE!")
+        print(f"🔗 Webhook URL: https://my-leads.app/api/v1/leads/webhook/{user.id}")
     finally:
         db.close()
-
-def show_stats():
-    """
-    Shows simple high-level statistics.
-    """
-    db = SessionLocal()
-    try:
-        total_users = db.query(User).count()
-        active_users = db.query(User).filter(User.is_active == True).count()
-        pro_users = db.query(User).filter(User.plan_tier == PlanTier.PRO).count()
-        print(f"\n📊 SYSTEM STATS")
-        print(f"Total Users: {total_users}")
-        print(f"Active Users: {active_users}")
-        print(f"PRO Users: {pro_users}\n")
-    finally:
-        db.close()
-
-async def run_manual_followup():
-    """
-    Triggers the Smart Follow-up logic manually for testing.
-    """
-    from src.tasks.followup_tasks import process_smart_followups
-    print("⏳ Running manual follow-up check for stale leads...")
-    await process_smart_followups()
-    print("✅ Follow-up process complete.")
 
 if __name__ == "__main__":
-    parser = argparse.ArgumentParser(description="LeadFlow AI Management CLI")
+    parser = argparse.ArgumentParser(description="LeadFlow AI Agency CLI")
     subparsers = parser.add_subparsers(dest="command")
     
+    # List command
     subparsers.add_parser("list", help="List all users")
-    subparsers.add_parser("stats", help="Show system statistics")
-    subparsers.add_parser("followup", help="Manually trigger smart follow-ups")
     
-    toggle = subparsers.add_parser("toggle", help="Toggle user active status")
-    toggle.add_argument("email", help="User email address")
-    
-    upgrade = subparsers.add_parser("upgrade", help="Upgrade user to PRO")
-    upgrade.add_argument("email", help="User email address")
+    # Onboard command
+    onboard = subparsers.add_parser("onboard", help="Quickly configure a new client")
+    onboard.add_argument("--email", required=True, help="Client's registered email")
+    onboard.add_argument("--name", required=True, help="Business Name")
+    onboard.add_argument("--type", default="NLP Coaching", help="Business Category")
+    onboard.add_argument("--tone", default="Professional & Empathetic", help="AI Tone")
+    onboard.add_argument("--prompt", required=True, help="Full System Prompt for the AI")
     
     args = parser.parse_args()
     
     if args.command == "list": 
         list_users()
-    elif args.command == "stats": 
-        show_stats()
-    elif args.command == "toggle": 
-        toggle_user(args.email)
-    elif args.command == "upgrade": 
-        upgrade_user(args.email)
-    elif args.command == "followup": 
-        asyncio.run(run_manual_followup())
+    elif args.command == "onboard":
+        onboard_client(args.email, args.name, args.type, args.tone, args.prompt)
     else: 
         parser.print_help()
 
