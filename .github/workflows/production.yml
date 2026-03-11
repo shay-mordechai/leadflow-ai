@@ -25,6 +25,7 @@ env:
   ECR_REGISTRY: "${{ secrets.AWS_ACCOUNT_ID }}.dkr.ecr.eu-north-1.amazonaws.com"
   IMAGE_BACKEND: "leadflow-backend"
   IMAGE_FRONTEND: "leadflow-frontend"
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
 
 jobs:
   detect-changes:
