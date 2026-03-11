@@ -6,7 +6,7 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
-import { registerAction as registerUser } from "@/actions/auth"; // This is a Server Action
+import { registerAction as registerUser } from "@/actions/auth"; // Server Action
 import { RefreshCw, Copy, Check } from "lucide-react";
 import toast from "react-hot-toast";
 
@@ -51,7 +51,13 @@ export default function RegisterForm() {
         setTimeout(() => setCopied(false), 2000);
     };
 
-    async function handleSubmit(formData: FormData) {
+    const handleBusinessTypeChange = (e: React.ChangeEvent<HTMLSelectElement>) => {
+        setShowOtherBusinessType(e.target.value === "Other");
+    };
+
+    // CRITICAL FIX: Using onSubmit instead of action to prevent Next.js SSR crashes
+    async function handleSubmit(e: React.FormEvent<HTMLFormElement>) {
+        e.preventDefault(); // Prevent standard browser postback
         setError("");
 
         // Client-side validation for Terms
@@ -60,28 +66,34 @@ export default function RegisterForm() {
             return;
         }
 
-        // If a password was generated, override the form data
+        setLoading(true);
+
+        // Safely extract FormData from the DOM event
+        const form = e.currentTarget;
+        const formData = new FormData(form);
+
+        // If a password was generated or typed in our controlled state, override the form data
         if (generatedPassword) {
             formData.set("password", generatedPassword);
         }
 
-        setLoading(true);
+        try {
+            // Call the Server Action (runs on backend)
+            const result = await registerUser(formData);
 
-        // Call the Server Action (runs on backend)
-        const result = await registerUser(formData);
-
-        if (result.success) {
-            // Redirect to login on success
-            router.push("/login?registered=true");
-        } else {
-            setError(result.error || "ההרשמה נכשלה. אנא נסה שוב.");
+            if (result.success) {
+                // Redirect to login on success
+                toast.success("נרשמת בהצלחה! מעביר אותך להתחברות...");
+                router.push("/login?registered=true");
+            } else {
+                setError(result.error || "ההרשמה נכשלה. אנא נסה שוב.");
+            }
+        } catch (err) {
+            setError("שגיאת תקשורת עם השרת.");
+        } finally {
             setLoading(false);
         }
     }
-
-    const handleBusinessTypeChange = (e: React.ChangeEvent<HTMLSelectElement>) => {
-        setShowOtherBusinessType(e.target.value === "Other");
-    };
 
     return (
         <div className="w-full max-w-md space-y-8 bg-white dark:bg-gray-800 p-8 rounded-xl shadow-lg border border-gray-200 dark:border-gray-700" dir="rtl">
@@ -94,7 +106,8 @@ export default function RegisterForm() {
                 </p>
             </div>
 
-            <form action={handleSubmit} className="mt-8 space-y-6">
+            {/* FIX: Changed from action={handleSubmit} to onSubmit={handleSubmit} */}
+            <form onSubmit={handleSubmit} className="mt-8 space-y-6">
                 <div className="space-y-4">
                     <div>
                         <label className="text-sm font-medium leading-none peer-disabled:cursor-not-allowed peer-disabled:opacity-70">
@@ -166,7 +179,7 @@ export default function RegisterForm() {
                             <Input 
                                 name="password" 
                                 type={generatedPassword ? "text" : "password"} // Show generated password for easy copying
-                                value={generatedPassword || undefined}
+                                value={generatedPassword}
                                 onChange={(e) => setGeneratedPassword(e.target.value)}
                                 placeholder="********" 
                                 required 
@@ -190,7 +203,7 @@ export default function RegisterForm() {
                         </p>
                     </div>
 
-                    {/* --- Checkbox Section (Requires Client State) --- */}
+                    {/* --- Checkbox Section --- */}
                     {/* Using space-x-reverse to fix Tailwind spacing issues in RTL mode */}
                     <div className="flex items-start space-x-3 space-x-reverse pt-2">
                         <input
