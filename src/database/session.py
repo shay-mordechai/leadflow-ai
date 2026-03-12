@@ -66,6 +66,11 @@ if is_sqlite:
     def set_sqlite_pragma(dbapi_connection, connection_record):
         cursor = dbapi_connection.cursor()
         cursor.execute("PRAGMA foreign_keys=ON")
+        # TIER 3 OPTIMIZATION: Write-Ahead Logging (WAL) for high concurrency
+        # This prevents "database is locked" errors when multiple leads message at once.
+        cursor.execute("PRAGMA journal_mode=WAL")
+        cursor.execute("PRAGMA synchronous=NORMAL")
+        cursor.execute("PRAGMA busy_timeout=5000") # Wait up to 5s if DB is locked
         cursor.close()
 
 SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)

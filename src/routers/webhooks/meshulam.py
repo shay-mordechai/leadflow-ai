@@ -9,9 +9,10 @@ from sqlalchemy.orm import Session
 from fpdf import FPDF # NEW: PDF Generator
 
 from src.database.session import SessionLocal
-from src.database.models import User, PlanTier
+from src.database.models import User, PlanTier, SubscriptionStatus # FIXED: Added SubscriptionStatus
 from src.config import settings
 from src.services.communication.email import email_service 
+from src.security.audit import audit_service # FIXED: Added Audit Log
 
 router = APIRouter(tags=["Webhooks - Meshulam"])
 logger = logging.getLogger("MeshulamWebhook")
@@ -90,7 +91,7 @@ def generate_invoice_pdf(transaction_id: str, amount: str, user_name: str, user_
 async def meshulam_payment_notify(request: Request):
     """
     Handles payment notifications from Meshulam (IPN).
-    Updates user plan, generates a PDF invoice, and emails it.
+    Updates user plan, generates a PDF invoice, handles DUNNING, and emails it.
     """
     try:
         form_data = await request.form()
@@ -98,12 +99,9 @@ async def meshulam_payment_notify(request: Request):
         logger.info(f"Received Meshulam IPN. Transaction ID: {data.get('transactionId')}")
 
         transaction_id = data.get("transactionId") or data.get("id")
-        payment_status = data.get("status", "").lower()
+        payment_status = str(data.get("status", "")).lower()
         amount = data.get("sum", "0")
         customer_email = data.get("customField") or data.get("email") 
-
-        if str(payment_status) not in ["1", "success", "approved"]:
-            return {"status": "ignored", "reason": "incomplete_status"}
 
         if not customer_email:
             return {"status": "error", "message": "Email missing"}
@@ -114,31 +112,61 @@ async def meshulam_payment_notify(request: Request):
         if not user:
             return {"status": "user_not_found"}
 
-        if user.plan_tier != PlanTier.PRO:
-            # 1. Upgrade User
-            user.plan_tier = PlanTier.PRO
-            db.commit()
-            logger.info(f"✅ SUCCESS: User {user.email} upgraded to PRO via Meshulam.")
-            
-            # 2. Generate PDF Invoice
-            pdf_path = generate_invoice_pdf(
-                transaction_id=str(transaction_id), 
-                amount=str(amount), 
-                user_name=user.name, 
-                user_email=user.email
-            )
-            
-            # 3. Send Email with Attachment
-            await email_service.send_payment_receipt(
-                to_email=user.email,
-                pdf_path=pdf_path
-            )
-            
-            # 4. Cleanup: Delete the PDF from the server after sending
-            if os.path.exists(pdf_path):
-                os.remove(pdf_path)
+        # SUCCESSFUL PAYMENT
+        if payment_status in ["1", "success", "approved"]:
+            if user.plan_tier != PlanTier.PRO or user.subscription_status != SubscriptionStatus.ACTIVE:
+                # 1. Upgrade User
+                user.plan_tier = PlanTier.PRO
+                user.subscription_status = SubscriptionStatus.ACTIVE
+                db.commit()
+                logger.info(f"✅ SUCCESS: User {user.email} upgraded to PRO via Meshulam.")
+                
+                # 2. Generate PDF Invoice
+                pdf_path = generate_invoice_pdf(
+                    transaction_id=str(transaction_id), 
+                    amount=str(amount), 
+                    user_name=user.name, 
+                    user_email=user.email
+                )
+                
+                # 3. Send Email with Attachment
+                await email_service.send_payment_receipt(
+                    to_email=user.email,
+                    pdf_path=pdf_path
+                )
+                
+                # 4. Cleanup: Delete the PDF from the server after sending
+                if os.path.exists(pdf_path):
+                    os.remove(pdf_path)
 
-        return {"status": "success", "transaction": transaction_id}
+            return {"status": "success", "transaction": transaction_id}
+
+        # TIER 3: DUNNING MANAGEMENT (FAILED PAYMENT)
+        elif payment_status in ["2", "failed", "rejected", "declined"]:
+            logger.warning(f"💳 Payment failed for User {user.email}. Initiating Dunning process.")
+            
+            # 1. Downgrade Status
+            user.subscription_status = SubscriptionStatus.PAST_DUE
+            db.commit()
+            
+            # 2. Log the failure
+            audit_service.log(
+                db=db,
+                user_id=str(user.id),
+                action="SUBSCRIPTION_PAYMENT_FAILED",
+                details={"transaction_id": str(transaction_id), "amount": str(amount)}
+            )
+            
+            # 3. Send Dunning Warning Email
+            await email_service.send_dunning_email(
+                to_email=user.email, 
+                user_name=user.name
+            )
+            
+            return {"status": "success", "message": "Dunning process initiated"}
+
+        # UNKNOWN STATUS
+        return {"status": "ignored", "reason": "incomplete_status"}
 
     except HTTPException as he:
         raise he
