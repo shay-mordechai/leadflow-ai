@@ -12,8 +12,9 @@ This document maps the Production configuration requirements.
 
 ## 1. 🔑 Production Secrets (AWS SSM)
 
-* **Root Path:** `/leadflow/prod/`
-* **Region:** `eu-north-1`
+**Root Path:** `/leadflow/prod/`
+
+**Region:** `eu-north-1`
 
 | Variable Name | Value Location / Reference | Description |
 | --- | --- | --- |
@@ -59,12 +60,12 @@ Database changes are strictly managed via **Alembic Migrations** configured with
 
 ### Key Tables
 
-* **`users`**: Stores Auth info, Hashed Passwords, Plan Tier (`STARTER`/`PRO`), and Role-Based Access Control (RBAC) via `UserRole` (`CLIENT`, `PARTNER`, `ADMIN`). Includes a self-referential `partner_id` to link Clients to their respective Agency Partners.
+* **`users`**: Stores Auth info, Hashed Passwords, Plan Tier (`STARTER`/`PRO`), and Role-Based Access Control (RBAC) via UserRole (`CLIENT`, `PARTNER`, `ADMIN`). Includes a self-referential `partner_id` to link Clients to their respective Agency Partners.
 * **`phone_numbers`**: Stores purchased numbers from Twilio/Vonage.
 * **`business_profiles`**: Stores AI Persona context (Tone, Services).
 * **`leads`**: Stores inbound leads. Includes `bot_active` and `requires_human` flags for human handoff. Protected by `idempotency_key` against Retry Storms. Also tracks `ai_rating` for Partner QA.
 * **`messages`**: Stores Conversational Memory (Chat history) between the AI and Leads to prevent the "Goldfish Problem".
-* **`tags`** & **`lead_tag_association`**: Stores logical groupings for leads (e.g., 'Morning Class', 'Kiryat Netafim') to allow targeted AI voice broadcasts.
+* **`tags` & `lead_tag_association**`: Stores logical groupings for leads (e.g., 'Morning Class', 'Kiryat Netafim') to allow targeted AI voice broadcasts.
 * **`sessions`**: Stores metadata for uploaded audio files transcribed via local Faster-Whisper.
 * **`webhook_dlq`**: Dead Letter Queue. Stores failed incoming webhooks to ensure 0% data loss during API outages.
 * **`audit_logs`**: Security tracking. Records "Who did what, and when" (e.g., AI prompt modifications) for compliance and debugging.
@@ -165,7 +166,7 @@ python3 tests/qa_agents.py --api-key="AIzaSy..."
 
 ## 6. 🚨 Emergency Contacts
 
-* **DevOps & CEO**: Shay Mordechai
-* **Cloud Provider**: AWS (`eu-north-1`)
-* **Security Layer**: Cloudflare Zero Trust
-* **Registry**: AWS Elastic Container Registry (ECR)
+* **DevOps & CEO:** Shay Mordechai
+* **Cloud Provider:** AWS (`eu-north-1`)
+* **Security Layer:** Cloudflare Zero Trust
+* **Registry:** AWS Elastic Container Registry (ECR)
