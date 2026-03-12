@@ -1,6 +1,13 @@
 # src/security/hashing.py
-from passlib.context import CryptContext
+import warnings
+import logging
 import hashlib
+from passlib.context import CryptContext
+
+# Suppress the deprecation warning for 'crypt' in Python 3.11+
+warnings.filterwarnings("ignore", category=DeprecationWarning, module="passlib.utils")
+
+logger = logging.getLogger("SecurityHashing")
 
 # Initialize Password Context using BCrypt.
 # Note: BCrypt is robust but has a known limitation of 72 bytes for input.
@@ -37,9 +44,15 @@ def verify_hash(plain_secret: str, hashed_secret: str) -> bool:
     if not plain_secret or not hashed_secret:
         return False
 
-    safe_secret = _pre_hash(plain_secret)
-    return pwd_context.verify(safe_secret, hashed_secret)
+    try:
+        safe_secret = _pre_hash(plain_secret)
+        return pwd_context.verify(safe_secret, hashed_secret)
+    except Exception as e:
+        logger.error(f"Hash verification error: {e}")
+        return False
 
-# --- ALIAS FOR COMPATIBILITY ---
-# This ensures that routers calling 'verify_password' still work correctly
+# --- ALIASES FOR COMPATIBILITY ---
+# This ensures that routers calling older function names still work correctly
 verify_password = verify_hash
+get_password_hash = get_hash
+hash_password = get_hash
