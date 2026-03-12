@@ -21,26 +21,19 @@ export default function LoginForm() {
   const [step, setStep] = useState<'credentials' | 'otp'>('credentials');
   const [email, setEmail] = useState('');
 
-  // --- NEW: Intercept form submission to capture the email instantly ---
+  // Intercept form submission to capture the email instantly
   const handleLoginSubmit = (formData: FormData) => {
-    // 1. Capture what the user typed before it goes to the server
     const submittedEmail = formData.get("email")?.toString() || "";
     setEmail(submittedEmail);
-    
-    // 2. Trigger the actual server action
     loginAction(formData);
   };
 
-  // Effect to handle transition from Step 1 to Step 2
   useEffect(() => {
     if (loginState.success && loginState.data?.mfa_required) {
-      // REMOVED: setEmail(loginState.data.email) because it was undefined.
-      // We already have the email safely stored from handleLoginSubmit!
       setStep('otp');
     }
   }, [loginState]);
 
-  // Effect to handle success of Step 2 (Redirect)
   useEffect(() => {
     if (otpState.success) {
       router.push('/dashboard');
@@ -48,7 +41,7 @@ export default function LoginForm() {
   }, [otpState, router]);
 
   return (
-    <div className="w-full max-w-sm space-y-8 relative z-10">
+    <div className="w-full max-w-sm space-y-8 relative z-10" dir="rtl">
       <div className="text-center">
         <div className="mx-auto h-12 w-12 rounded-xl bg-gradient-to-br from-indigo-600 to-violet-600 flex items-center justify-center shadow-lg shadow-indigo-500/20">
           <svg className="w-6 h-6 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor">
@@ -56,12 +49,12 @@ export default function LoginForm() {
           </svg>
         </div>
         <h2 className="mt-6 text-3xl font-bold tracking-tight text-white">
-          {step === 'credentials' ? 'Welcome back' : 'Security Verification'}
+          {step === 'credentials' ? 'ברוך שובך' : 'אימות אבטחה'}
         </h2>
         <p className="mt-2 text-sm text-slate-400">
           {step === 'credentials' 
-            ? 'Sign in to access your LeadFlow dashboard.' 
-            : `We sent a 6-digit code to ${email}`}
+            ? 'התחבר כדי לגשת לדשבורד הלידים שלך.' 
+            : `שלחנו קוד בן 6 ספרות לכתובת ${email}`}
         </p>
       </div>
 
@@ -69,7 +62,6 @@ export default function LoginForm() {
         
         {/* STEP 1: CREDENTIALS */}
         {step === 'credentials' && (
-          // Use our custom handler instead of calling loginAction directly
           <form action={handleLoginSubmit} className="space-y-6">
             {loginState.error && (
               <div className="rounded-lg bg-red-500/10 border border-red-500/20 p-3 text-sm text-red-400 text-center">
@@ -77,41 +69,44 @@ export default function LoginForm() {
               </div>
             )}
             
-            <div className="space-y-4">
+            <div className="space-y-4 text-right">
               <Input 
                 id="email" 
                 name="email" 
                 type="email" 
-                label="Email" 
-                placeholder="name@company.com" 
+                label="כתובת אימייל" 
+                placeholder="name@business.com" 
+                dir="ltr"
+                className="text-left"
                 required 
               />
               <Input 
                 id="password" 
                 name="password" 
                 type="password" 
-                label="Password" 
+                label="סיסמה" 
                 placeholder="••••••••••••" 
+                dir="ltr"
+                className="text-left"
                 required 
               />
             </div>
 
-            <Button type="submit" className="w-full" isLoading={isLoginPending}>
-              Sign In
+            <Button type="submit" className="w-full font-bold text-md" isLoading={isLoginPending}>
+              התחברות למערכת
             </Button>
           </form>
         )}
 
         {/* STEP 2: OTP */}
         {step === 'otp' && (
-          <form action={otpAction} className="space-y-6">
+          <form action={otpAction} className="space-y-6 text-right">
             {otpState.error && (
               <div className="rounded-lg bg-red-500/10 border border-red-500/20 p-3 text-sm text-red-400 text-center">
                 {otpState.error}
               </div>
             )}
 
-            {/* This hidden field will now correctly carry the email */}
             <input type="hidden" name="email" value={email} />
             
             <div className="space-y-4">
@@ -119,34 +114,35 @@ export default function LoginForm() {
                 id="otp_code" 
                 name="otp_code" 
                 type="text" 
-                label="Enter OTP Code" 
+                label="הזן קוד אימות (OTP)" 
                 placeholder="123456" 
                 className="text-center text-2xl tracking-[0.5em] font-mono"
+                dir="ltr"
                 maxLength={6}
                 required 
                 autoFocus
               />
             </div>
 
-            <Button type="submit" className="w-full" isLoading={isOtpPending}>
-              Verify & Login
+            <Button type="submit" className="w-full font-bold" isLoading={isOtpPending}>
+              אמת והתחבר
             </Button>
             
             <button 
               type="button" 
               onClick={() => setStep('credentials')}
-              className="w-full text-xs text-slate-500 hover:text-slate-300 mt-4"
+              className="w-full text-xs text-slate-500 hover:text-slate-300 mt-4 transition-colors"
             >
-              Start over
+              חזור אחורה
             </button>
           </form>
         )}
 
         {step === 'credentials' && (
           <div className="mt-6 text-center text-sm">
-            <span className="text-slate-400">Don't have an account? </span>
+            <span className="text-slate-400">אין לך עדיין חשבון? </span>
             <Link href="/register" className="font-medium text-indigo-400 hover:text-indigo-300 transition-colors">
-              Register now
+              הירשם עכשיו
             </Link>
           </div>
         )}

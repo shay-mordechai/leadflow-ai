@@ -6,7 +6,7 @@ import { useRouter } from "next/navigation";
 import { Target, Rocket, ShieldCheck, ArrowRight, User, Mail, Briefcase, Loader2 } from "lucide-react";
 import toast from "react-hot-toast";
 
-export default function PartnerRegisterPage() {
+export default function PartnerRegisterForm() {
     const router = useRouter();
     const [isLoading, setIsLoading] = useState(false);
 

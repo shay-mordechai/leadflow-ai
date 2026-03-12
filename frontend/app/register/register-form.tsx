@@ -7,7 +7,7 @@ import { useRouter } from "next/navigation";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { registerAction as registerUser } from "@/actions/auth"; // Server Action
-import { RefreshCw, Copy, Check } from "lucide-react";
+import { RefreshCw, Copy, Check, Eye, EyeOff } from "lucide-react";
 import toast from "react-hot-toast";
 
 export default function RegisterForm() {
@@ -15,37 +15,76 @@ export default function RegisterForm() {
     const [loading, setLoading] = useState(false);
     const [error, setError] = useState("");
     const [agreedToTerms, setAgreedToTerms] = useState(false);
-    const [generatedPassword, setGeneratedPassword] = useState("");
+    
+    // Password related state
+    const [password, setPassword] = useState("");
+    const [showPassword, setShowPassword] = useState(false);
     const [copied, setCopied] = useState(false);
     
+    // Anti-spam state for password generation
+    const [genClickCount, setGenClickCount] = useState(0);
+    const [isGenLocked, setIsGenLocked] = useState(false);
+    const [lockTimer, setLockTimer] = useState(0);
+
     // State to toggle the "Other" business type text field
     const [showOtherBusinessType, setShowOtherBusinessType] = useState(false);
 
     const generateStrongPassword = () => {
+        // Prevent abuse (DDoS protection / UX anti-spam)
+        if (isGenLocked) {
+            toast.error(`המתן ${lockTimer} שניות לפני יצירת סיסמה נוספת.`);
+            return;
+        }
+
         const charset = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789!@#$%^&*()_+";
-        let password = "";
+        let newPassword = "";
         
         // Ensure at least one of each required type for our backend validation
-        password += "ABCDEFGHIJKLMNOPQRSTUVWXYZ"[Math.floor(Math.random() * 26)];
-        password += "abcdefghijklmnopqrstuvwxyz"[Math.floor(Math.random() * 26)];
-        password += "0123456789"[Math.floor(Math.random() * 10)];
+        newPassword += "ABCDEFGHIJKLMNOPQRSTUVWXYZ"[Math.floor(Math.random() * 26)];
+        newPassword += "abcdefghijklmnopqrstuvwxyz"[Math.floor(Math.random() * 26)];
+        newPassword += "0123456789"[Math.floor(Math.random() * 10)];
         
         for (let i = 0; i < 12; i++) {
-            password += charset[Math.floor(Math.random() * charset.length)];
+            newPassword += charset[Math.floor(Math.random() * charset.length)];
         }
         
         // Shuffle password
-        password = password.split('').sort(() => 0.5 - Math.random()).join('');
+        newPassword = newPassword.split('').sort(() => 0.5 - Math.random()).join('');
         
-        setGeneratedPassword(password);
-        toast.success("נוצרה עבורך סיסמה חזקה מאוד! 🔐", {
-            style: { background: '#1e293b', color: '#fff' }
-        });
+        setPassword(newPassword);
+        
+        // Track clicks for anti-spam mechanism
+        const newCount = genClickCount + 1;
+        setGenClickCount(newCount);
+        
+        if (newCount >= 5) {
+            setIsGenLocked(true);
+            let timeLeft = 10;
+            setLockTimer(timeLeft);
+            
+            const countdown = setInterval(() => {
+                timeLeft -= 1;
+                setLockTimer(timeLeft);
+                if (timeLeft <= 0) {
+                    clearInterval(countdown);
+                    setIsGenLocked(false);
+                    setGenClickCount(0); // Reset count after lock
+                }
+            }, 1000);
+            
+            toast.error("יצרת יותר מדי סיסמאות! הכפתור ננעל ל-10 שניות.", {
+                style: { background: '#ef4444', color: '#fff' }
+            });
+        } else {
+            toast.success("נוצרה עבורך סיסמה חזקה מאוד! 🔐", {
+                style: { background: '#1e293b', color: '#fff' }
+            });
+        }
     };
 
     const copyPassword = () => {
-        if (!generatedPassword) return;
-        navigator.clipboard.writeText(generatedPassword);
+        if (!password) return;
+        navigator.clipboard.writeText(password);
         setCopied(true);
         toast.success("הסיסמה הועתקה, שמור במקום בטוח.");
         setTimeout(() => setCopied(false), 2000);
@@ -55,12 +94,11 @@ export default function RegisterForm() {
         setShowOtherBusinessType(e.target.value === "Other");
     };
 
-    // CRITICAL FIX: Using onSubmit instead of action to prevent Next.js SSR crashes
+    // Form submission
     async function handleSubmit(e: React.FormEvent<HTMLFormElement>) {
-        e.preventDefault(); // Prevent standard browser postback
+        e.preventDefault(); 
         setError("");
 
-        // Client-side validation for Terms
         if (!agreedToTerms) {
             setError("חובה להסכים לתנאי השימוש ומדיניות הפרטיות כדי להירשם.");
             return;
@@ -68,21 +106,18 @@ export default function RegisterForm() {
 
         setLoading(true);
 
-        // Safely extract FormData from the DOM event
         const form = e.currentTarget;
         const formData = new FormData(form);
 
-        // If a password was generated or typed in our controlled state, override the form data
-        if (generatedPassword) {
-            formData.set("password", generatedPassword);
+        // Ensure the controlled password state is submitted
+        if (password) {
+            formData.set("password", password);
         }
 
         try {
-            // Call the Server Action (runs on backend)
             const result = await registerUser(formData);
 
             if (result.success) {
-                // Redirect to login on success
                 toast.success("נרשמת בהצלחה! מעביר אותך להתחברות...");
                 router.push("/login?registered=true");
             } else {
@@ -106,33 +141,25 @@ export default function RegisterForm() {
                 </p>
             </div>
 
-            {/* FIX: Changed from action={handleSubmit} to onSubmit={handleSubmit} */}
             <form onSubmit={handleSubmit} className="mt-8 space-y-6">
                 <div className="space-y-4">
                     <div>
-                        <label className="text-sm font-medium leading-none peer-disabled:cursor-not-allowed peer-disabled:opacity-70">
-                            שם מלא
-                        </label>
+                        <label className="text-sm font-medium leading-none">שם מלא</label>
                         <Input name="full_name" placeholder="ישראל ישראלי" required className="mt-2" />
                     </div>
 
                     <div>
-                        <label className="text-sm font-medium leading-none peer-disabled:cursor-not-allowed peer-disabled:opacity-70">
-                            שם העסק
-                        </label>
+                        <label className="text-sm font-medium leading-none">שם העסק</label>
                         <Input name="business_name" placeholder="הקליניקה שלי" required className="mt-2" />
                     </div>
                     
-                    {/* Added Business Type Selection */}
                     <div>
-                        <label className="text-sm font-medium leading-none peer-disabled:cursor-not-allowed peer-disabled:opacity-70">
-                            תחום העסק
-                        </label>
+                        <label className="text-sm font-medium leading-none">תחום העסק</label>
                         <select 
                             name="business_type" 
                             required 
                             onChange={handleBusinessTypeChange}
-                            className="flex h-10 w-full rounded-md border border-gray-300 bg-transparent px-3 py-2 text-sm placeholder:text-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-400 focus:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50 mt-2"
+                            className="flex h-10 w-full rounded-md border border-gray-300 bg-transparent px-3 py-2 text-sm placeholder:text-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-400 focus:ring-offset-2 mt-2"
                         >
                             <option value="">בחר תחום...</option>
                             <option value="נדלן">נדל"ן</option>
@@ -143,68 +170,69 @@ export default function RegisterForm() {
                         </select>
                     </div>
 
-                    {/* Dynamic 'Other' Input */}
                     {showOtherBusinessType && (
                         <div className="animate-in fade-in slide-in-from-top-1">
-                            <label className="text-sm font-medium leading-none peer-disabled:cursor-not-allowed peer-disabled:opacity-70">
-                                פרט את תחום העסק
-                            </label>
+                            <label className="text-sm font-medium leading-none">פרט את תחום העסק</label>
                             <Input name="other_business_type" placeholder="לדוגמה: עורך דין" required={showOtherBusinessType} className="mt-2" />
                         </div>
                     )}
 
                     <div>
-                        <label className="text-sm font-medium leading-none peer-disabled:cursor-not-allowed peer-disabled:opacity-70">
-                            כתובת אימייל
-                        </label>
-                        {/* LTR alignment for email inputs looks better even in RTL forms */}
+                        <label className="text-sm font-medium leading-none">כתובת אימייל</label>
                         <Input name="email" type="email" placeholder="name@business.com" required className="mt-2 text-left" dir="ltr" />
                     </div>
 
                     <div className="space-y-1">
                         <div className="flex justify-between items-center mb-1">
-                            <label className="text-sm font-medium leading-none peer-disabled:cursor-not-allowed peer-disabled:opacity-70">
-                                סיסמה מאובטחת
-                            </label>
+                            <label className="text-sm font-medium leading-none">סיסמה מאובטחת</label>
                             <button 
                                 type="button"
                                 onClick={generateStrongPassword}
-                                className="text-[10px] font-bold text-blue-600 hover:text-blue-700 flex items-center gap-1 bg-blue-50 px-2 py-1 rounded-md transition active:scale-95"
+                                disabled={isGenLocked}
+                                className={`text-[10px] font-bold flex items-center gap-1 px-2 py-1 rounded-md transition ${isGenLocked ? 'bg-slate-200 text-slate-400 cursor-not-allowed' : 'text-blue-600 hover:text-blue-700 bg-blue-50 active:scale-95'}`}
                             >
-                                <RefreshCw size={12} />
-                                ג'נרט סיסמה חזקה
+                                <RefreshCw size={12} className={isGenLocked ? '' : ''} />
+                                {isGenLocked ? `המתן ${lockTimer} שניות` : "ג'נרט סיסמה חזקה"}
                             </button>
                         </div>
-                        <div className="relative">
+                        <div className="relative flex items-center">
                             <Input 
                                 name="password" 
-                                type={generatedPassword ? "text" : "password"} // Show generated password for easy copying
-                                value={generatedPassword}
-                                onChange={(e) => setGeneratedPassword(e.target.value)}
-                                placeholder="********" 
+                                type={showPassword ? "text" : "password"} 
+                                value={password}
+                                onChange={(e) => setPassword(e.target.value)}
+                                placeholder="••••••••••••" 
                                 required 
-                                className="mt-2 text-left pr-10" 
+                                className="mt-2 text-left pr-20" // Extra padding for the buttons
                                 dir="ltr" 
                             />
-                            {generatedPassword && (
+                            {/* Actions container inside the input */}
+                            <div className="absolute right-2 top-4.5 flex items-center gap-1">
                                 <button
                                     type="button"
-                                    onClick={copyPassword}
-                                    className="absolute right-3 top-4.5 p-1.5 hover:bg-slate-200 rounded-md transition text-slate-500"
-                                    title="העתק סיסמה"
+                                    onClick={() => setShowPassword(!showPassword)}
+                                    className="p-1.5 hover:bg-slate-200 rounded-md transition text-slate-500"
+                                    title="הצג סיסמה"
                                 >
-                                    {copied ? <Check size={16} className="text-green-600" /> : <Copy size={16} />}
+                                    {showPassword ? <EyeOff size={16} /> : <Eye size={16} />}
                                 </button>
-                            )}
+                                {password && (
+                                    <button
+                                        type="button"
+                                        onClick={copyPassword}
+                                        className="p-1.5 hover:bg-slate-200 rounded-md transition text-slate-500"
+                                        title="העתק סיסמה"
+                                    >
+                                        {copied ? <Check size={16} className="text-green-600" /> : <Copy size={16} />}
+                                    </button>
+                                )}
+                            </div>
                         </div>
-                        {/* Clearly defined password restrictions to prevent user frustration */}
                         <p className="text-[11px] text-gray-500 mt-1.5 leading-snug">
-                            * הסיסמה חייבת להכיל לפחות 12 תווים, לכלול אותיות גדולות, אותיות קטנות (באנגלית) ומספרים.
+                            * הסיסמה חייבת להכיל לפחות 12 תווים, אותיות גדולות וקטנות (באנגלית) ומספרים.
                         </p>
                     </div>
 
-                    {/* --- Checkbox Section --- */}
-                    {/* Using space-x-reverse to fix Tailwind spacing issues in RTL mode */}
                     <div className="flex items-start space-x-3 space-x-reverse pt-2">
                         <input
                             id="terms"
