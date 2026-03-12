@@ -17,6 +17,11 @@ from .audit_model import AuditLog
 from src.security.encryption import protector 
 
 # --- ENUMS ---
+class UserRole(str, enum.Enum):
+    CLIENT = "CLIENT"     # End-user (e.g., coach, clinic)
+    PARTNER = "PARTNER"   # Agency/Campaigner providing leads
+    ADMIN = "ADMIN"       # System administrator (You)
+
 class PlanTier(str, enum.Enum):
     STARTER = "STARTER"
     PRO = "PRO"
@@ -89,6 +94,9 @@ class User(Base):
     # Security: Never query this column directly in responses. Use Pydantic to exclude it.
     hashed_password = Column(String, nullable=False)
     
+    # NEW: Role-based Access Control (RBAC)
+    role = Column(Enum(UserRole), default=UserRole.CLIENT, nullable=False, index=True)
+    
     plan_tier = Column(Enum(PlanTier), default=PlanTier.STARTER, nullable=False)
     subscription_status = Column(Enum(SubscriptionStatus), default=SubscriptionStatus.TRIAL, nullable=False)
     
@@ -112,6 +120,13 @@ class User(Base):
     assigned_phone_number = Column(String, unique=True, index=True, nullable=True)
     personal_whatsapp = Column(String, nullable=True) 
     
+    # NEW: Partner/Agency specific fields
+    agency_name = Column(String, nullable=True)
+    
+    # NEW: Self-referential relationship (Map Clients to their Partner)
+    partner_id = Column(GUID(), ForeignKey("users.id", ondelete="SET NULL"), nullable=True, index=True)
+    partner = relationship("User", remote_side=[id], backref="managed_clients")
+    
     openai_api_key = Column(String, nullable=True)
 
     # Relationships with Cascade Delete (GDPR: Delete user = Delete all their data)
@@ -132,12 +147,9 @@ class User(Base):
     def otp_code(self, value):
         self._otp_encrypted = protector.encrypt(value) if value else None
 
+# ... (rest of the file remains exactly the same: Tag, PhoneNumber, BusinessProfile, AIAgent, Lead, Message, WebhookDLQ, MediaInteraction, Integration, CoachingSession) ...
 
 class Tag(Base):
-    """
-    Stores logical groupings for Leads (e.g., 'Kiryat Netafim', 'Morning Class').
-    Used for AI Voice Broadcast targeting.
-    """
     __tablename__ = "tags"
 
     id = Column(GUID(), primary_key=True, default=uuid.uuid4)
@@ -175,7 +187,6 @@ class BusinessProfile(Base):
     products_services = Column(Text, nullable=True)
     custom_instructions = Column(Text, nullable=True)
     
-    # NEW: Template for Coaching Session Summaries
     summary_template = Column(Text, nullable=True)
     
     created_at = Column(DateTime(timezone=True), server_default=func.now())
@@ -205,13 +216,10 @@ class Lead(Base):
     __tablename__ = "leads"
     
     id = Column(GUID(), primary_key=True, default=uuid.uuid4)
-    # Security: Indexed user_id for fast IDOR-safe queries
     user_id = Column(GUID(), ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True)
     
-    # Tier 1 Security: Protects against double webhook processing
     idempotency_key = Column(String, index=True, nullable=True)
     
-    # Standard String Columns for High-Performance Queries
     name = Column(String, nullable=True)
     phone_number = Column(String, index=True, nullable=True)
     email = Column(String, index=True, nullable=True)
@@ -220,7 +228,6 @@ class Lead(Base):
     source = Column(Enum(LeadSource), default=LeadSource.MANUAL, nullable=False)
     status = Column(Enum(LeadStatus), default=LeadStatus.NEW, nullable=False, index=True)
 
-    # --- Omnichannel Inbox Features ---
     bot_active = Column(Boolean, default=True, nullable=False)
     requires_human = Column(Boolean, default=False, nullable=False, index=True)
     
@@ -235,11 +242,9 @@ class Lead(Base):
     created_at = Column(DateTime(timezone=True), server_default=func.now(), index=True)
     updated_at = Column(DateTime(timezone=True), onupdate=func.now())
     
-    # --- AI Feedback Loop (Tier 2) ---
-    ai_rating = Column(Integer, nullable=True)  # 1 for Like, -1 for Dislike
+    ai_rating = Column(Integer, nullable=True)
     ai_feedback_note = Column(Text, nullable=True) 
 
-    # Relationships
     user = relationship("User", back_populates="leads")
     media_files = relationship("MediaInteraction", back_populates="lead")
     sessions = relationship("CoachingSession", back_populates="lead")
@@ -248,31 +253,18 @@ class Lead(Base):
 
 
 class Message(Base):
-    """
-    Stores the chat history between the Lead and the AI Bot.
-    Used to provide conversational context to the LLM (Solving the Goldfish Problem).
-    """
     __tablename__ = "messages"
 
     id = Column(String(36), primary_key=True, default=lambda: str(uuid.uuid4()))
     lead_id = Column(GUID(), ForeignKey("leads.id", ondelete="CASCADE"), nullable=False, index=True)
-    
-    # 'user' means the Lead/Customer sent it. 'bot' means the AI sent it.
     sender_type = Column(String(10), nullable=False) 
     content = Column(Text, nullable=False)
-    
     created_at = Column(DateTime(timezone=True), server_default=func.now(), index=True)
 
-    # Relationship back to the Lead
     lead = relationship("Lead", back_populates="messages")
 
 
 class WebhookDLQ(Base):
-    """
-    Tier 1 Reliability: Dead Letter Queue (DLQ).
-    Stores incoming webhooks that failed processing (e.g., Gemini API timeout)
-    so they can be replayed later. Ensures no lead is ever lost.
-    """
     __tablename__ = "webhook_dlq"
     
     id = Column(GUID(), primary_key=True, default=uuid.uuid4)
@@ -328,7 +320,6 @@ class CoachingSession(Base):
     __tablename__ = "coaching_sessions"
 
     id = Column(GUID(), primary_key=True, default=uuid.uuid4)
-    
     user_id = Column(GUID(), ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True)
     lead_id = Column(GUID(), ForeignKey("leads.id", ondelete="CASCADE"), nullable=True, index=True)
     
