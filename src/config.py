@@ -136,8 +136,7 @@ class Settings(BaseSettings):
     BASE_URL: str = "https://my-leads.app"
     ALLOWED_HOSTS: str = "*"
     
-    # --- Database & Queues (NEW: REDIS) ---
-    # Using absolute path for Docker reliability
+    # --- Database & Queues ---
     DATABASE_URL: str = "sqlite:////app/data/leads.db"
     REDIS_URL: str = "redis://127.0.0.1:6379/0"
     
@@ -167,13 +166,14 @@ class Settings(BaseSettings):
     WHATSAPP_PHONE_ID: str = ""
     WHATSAPP_VERIFY_TOKEN: str = "my_secure_token"
     
-    # --- Email (SMTP) ---
+    # --- Email (SMTP) & Alerts ---
     MAIL_USERNAME: str = ""
     MAIL_PASSWORD: str = ""
     MAIL_FROM: str = "noreply@leadflow.ai"
     MAIL_PORT: int = 587
     MAIL_SERVER: str = "smtp-relay.brevo.com"
-
+    ADMIN_EMAIL: str = "admin@my-leads.app" # NEW: Where crash reports go
+    
     # --- Billing (Meshulam) ---
     MESHULAM_PAGE_CODE: str = ""
     MESHULAM_API_KEY: str = ""
