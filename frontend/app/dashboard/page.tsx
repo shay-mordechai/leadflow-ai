@@ -11,7 +11,10 @@ async function getUserData() {
 
     if (!token) return null;
 
-    const apiUrl = process.env.NEXT_PUBLIC_API_URL || "http://127.0.0.1:8000";
+    // FIX: We must use INTERNAL_API_URL (127.0.0.1) for Server Components to bypass 
+    // Cloudflare WAF loopback blocks. If we use the public URL, Cloudflare blocks 
+    // the datacenter IP and causes a "Ghost Logout".
+    const apiUrl = process.env.INTERNAL_API_URL || "http://127.0.0.1:8000";
 
     try {
         const res = await fetch(`${apiUrl}/api/v1/auth/me`, {
@@ -21,9 +24,14 @@ async function getUserData() {
             cache: "no-store", 
         });
 
-        if (!res.ok) return null;
+        if (!res.ok) {
+            console.error(`[Dashboard] Failed to fetch user data. Status: ${res.status}`);
+            return null;
+        }
+        
         return await res.json();
     } catch (error) {
+        console.error(`[Dashboard] Internal API fetch error: ${error}`);
         return null;
     }
 }
@@ -31,6 +39,7 @@ async function getUserData() {
 export default async function DashboardOverview() {
     const userData = await getUserData();
 
+    // If fetch failed (or user is unauthorized), redirect to login
     if (!userData) {
         redirect("/login");
     }
