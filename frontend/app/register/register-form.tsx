@@ -1,4 +1,4 @@
-// app/register/register-form.tsx
+// frontend/app/register/register-form.tsx
 "use client";
 
 import { useState } from "react";
@@ -16,7 +16,7 @@ export default function RegisterForm() {
     const [error, setError] = useState("");
     const [agreedToTerms, setAgreedToTerms] = useState(false);
     
-    // Password related state
+    // Password state management
     const [password, setPassword] = useState("");
     const [showPassword, setShowPassword] = useState(false);
     const [copied, setCopied] = useState(false);
@@ -48,7 +48,7 @@ export default function RegisterForm() {
             newPassword += charset[Math.floor(Math.random() * charset.length)];
         }
         
-        // Shuffle password
+        // Shuffle the generated characters
         newPassword = newPassword.split('').sort(() => 0.5 - Math.random()).join('');
         
         setPassword(newPassword);
@@ -68,7 +68,7 @@ export default function RegisterForm() {
                 if (timeLeft <= 0) {
                     clearInterval(countdown);
                     setIsGenLocked(false);
-                    setGenClickCount(0); // Reset count after lock
+                    setGenClickCount(0); // Reset count after lock expires
                 }
             }, 1000);
             
@@ -94,7 +94,7 @@ export default function RegisterForm() {
         setShowOtherBusinessType(e.target.value === "Other");
     };
 
-    // Form submission
+    // Form submission handler
     async function handleSubmit(e: React.FormEvent<HTMLFormElement>) {
         e.preventDefault(); 
         setError("");
@@ -109,7 +109,7 @@ export default function RegisterForm() {
         const form = e.currentTarget;
         const formData = new FormData(form);
 
-        // Ensure the controlled password state is submitted
+        // Ensure the controlled password state is submitted overriding the empty input
         if (password) {
             formData.set("password", password);
         }
@@ -191,11 +191,13 @@ export default function RegisterForm() {
                                 disabled={isGenLocked}
                                 className={`text-[10px] font-bold flex items-center gap-1 px-2 py-1 rounded-md transition ${isGenLocked ? 'bg-slate-200 text-slate-400 cursor-not-allowed' : 'text-blue-600 hover:text-blue-700 bg-blue-50 active:scale-95'}`}
                             >
-                                <RefreshCw size={12} className={isGenLocked ? '' : ''} />
+                                <RefreshCw size={12} />
                                 {isGenLocked ? `המתן ${lockTimer} שניות` : "ג'נרט סיסמה חזקה"}
                             </button>
                         </div>
-                        <div className="relative flex items-center">
+                        
+                        {/* Fix applied here: Moved mt-2 to the parent container so absolute centering works perfectly */}
+                        <div className="relative flex items-center mt-2">
                             <Input 
                                 name="password" 
                                 type={showPassword ? "text" : "password"} 
@@ -203,11 +205,11 @@ export default function RegisterForm() {
                                 onChange={(e) => setPassword(e.target.value)}
                                 placeholder="••••••••••••" 
                                 required 
-                                className="mt-2 text-left pr-20" // Extra padding for the buttons
+                                className="text-left pr-20 w-full"
                                 dir="ltr" 
                             />
-                            {/* Actions container inside the input */}
-                            <div className="absolute right-2 top-4.5 flex items-center gap-1">
+                            {/* Actions container inside the input - naturally centered */}
+                            <div className="absolute right-2 flex items-center gap-1">
                                 <button
                                     type="button"
                                     onClick={() => setShowPassword(!showPassword)}
