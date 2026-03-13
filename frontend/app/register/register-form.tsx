@@ -115,7 +115,8 @@ export default function RegisterForm() {
         }
 
         try {
-            const result = await registerUser(formData);
+            // FIX: Pass an empty object as the 'prevState' to match the Server Action signature
+            const result = await registerUser({}, formData);
 
             if (result.success) {
                 toast.success("נרשמת בהצלחה! מעביר אותך להתחברות...");
@@ -196,7 +197,6 @@ export default function RegisterForm() {
                             </button>
                         </div>
                         
-                        {/* Fix applied here: Moved mt-2 to the parent container so absolute centering works perfectly */}
                         <div className="relative flex items-center mt-2">
                             <Input 
                                 name="password" 
@@ -208,7 +208,6 @@ export default function RegisterForm() {
                                 className="text-left pr-20 w-full"
                                 dir="ltr" 
                             />
-                            {/* Actions container inside the input - naturally centered */}
                             <div className="absolute right-2 flex items-center gap-1">
                                 <button
                                     type="button"
