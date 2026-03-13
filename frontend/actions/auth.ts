@@ -4,9 +4,9 @@
 import { cookies } from 'next/headers';
 import { UserRegisterRequest, LoginResponse, VerifyOtpRequest, TokenResponse } from '@/types/auth';
 
-// FIX: Server actions run ON the server. By communicating via 127.0.0.1, 
-// we bypass Cloudflare entirely, preventing DNS loops or SSL issues in production.
-const INTERNAL_API_URL = process.env.INTERNAL_API_URL || 'http://127.0.0.1:8000';
+// FIX: We route traffic through the public domain (via Cloudflare).
+// This completely bypasses the Rootless Podman localhost network isolation issues!
+const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://127.0.0.1:8000';
 
 export type ActionState = {
   error?: string;
@@ -16,7 +16,7 @@ export type ActionState = {
 
 export async function registerAction(payload: UserRegisterRequest): Promise<ActionState> {
   try {
-    const res = await fetch(`${INTERNAL_API_URL}/api/v1/auth/register`, {
+    const res = await fetch(`${API_URL}/api/v1/auth/register`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(payload),
@@ -25,7 +25,6 @@ export async function registerAction(payload: UserRegisterRequest): Promise<Acti
     const data = await res.json();
 
     if (!res.ok) {
-      // FIX: Gracefully parse Pydantic 422 Validation Errors instead of returning objects
       let errorMessage = 'שגיאה בהרשמה. אנא נסה שוב.';
       if (typeof data.detail === 'string') {
         errorMessage = data.detail;
@@ -51,7 +50,7 @@ export async function loginStepOneAction(prevState: ActionState, formData: FormD
   params.append('password', password);
 
   try {
-    const res = await fetch(`${INTERNAL_API_URL}/api/v1/auth/login`, {
+    const res = await fetch(`${API_URL}/api/v1/auth/login`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
       body: params,
@@ -77,7 +76,7 @@ export async function verifyOtpAction(prevState: ActionState, formData: FormData
   };
 
   try {
-    const res = await fetch(`${INTERNAL_API_URL}/api/v1/auth/verify-otp`, {
+    const res = await fetch(`${API_URL}/api/v1/auth/verify-otp`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(payload),
