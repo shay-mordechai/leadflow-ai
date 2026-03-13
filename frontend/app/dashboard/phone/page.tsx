@@ -4,20 +4,17 @@ import { redirect } from "next/navigation";
 import { PhoneCall } from "lucide-react";
 import PhoneForm from "./phone-form";
 
-// Fetch user data securely on the server side
 async function getUserData() {
     const cookieStore = await cookies();
     const token = cookieStore.get("access_token");
 
     if (!token) return null;
 
-    const apiUrl = process.env.NEXT_PUBLIC_API_URL || "http://127.0.0.1:8000";
+    const apiUrl = process.env.INTERNAL_API_URL || "http://127.0.0.1:8000";
 
     try {
         const res = await fetch(`${apiUrl}/api/v1/auth/me`, {
-            headers: {
-                Authorization: `Bearer ${token.value}`,
-            },
+            headers: { Authorization: `Bearer ${token.value}` },
             cache: "no-store", 
         });
 
@@ -30,18 +27,15 @@ async function getUserData() {
 
 export default async function PhonePage() {
     const userData = await getUserData();
-    
     const cookieStore = await cookies();
     const token = cookieStore.get("access_token")?.value;
 
-    // Redirect to login if unauthenticated
     if (!userData || !token) {
         redirect("/login");
     }
 
     return (
         <div className="pb-24 font-sans text-slate-800" dir="rtl">
-            {/* Sticky Header */}
             <header className="bg-white/80 backdrop-blur-md border-b border-slate-200 sticky top-0 z-40 p-4 shadow-sm">
                 <div className="max-w-2xl mx-auto flex justify-between items-center">
                     <h1 className="font-black text-lg flex items-center gap-2">
@@ -52,7 +46,6 @@ export default async function PhonePage() {
             </header>
 
             <main className="max-w-2xl mx-auto p-4 space-y-6 mt-6">
-                {/* Header Information */}
                 <div className="bg-white p-6 rounded-2xl shadow-sm border border-slate-100">
                     <h2 className="font-bold text-slate-800 mb-2 text-lg">המספר הווירטואלי שלך</h2>
                     <p className="text-sm text-slate-500 mb-0">
@@ -60,7 +53,6 @@ export default async function PhonePage() {
                     </p>
                 </div>
 
-                {/* The Interactive Client Component */}
                 <PhoneForm userData={userData} token={token} />
             </main>
         </div>

@@ -10,7 +10,7 @@ async function getUserData() {
 
     if (!token) return null;
 
-    const apiUrl = process.env.NEXT_PUBLIC_API_URL || "http://127.0.0.1:8000";
+    const apiUrl = process.env.INTERNAL_API_URL || "http://127.0.0.1:8000";
 
     try {
         const res = await fetch(`${apiUrl}/api/v1/auth/me`, {
@@ -46,7 +46,6 @@ export default async function IntegrationsPage() {
                 </p>
             </header>
 
-            {/* Render the interactive client component */}
             <IntegrationsClient webhookUrl={webhookUrl} />
         </div>
     );

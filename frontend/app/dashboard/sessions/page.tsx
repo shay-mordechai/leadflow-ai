@@ -9,7 +9,7 @@ async function getInitialData() {
     const token = cookieStore.get("access_token")?.value;
     if (!token) return null;
 
-    const apiUrl = process.env.NEXT_PUBLIC_API_URL || "http://127.0.0.1:8000";
+    const apiUrl = process.env.INTERNAL_API_URL || "http://127.0.0.1:8000";
     
     try {
         // Fetch existing sessions and leads for the dropdown
@@ -48,7 +48,6 @@ export default async function SessionsPage() {
             </header>
 
             <main className="max-w-4xl mx-auto p-4 mt-6 space-y-8">
-                {/* Privacy Pledge */}
                 <section className="bg-indigo-900 text-white p-6 rounded-3xl shadow-xl relative overflow-hidden">
                     <div className="relative z-10">
                         <h2 className="text-xl font-bold mb-2">הפרטיות שלך בסדר עדיפות עליון</h2>

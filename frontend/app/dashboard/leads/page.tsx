@@ -3,21 +3,20 @@ import { cookies } from "next/headers";
 import { redirect } from "next/navigation";
 import { Users, Phone, Calendar, CheckCircle2, Clock, AlertCircle, MessageSquare } from "lucide-react";
 
-// Fetch leads from our secure backend API
 async function getLeads() {
     const cookieStore = await cookies();
     const token = cookieStore.get("access_token");
 
     if (!token) return null;
 
-    const apiUrl = process.env.NEXT_PUBLIC_API_URL || "http://127.0.0.1:8000";
+    const apiUrl = process.env.INTERNAL_API_URL || "http://127.0.0.1:8000";
 
     try {
         const res = await fetch(`${apiUrl}/api/v1/leads/`, {
             headers: {
                 Authorization: `Bearer ${token.value}`,
             },
-            cache: "no-store", // Always fetch fresh data for leads
+            cache: "no-store", 
         });
 
         if (!res.ok) return null;
@@ -27,34 +26,22 @@ async function getLeads() {
     }
 }
 
-// Helper function to format dates nicely and handle UTC correctly
 function formatDate(dateString: string) {
-    // 1. Force the string to be treated as UTC by appending 'Z' if it's missing
     const safeDateString = dateString.endsWith('Z') ? dateString : `${dateString}Z`;
-    
-    // 2. The browser automatically converts this UTC date to the user's local timezone
     const date = new Date(safeDateString);
     
     return new Intl.DateTimeFormat("he-IL", {
-        day: "2-digit",
-        month: "2-digit",
-        year: "numeric",
-        hour: "2-digit",
-        minute: "2-digit",
+        day: "2-digit", month: "2-digit", year: "numeric",
+        hour: "2-digit", minute: "2-digit",
     }).format(date);
 }
 
-// Helper to render beautiful status badges
 function StatusBadge({ status }: { status: string }) {
     switch (status) {
-        case "NEW":
-            return <span className="flex items-center gap-1 bg-blue-50 text-blue-600 px-3 py-1 rounded-full text-xs font-bold"><Clock className="w-3 h-3"/> חדש</span>;
-        case "IN_PROGRESS":
-            return <span className="flex items-center gap-1 bg-yellow-50 text-yellow-600 px-3 py-1 rounded-full text-xs font-bold"><MessageSquare className="w-3 h-3"/> בשיחה</span>;
-        case "QUALIFIED":
-            return <span className="flex items-center gap-1 bg-emerald-50 text-emerald-600 px-3 py-1 rounded-full text-xs font-bold"><CheckCircle2 className="w-3 h-3"/> חם / סגור</span>;
-        default:
-            return <span className="flex items-center gap-1 bg-slate-100 text-slate-600 px-3 py-1 rounded-full text-xs font-bold"><AlertCircle className="w-3 h-3"/> {status}</span>;
+        case "NEW": return <span className="flex items-center gap-1 bg-blue-50 text-blue-600 px-3 py-1 rounded-full text-xs font-bold"><Clock className="w-3 h-3"/> חדש</span>;
+        case "IN_PROGRESS": return <span className="flex items-center gap-1 bg-yellow-50 text-yellow-600 px-3 py-1 rounded-full text-xs font-bold"><MessageSquare className="w-3 h-3"/> בשיחה</span>;
+        case "QUALIFIED": return <span className="flex items-center gap-1 bg-emerald-50 text-emerald-600 px-3 py-1 rounded-full text-xs font-bold"><CheckCircle2 className="w-3 h-3"/> חם / סגור</span>;
+        default: return <span className="flex items-center gap-1 bg-slate-100 text-slate-600 px-3 py-1 rounded-full text-xs font-bold"><AlertCircle className="w-3 h-3"/> {status}</span>;
     }
 }
 
@@ -67,30 +54,22 @@ export default async function LeadsPage() {
 
     return (
         <div className="p-8 max-w-6xl mx-auto space-y-6 font-sans" dir="rtl">
-            
-            {/* Header Section */}
             <header className="flex flex-col md:flex-row md:items-center justify-between gap-4 mb-8">
                 <div>
                     <h1 className="text-3xl font-black text-slate-800 flex items-center gap-3">
                         <Users className="w-8 h-8 text-indigo-600" />
                         הלידים שלי
                     </h1>
-                    <p className="text-slate-500 mt-2">
-                        כל הפניות שנכנסו לעסק והשיחות שהבוט ניהל איתם.
-                    </p>
+                    <p className="text-slate-500 mt-2">כל הפניות שנכנסו לעסק והשיחות שהבוט ניהל איתם.</p>
                 </div>
-                
                 <div className="bg-white px-4 py-2 border border-slate-200 rounded-xl shadow-sm">
                     <span className="text-sm text-slate-500 font-bold">סה"כ לידים: </span>
                     <span className="text-lg font-black text-indigo-600">{leads.length}</span>
                 </div>
             </header>
 
-            {/* Leads Table Card */}
             <div className="bg-white border border-slate-200 rounded-2xl shadow-sm overflow-hidden">
                 {leads.length === 0 ? (
-                    
-                    // Empty State
                     <div className="p-12 text-center flex flex-col items-center justify-center">
                         <div className="w-20 h-20 bg-slate-50 rounded-full flex items-center justify-center mb-4">
                             <Users className="w-10 h-10 text-slate-300" />
@@ -100,10 +79,7 @@ export default async function LeadsPage() {
                             חבר את מקורות הפרסום שלך בעמוד ה"אינטגרציות" כדי שהבוט יתחיל לקלוט פניות באופן אוטומטי.
                         </p>
                     </div>
-                
                 ) : (
-                    
-                    // The Table
                     <div className="overflow-x-auto">
                         <table className="w-full text-right border-collapse">
                             <thead>
@@ -128,9 +104,7 @@ export default async function LeadsPage() {
                                                 {lead.phone_number}
                                             </a>
                                         </td>
-                                        <td className="p-4">
-                                            <StatusBadge status={lead.status} />
-                                        </td>
+                                        <td className="p-4"><StatusBadge status={lead.status} /></td>
                                         <td className="p-4 text-sm text-slate-500 flex items-center gap-2">
                                             <Calendar className="w-4 h-4" />
                                             {formatDate(lead.created_at)}

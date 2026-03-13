@@ -2,7 +2,7 @@
 import { cookies } from "next/headers";
 import { redirect } from "next/navigation";
 import { CreditCard, CheckCircle2 } from "lucide-react";
-import BillingForm from "./billing-form"; // The interactive Client Component
+import BillingForm from "./billing-form";
 
 async function getSubscriptionInfo() {
     const cookieStore = await cookies();
@@ -10,13 +10,11 @@ async function getSubscriptionInfo() {
 
     if (!token) return null;
 
-    const apiUrl = process.env.NEXT_PUBLIC_API_URL || "http://127.0.0.1:8000";
+    const apiUrl = process.env.INTERNAL_API_URL || "http://127.0.0.1:8000";
 
     try {
         const res = await fetch(`${apiUrl}/api/v1/auth/me`, {
-            headers: {
-                Authorization: `Bearer ${token.value}`,
-            },
+            headers: { Authorization: `Bearer ${token.value}` },
             cache: "no-store", 
         });
 
@@ -50,17 +48,11 @@ export default async function BillingPage() {
             </header>
 
             <main className="max-w-xl mx-auto p-4 space-y-6 mt-6">
-                
-                {/* Current Plan Banner */}
                 <div className={`p-6 rounded-2xl shadow-lg border relative overflow-hidden ${
                     isPro ? "bg-gradient-to-br from-indigo-900 to-slate-900 text-white border-indigo-700" 
                           : "bg-white border-slate-200"
                 }`}>
-                    
-                    {isPro && (
-                        <div className="absolute -left-6 -top-6 w-32 h-32 bg-indigo-500/20 rounded-full blur-2xl"></div>
-                    )}
-
+                    {isPro && <div className="absolute -left-6 -top-6 w-32 h-32 bg-indigo-500/20 rounded-full blur-2xl"></div>}
                     <div className="relative z-10 flex justify-between items-start">
                         <div>
                             <p className={`text-xs font-bold mb-1 ${isPro ? "text-indigo-300" : "text-slate-400"}`}>
@@ -81,15 +73,12 @@ export default async function BillingPage() {
                     </div>
                 </div>
 
-                {/* The Payment/Coupon Form */}
-                {!isPro && (
-                    <BillingForm token={token} />
-                )}
+                {!isPro && <BillingForm token={token} />}
 
                 {isPro && (
                     <div className="bg-emerald-50 border border-emerald-100 p-4 rounded-xl text-emerald-800 text-sm text-center font-medium">
                         אתה נהנה מכל הפיצ'רים של המערכת! 🎉 <br/>
-                        כדי לנהל את מספרי הטלפון שלך, עבור ללשונית "Phone Numbers".
+                        כדי לנהל את מספרי הטלפון שלך, עבור ללשונית "מספרי טלפון".
                     </div>
                 )}
             </main>
@@ -97,7 +86,6 @@ export default async function BillingPage() {
     );
 }
 
-// Small helper component
 function PlanFeature({ text, included, isPro }: { text: string, included: boolean, isPro: boolean }) {
     return (
         <div className={`flex items-center gap-3 text-sm ${

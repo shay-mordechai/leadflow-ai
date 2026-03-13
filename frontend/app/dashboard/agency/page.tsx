@@ -1,46 +1,37 @@
 // frontend/app/dashboard/agency/page.tsx
-"use client";
-
-import { useEffect, useState } from "react";
+import { cookies } from "next/headers";
+import { redirect } from "next/navigation";
 import { Users, TrendingUp, AlertTriangle, ShieldCheck, CheckCircle2, XCircle } from "lucide-react";
 
-interface PartnerStats {
-    id: string;
-    name: string;
-    agency_name: string;
-    is_active: boolean;
-    clients_count: number;
-    total_leads_brought: number;
-    qualified_leads: number;
-    conversion_rate: number;
+async function getPartnerPerformance() {
+    const cookieStore = await cookies();
+    const token = cookieStore.get("access_token");
+
+    if (!token) return null;
+
+    const apiUrl = process.env.INTERNAL_API_URL || "http://127.0.0.1:8000";
+
+    try {
+        const res = await fetch(`${apiUrl}/api/v1/partners/performance`, {
+            headers: { Authorization: `Bearer ${token.value}` },
+            cache: "no-store"
+        });
+        if (res.ok) return await res.json();
+        return [];
+    } catch (err) {
+        return [];
+    }
 }
 
-export default function AgencyDashboard() {
-    const [partners, setPartners] = useState<PartnerStats[]>([]);
-    const [isLoading, setIsLoading] = useState(true);
+export default async function AgencyDashboard() {
+    const cookieStore = await cookies();
+    const token = cookieStore.get("access_token");
+    
+    if (!token) {
+        redirect("/login");
+    }
 
-    useEffect(() => {
-        // Fetch the performance data from our new backend endpoint
-        const fetchPerformance = async () => {
-            try {
-                // For demo purposes, we fetch directly. 
-                // In production, you'd pass the auth token here.
-                const res = await fetch("/api/v1/partners/performance");
-                if (res.ok) {
-                    const data = await res.json();
-                    setPartners(data);
-                } else {
-                    console.error("Failed to load stats");
-                }
-            } catch (err) {
-                console.error(err);
-            } finally {
-                setIsLoading(false);
-            }
-        };
-
-        fetchPerformance();
-    }, []);
+    const partners = await getPartnerPerformance() || [];
 
     return (
         <div className="space-y-8 animate-in fade-in duration-500 max-w-6xl mx-auto p-4 md:p-8" dir="rtl">
@@ -57,32 +48,26 @@ export default function AgencyDashboard() {
             {/* KPI Cards */}
             <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
                 <div className="bg-white p-6 rounded-2xl border border-slate-200 shadow-sm flex items-center gap-4">
-                    <div className="bg-blue-100 p-3 rounded-xl text-blue-600">
-                        <Users size={24} />
-                    </div>
+                    <div className="bg-blue-100 p-3 rounded-xl text-blue-600"><Users size={24} /></div>
                     <div>
                         <div className="text-2xl font-black text-slate-800">{partners.length}</div>
                         <div className="text-sm font-bold text-slate-500">קמפיינרים רשומים</div>
                     </div>
                 </div>
                 <div className="bg-white p-6 rounded-2xl border border-slate-200 shadow-sm flex items-center gap-4">
-                    <div className="bg-emerald-100 p-3 rounded-xl text-emerald-600">
-                        <TrendingUp size={24} />
-                    </div>
+                    <div className="bg-emerald-100 p-3 rounded-xl text-emerald-600"><TrendingUp size={24} /></div>
                     <div>
                         <div className="text-2xl font-black text-slate-800">
-                            {partners.reduce((sum, p) => sum + p.total_leads_brought, 0)}
+                            {partners.reduce((sum: number, p: any) => sum + (p.total_leads_brought || 0), 0)}
                         </div>
                         <div className="text-sm font-bold text-slate-500">סך הלידים שהוזרמו החודש</div>
                     </div>
                 </div>
                 <div className="bg-white p-6 rounded-2xl border border-slate-200 shadow-sm flex items-center gap-4">
-                    <div className="bg-purple-100 p-3 rounded-xl text-purple-600">
-                        <ShieldCheck size={24} />
-                    </div>
+                    <div className="bg-purple-100 p-3 rounded-xl text-purple-600"><ShieldCheck size={24} /></div>
                     <div>
                         <div className="text-2xl font-black text-slate-800">
-                            {partners.reduce((sum, p) => sum + p.clients_count, 0)}
+                            {partners.reduce((sum: number, p: any) => sum + (p.clients_count || 0), 0)}
                         </div>
                         <div className="text-sm font-bold text-slate-500">לקוחות פעילים ברשת</div>
                     </div>
@@ -95,9 +80,7 @@ export default function AgencyDashboard() {
                     <h3 className="font-bold text-slate-800">ביצועי קמפיינרים (Leaderboard)</h3>
                 </div>
                 
-                {isLoading ? (
-                    <div className="p-12 text-center text-slate-400">טוען נתונים...</div>
-                ) : partners.length === 0 ? (
+                {partners.length === 0 ? (
                     <div className="p-12 text-center text-slate-400">עדיין לא נרשמו שותפים למערכת.</div>
                 ) : (
                     <div className="overflow-x-auto">
@@ -113,7 +96,7 @@ export default function AgencyDashboard() {
                                 </tr>
                             </thead>
                             <tbody className="divide-y divide-slate-100">
-                                {partners.map((partner) => (
+                                {partners.map((partner: any) => (
                                     <tr key={partner.id} className="hover:bg-slate-50 transition-colors">
                                         <td className="px-6 py-4 font-bold text-slate-800">
                                             {partner.agency_name}
@@ -130,7 +113,7 @@ export default function AgencyDashboard() {
                                                             partner.conversion_rate >= 20 ? 'bg-emerald-500' : 
                                                             partner.conversion_rate > 5 ? 'bg-amber-400' : 'bg-red-500'
                                                         }`}
-                                                        style={{ width: `${Math.min(partner.conversion_rate * 3, 100)}%` }} // Visual boost for demo
+                                                        style={{ width: `${Math.min(partner.conversion_rate * 3, 100)}%` }} 
                                                     ></div>
                                                 </div>
                                                 <span className="font-bold text-slate-700 text-xs">{partner.conversion_rate}%</span>
