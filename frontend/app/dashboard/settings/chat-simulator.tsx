@@ -28,40 +28,46 @@ export default function ChatSimulator({ token }: { token: string }) {
         if (!input.trim() || isLoading) return;
 
         const userText = input.trim();
-        setInput(""); // Clear input early for better UX
+        setInput(""); 
         
         const newMessages: Message[] = [...messages, { role: "user", content: userText }];
         setMessages(newMessages);
         setIsLoading(true);
 
         try {
-            // We only send the last 6 messages as context to keep the payload light
             const history = newMessages.slice(-6).map(m => ({ role: m.role, content: m.content }));
+            
+            // שימוש בכתובת המלאה כדי למנוע בעיות ניתוב
+            const apiUrl = process.env.NEXT_PUBLIC_API_URL || "https://my-leads.app";
 
-            const res = await fetch("/api/v1/settings/simulate", {
+            const res = await fetch(`${apiUrl}/api/v1/settings/simulate`, {
                 method: "POST",
                 headers: {
                     "Content-Type": "application/json",
                     "Authorization": `Bearer ${token}`
                 },
-                body: JSON.stringify({ message: userText, history: history.slice(0, -1) }) // Exclude current message from history
+                body: JSON.stringify({ message: userText, history: history.slice(0, -1) }) 
             });
 
-            const data = await res.json();
-
-            if (res.ok) {
-                setMessages(prev => [...prev, { role: "bot", content: data.reply }]);
-                if (data.needs_human) {
-                    toast("הבוט זיהה צורך בנציג אנושי (Handoff)", { icon: '🚨' });
-                }
-            } else {
-                toast.error(data.detail || "שגיאה בחיבור ל-AI. האם שמרת את ההגדרות?");
-                // Remove user message if failed
-                setMessages(prev => prev.slice(0, -1));
-                setInput(userText); 
+            // טיפול חסין בקריסות רשת/שרת
+            if (!res.ok) {
+                const errorData = await res.json().catch(() => ({ detail: "תקלת רשת" }));
+                throw new Error(errorData.detail || "שגיאה בחיבור ל-AI.");
             }
-        } catch (error) {
-            toast.error("שגיאת רשת. בדוק את החיבור שלך.");
+
+            const data = await res.json();
+            
+            setMessages(prev => [...prev, { role: "bot", content: data.reply }]);
+            
+            if (data.needs_human) {
+                toast("הבוט זיהה צורך בנציג אנושי (Handoff)", { icon: '🚨' });
+            }
+
+        } catch (error: any) {
+            toast.error(error.message || "שגיאת תקשורת. בדוק את החיבור שלך.");
+            // החזרת ההודעה לשדה הטקסט במקרה של שגיאה כדי שהמשתמש לא יאבד אותה
+            setMessages(prev => prev.slice(0, -1));
+            setInput(userText); 
         } finally {
             setIsLoading(false);
         }
@@ -95,14 +101,12 @@ export default function ChatSimulator({ token }: { token: string }) {
                     <div key={idx} className={`flex ${msg.role === 'user' ? 'justify-start' : 'justify-end'}`}>
                         <div className={`flex gap-2 max-w-[80%] ${msg.role === 'user' ? 'flex-row-reverse' : 'flex-row'}`}>
                             
-                            {/* Avatar */}
                             <div className={`w-8 h-8 rounded-full flex items-center justify-center shrink-0 mt-1 ${
                                 msg.role === 'user' ? 'bg-slate-200 text-slate-500' : 'bg-indigo-100 text-indigo-600'
                             }`}>
                                 {msg.role === 'user' ? <UserIcon size={14} /> : <Bot size={14} />}
                             </div>
 
-                            {/* Bubble */}
                             <div className={`p-3 rounded-2xl text-sm leading-relaxed whitespace-pre-wrap shadow-sm ${
                                 msg.role === 'user' 
                                 ? 'bg-white border border-slate-200 text-slate-700 rounded-tr-sm' 

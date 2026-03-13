@@ -3,17 +3,15 @@ import logging
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.orm import Session
 from uuid import uuid4
-from typing import Optional, List, Dict
+from typing import Optional, List
 
 from src.database.session import get_db
 from src.database.models import User, BusinessProfile, AIAgent
 from src.security.dependencies import get_current_user
 from src.schemas.user import AISettingsSchema, AIAgentSchema
 from src.security.audit import audit_service
-from src.services.ai.engine import ai_engine
 from pydantic import BaseModel
 
-# Router configuration
 router = APIRouter(tags=["AI Configuration"])
 logger = logging.getLogger("LeadFlowSystem")
 
@@ -26,16 +24,16 @@ class SimulateRequest(BaseModel):
     message: str
     history: List[ChatMessage] = []
 
-# --- Routes ---
-
 @router.get("", response_model=AISettingsSchema)
 def get_settings(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user)
 ):
+    """Fetch current Business Profile and AI Agent settings."""
     profile = db.query(BusinessProfile).filter(BusinessProfile.user_id == current_user.id).first()
     agent = db.query(AIAgent).filter(AIAgent.user_id == current_user.id).first()
     
+    # Fallback if no profile exists yet
     if not profile:
         return AISettingsSchema(
             business_name=current_user.business_name or current_user.name,
@@ -72,7 +70,11 @@ def update_settings(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user)
 ):
+    """
+    Update Business Profile and AI Agent configuration.
+    """
     try:
+        # 1. Upsert Business Profile
         profile = db.query(BusinessProfile).filter(BusinessProfile.user_id == current_user.id).first()
         
         if not profile:
@@ -96,6 +98,7 @@ def update_settings(
             profile.custom_instructions = data.custom_instructions
             profile.summary_template = data.summary_template
             
+        # 2. Upsert AI Agent (The Brain)
         agent = db.query(AIAgent).filter(AIAgent.user_id == current_user.id).first()
         master_prompt = _generate_master_prompt(data)
         
@@ -117,6 +120,7 @@ def update_settings(
 
         db.commit()
 
+        # 3. Security: Audit Logging
         try:
             audit_service.log(
                 db=db,
@@ -149,8 +153,7 @@ async def simulate_ai_chat(
     current_user: User = Depends(get_current_user)
 ):
     """
-    Allows the user to test their AI prompt live from the dashboard
-    without sending actual WhatsApp messages.
+    Allows the user to test their AI prompt live from the dashboard.
     """
     agent = db.query(AIAgent).filter(AIAgent.user_id == current_user.id).first()
     
@@ -161,13 +164,23 @@ async def simulate_ai_chat(
         )
 
     try:
-        # Convert history to format expected by AI Engine
+        # Format history for Gemini engine
         formatted_history = []
         for msg in data.history:
+            sender = "model" if msg.role == "bot" else "user"
+            
+            # FIX: Gemini API crashes (HTTP 400) if the history starts with a 'model' message.
+            # We skip 'bot' messages until we find the first 'user' message.
+            if not formatted_history and sender == "model":
+                continue
+                
             formatted_history.append({
-                "sender_type": "user" if msg.role == "user" else "bot",
+                "sender_type": "user" if sender == "user" else "bot",
                 "content": msg.content
             })
+
+        # Lazy load the AI Engine to prevent circular imports
+        from src.services.ai.engine import ai_engine
 
         # Ask the AI Engine
         ai_response = await ai_engine.analyze_interaction(
@@ -187,6 +200,9 @@ async def simulate_ai_chat(
         raise HTTPException(status_code=500, detail="שגיאה בסימולציית ה-AI")
 
 def _generate_master_prompt(data: AISettingsSchema) -> str:
+    """
+    Synthesizes user inputs into a structured Gemini prompt for the agent.
+    """
     tone_instruction = ""
     tone = data.ai_tone
     
