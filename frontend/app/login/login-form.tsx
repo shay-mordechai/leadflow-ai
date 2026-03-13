@@ -1,152 +1,150 @@
-// app/login/login-form.tsx
+// frontend/app/login/login-form.tsx
 "use client";
 
-import { useActionState, useEffect, useState } from "react";
-import Link from "next/link";
+import { useState } from "react";
 import { useRouter } from "next/navigation";
-import { loginStepOneAction, verifyOtpAction } from "@/actions/auth";
-import { Button } from "@/components/ui/button";
+import Link from "next/link";
 import { Input } from "@/components/ui/input";
+import { Button } from "@/components/ui/button";
+import { loginStepOneAction, verifyOtpAction } from "@/actions/auth";
 
 export default function LoginForm() {
-  const router = useRouter();
-  
-  // State 1: Credentials Form
-  const [loginState, loginAction, isLoginPending] = useActionState(loginStepOneAction, {});
-  
-  // State 2: OTP Form
-  const [otpState, otpAction, isOtpPending] = useActionState(verifyOtpAction, {});
+    const router = useRouter();
+    const [step, setStep] = useState<1 | 2>(1);
+    const [email, setEmail] = useState("");
+    const [loading, setLoading] = useState(false);
+    const [error, setError] = useState("");
+    const [rememberMe, setRememberMe] = useState(false); // New Remember Me state
 
-  // Local state to track which step we are on
-  const [step, setStep] = useState<'credentials' | 'otp'>('credentials');
-  const [email, setEmail] = useState('');
+    // Step 1: Handle Email & Password Submit
+    async function handleLogin(formData: FormData) {
+        setError("");
+        setLoading(true);
+        setEmail(formData.get("email") as string);
 
-  // Intercept form submission to capture the email instantly
-  const handleLoginSubmit = (formData: FormData) => {
-    const submittedEmail = formData.get("email")?.toString() || "";
-    setEmail(submittedEmail);
-    loginAction(formData);
-  };
+        const result = await loginStepOneAction({}, formData);
 
-  useEffect(() => {
-    if (loginState.success && loginState.data?.mfa_required) {
-      setStep('otp');
+        if (result.success) {
+            setStep(2); // Move to OTP step
+        } else {
+            setError(result.error || "פרטים שגויים. נסה שוב.");
+        }
+        setLoading(false);
     }
-  }, [loginState]);
 
-  useEffect(() => {
-    if (otpState.success) {
-      router.push('/dashboard');
+    // Step 2: Handle OTP Verification
+    async function handleVerify(formData: FormData) {
+        setError("");
+        setLoading(true);
+
+        // Inject the saved email and rememberMe choice into the form data before sending to server
+        formData.append("email", email);
+        formData.append("remember_me", rememberMe ? "true" : "false");
+
+        const result = await verifyOtpAction({}, formData);
+
+        if (result.success) {
+            // SUCCESS! Redirecting to Dashboard
+            router.push("/dashboard");
+        } else {
+            setError(result.error || "קוד ה-OTP שגוי. נסה שוב.");
+            setLoading(false);
+        }
     }
-  }, [otpState, router]);
 
-  return (
-    <div className="w-full max-w-sm space-y-8 relative z-10" dir="rtl">
-      <div className="text-center">
-        <div className="mx-auto h-12 w-12 rounded-xl bg-gradient-to-br from-indigo-600 to-violet-600 flex items-center justify-center shadow-lg shadow-indigo-500/20">
-          <svg className="w-6 h-6 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z" />
-          </svg>
+    return (
+        <div className="w-full max-w-md space-y-8 bg-white dark:bg-gray-800 p-8 rounded-xl shadow-lg border border-gray-200 dark:border-gray-700" dir="rtl">
+            <div className="text-center">
+                <h2 className="text-3xl font-bold tracking-tight text-gray-900 dark:text-white">
+                    {step === 1 ? "ברוך שובך" : "אימות אבטחה (OTP)"}
+                </h2>
+                <p className="mt-2 text-sm text-gray-600 dark:text-gray-400">
+                    {step === 1 ? "התחבר לחשבון ה-MyLeads AI שלך" : "קוד אימות בן 6 ספרות נשלח לכתובת המייל שלך."}
+                </p>
+            </div>
+
+            {/* STEP 1: EMAIL & PASSWORD */}
+            {step === 1 && (
+                <form action={handleLogin} className="mt-8 space-y-6">
+                    <div className="space-y-4">
+                        <div>
+                            <label className="text-sm font-medium leading-none">כתובת אימייל</label>
+                            <Input name="email" type="email" placeholder="name@business.com" required className="mt-2 text-left" dir="ltr" />
+                        </div>
+                        <div>
+                            <label className="text-sm font-medium leading-none">סיסמה</label>
+                            <Input name="password" type="password" placeholder="••••••••" required className="mt-2 text-left" dir="ltr" />
+                        </div>
+
+                        {/* REMEMBER ME CHECKBOX */}
+                        <div className="flex items-center space-x-3 space-x-reverse pt-2">
+                            <input
+                                id="remember_me"
+                                type="checkbox"
+                                checked={rememberMe}
+                                onChange={(e) => setRememberMe(e.target.checked)}
+                                className="h-4 w-4 rounded border-gray-300 text-blue-600 focus:ring-blue-600 cursor-pointer"
+                            />
+                            <label htmlFor="remember_me" className="text-sm text-gray-600 dark:text-gray-400 cursor-pointer user-select-none">
+                                זכור אותי (הישאר מחובר)
+                            </label>
+                        </div>
+                    </div>
+
+                    {error && <div className="p-3 text-sm text-red-600 font-medium bg-red-50 rounded-md">{error}</div>}
+
+                    <Button type="submit" className="w-full font-bold" disabled={loading}>
+                        {loading ? "מתחבר..." : "התחברות"}
+                    </Button>
+                </form>
+            )}
+
+            {/* STEP 2: OTP VERIFICATION */}
+            {step === 2 && (
+                <form action={handleVerify} className="mt-8 space-y-6">
+                    <div className="space-y-4">
+                        <div>
+                            <label className="text-sm font-medium leading-none text-center block mb-3">
+                                הזן את הקוד שקיבלת למייל:
+                            </label>
+                            <Input 
+                                name="otp_code" 
+                                type="text" 
+                                inputMode="numeric"
+                                placeholder="123456" 
+                                maxLength={6}
+                                required 
+                                className="mt-2 text-center text-2xl tracking-widest font-mono font-bold" 
+                                dir="ltr" 
+                            />
+                        </div>
+                    </div>
+
+                    {error && <div className="p-3 text-sm text-red-600 font-medium bg-red-50 rounded-md text-center">{error}</div>}
+
+                    <Button type="submit" className="w-full font-bold" disabled={loading}>
+                        {loading ? "מאמת..." : "אמת קוד והיכנס"}
+                    </Button>
+
+                    <button 
+                        type="button" 
+                        onClick={() => { setStep(1); setError(""); }}
+                        className="w-full text-sm text-slate-500 hover:text-slate-700 mt-4 underline"
+                    >
+                        חזור אחורה
+                    </button>
+                </form>
+            )}
+
+            {/* FOOTER LINK */}
+            {step === 1 && (
+                <div className="text-center text-sm mt-6 border-t pt-6 border-slate-100 dark:border-slate-700">
+                    <span className="text-gray-500">עדיין אין לך חשבון? </span>
+                    <Link href="/register" className="font-semibold text-blue-600 hover:text-blue-500">
+                        הירשם כאן
+                    </Link>
+                </div>
+            )}
         </div>
-        <h2 className="mt-6 text-3xl font-bold tracking-tight text-white">
-          {step === 'credentials' ? 'ברוך שובך' : 'אימות אבטחה'}
-        </h2>
-        <p className="mt-2 text-sm text-slate-400">
-          {step === 'credentials' 
-            ? 'התחבר כדי לגשת לדשבורד הלידים שלך.' 
-            : `שלחנו קוד בן 6 ספרות לכתובת ${email}`}
-        </p>
-      </div>
-
-      <div className="rounded-2xl border border-slate-800 bg-slate-900/50 p-8 shadow-xl backdrop-blur-xl">
-        
-        {/* STEP 1: CREDENTIALS */}
-        {step === 'credentials' && (
-          <form action={handleLoginSubmit} className="space-y-6">
-            {loginState.error && (
-              <div className="rounded-lg bg-red-500/10 border border-red-500/20 p-3 text-sm text-red-400 text-center">
-                {loginState.error}
-              </div>
-            )}
-            
-            <div className="space-y-4 text-right">
-              <Input 
-                id="email" 
-                name="email" 
-                type="email" 
-                label="כתובת אימייל" 
-                placeholder="name@business.com" 
-                dir="ltr"
-                className="text-left"
-                required 
-              />
-              <Input 
-                id="password" 
-                name="password" 
-                type="password" 
-                label="סיסמה" 
-                placeholder="••••••••••••" 
-                dir="ltr"
-                className="text-left"
-                required 
-              />
-            </div>
-
-            <Button type="submit" className="w-full font-bold text-md" isLoading={isLoginPending}>
-              התחברות למערכת
-            </Button>
-          </form>
-        )}
-
-        {/* STEP 2: OTP */}
-        {step === 'otp' && (
-          <form action={otpAction} className="space-y-6 text-right">
-            {otpState.error && (
-              <div className="rounded-lg bg-red-500/10 border border-red-500/20 p-3 text-sm text-red-400 text-center">
-                {otpState.error}
-              </div>
-            )}
-
-            <input type="hidden" name="email" value={email} />
-            
-            <div className="space-y-4">
-              <Input 
-                id="otp_code" 
-                name="otp_code" 
-                type="text" 
-                label="הזן קוד אימות (OTP)" 
-                placeholder="123456" 
-                className="text-center text-2xl tracking-[0.5em] font-mono"
-                dir="ltr"
-                maxLength={6}
-                required 
-                autoFocus
-              />
-            </div>
-
-            <Button type="submit" className="w-full font-bold" isLoading={isOtpPending}>
-              אמת והתחבר
-            </Button>
-            
-            <button 
-              type="button" 
-              onClick={() => setStep('credentials')}
-              className="w-full text-xs text-slate-500 hover:text-slate-300 mt-4 transition-colors"
-            >
-              חזור אחורה
-            </button>
-          </form>
-        )}
-
-        {step === 'credentials' && (
-          <div className="mt-6 text-center text-sm">
-            <span className="text-slate-400">אין לך עדיין חשבון? </span>
-            <Link href="/register" className="font-medium text-indigo-400 hover:text-indigo-300 transition-colors">
-              הירשם עכשיו
-            </Link>
-          </div>
-        )}
-      </div>
-    </div>
-  );
+    );
 }

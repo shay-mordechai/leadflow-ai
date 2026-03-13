@@ -85,6 +85,9 @@ export async function verifyOtpAction(prevState: ActionState, formData: FormData
     otp_code: formData.get('otp_code') as string,
   };
 
+  // Read the "Remember Me" preference sent from the client
+  const rememberMe = formData.get('remember_me') === 'true';
+
   try {
     const res = await fetch(`${INTERNAL_API_URL}/api/v1/auth/verify-otp`, {
       method: 'POST',
@@ -106,16 +109,19 @@ export async function verifyOtpAction(prevState: ActionState, formData: FormData
 
     const tokenData = data as TokenResponse;
 
-    // FIX: Set httpOnly to false so the client-side React code can read the token and stay logged in.
+    // SECURITY MAGIC:
+    // If rememberMe is true, cookie lives for 30 days.
+    // If rememberMe is false, maxAge is undefined (Session Cookie - deleted on browser close).
+    const maxAge = rememberMe ? 60 * 60 * 24 * 30 : undefined;
+
     (await cookies()).set('access_token', tokenData.access_token, {
-      httpOnly: false, 
+      httpOnly: true, // SECURE: Prevents JavaScript XSS token theft!
       secure: process.env.NODE_ENV === 'production',
-      maxAge: 60 * 60 * 24, 
+      maxAge: maxAge, 
       path: '/',
       sameSite: 'lax',
     });
 
-    // FIX: Return the token data to the client so it can be stored in localStorage if needed by the AuthProvider.
     return { success: true, data: tokenData };
   } catch (error) {
     console.error("Auth Action Error (OTP):", error);
