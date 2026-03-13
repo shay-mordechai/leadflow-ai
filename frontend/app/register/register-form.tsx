@@ -9,7 +9,6 @@ import { Button } from "@/components/ui/button";
 import { registerAction as registerUser } from "@/actions/auth"; 
 import { RefreshCw, Copy, Check, Eye, EyeOff } from "lucide-react";
 import toast from "react-hot-toast";
-// Import the type so we can enforce the correct structure
 import { UserRegisterRequest } from '@/types/auth'; 
 
 export default function RegisterForm() {
@@ -18,17 +17,14 @@ export default function RegisterForm() {
     const [error, setError] = useState("");
     const [agreedToTerms, setAgreedToTerms] = useState(false);
     
-    // Password state management
     const [password, setPassword] = useState("");
     const [showPassword, setShowPassword] = useState(false);
     const [copied, setCopied] = useState(false);
     
-    // Anti-spam state for password generation
     const [genClickCount, setGenClickCount] = useState(0);
     const [isGenLocked, setIsGenLocked] = useState(false);
     const [lockTimer, setLockTimer] = useState(0);
 
-    // State to toggle the "Other" business type text field
     const [showOtherBusinessType, setShowOtherBusinessType] = useState(false);
 
     const generateStrongPassword = () => {
@@ -49,7 +45,6 @@ export default function RegisterForm() {
         }
         
         newPassword = newPassword.split('').sort(() => 0.5 - Math.random()).join('');
-        
         setPassword(newPassword);
         
         const newCount = genClickCount + 1;
@@ -92,7 +87,6 @@ export default function RegisterForm() {
         setShowOtherBusinessType(e.target.value === "Other");
     };
 
-    // Form submission handler
     async function handleSubmit(e: React.FormEvent<HTMLFormElement>) {
         e.preventDefault(); 
         setError("");
@@ -107,7 +101,6 @@ export default function RegisterForm() {
         const form = e.currentTarget;
         const formData = new FormData(form);
 
-        // FIX: Construct the exact payload expected by the server action
         const payload: UserRegisterRequest = {
             email: formData.get("email") as string,
             password: password || (formData.get("password") as string),
@@ -118,7 +111,6 @@ export default function RegisterForm() {
         };
 
         try {
-            // FIX: Pass the clean payload object directly
             const result = await registerUser(payload);
 
             if (result.success) {
@@ -159,11 +151,12 @@ export default function RegisterForm() {
                     
                     <div>
                         <label className="text-sm font-medium leading-none">תחום העסק</label>
+                        {/* FIX: Removed bg-transparent and explicitly defined Dark Mode bg/text colors for the select field to prevent invisible white-on-white options */}
                         <select 
                             name="business_type" 
                             required 
                             onChange={handleBusinessTypeChange}
-                            className="flex h-10 w-full rounded-md border border-gray-300 bg-transparent px-3 py-2 text-sm placeholder:text-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-400 focus:ring-offset-2 mt-2"
+                            className="flex h-10 w-full rounded-md border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-900 text-gray-900 dark:text-white px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-400 mt-2"
                         >
                             <option value="">בחר תחום...</option>
                             <option value="נדלן">נדל"ן</option>

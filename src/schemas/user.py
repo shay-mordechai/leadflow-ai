@@ -5,9 +5,10 @@ from uuid import UUID
 import re
 
 # --- Constants for Security Regex Patterns ---
-NAME_REGEX = r"^[a-zA-Zא-ת\s\-']+$"
+# FIXED: Added support for double quotes (") and periods (.) for valid Israeli business names
+NAME_REGEX = r'^[a-zA-Zא-ת\s\-\'\"\.]+$'
 PHONE_REGEX = r"^(\+972|05)[0-9\-]{8,15}$"
-SAFE_TEXT_REGEX = r"^[a-zA-Zא-ת0-9\s\-\.]+$"
+SAFE_TEXT_REGEX = r'^[a-zA-Zא-ת0-9\s\-\.\'\"]+$'
 
 # --- Base Schema (Shared Fields) ---
 class UserBase(BaseModel):

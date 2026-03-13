@@ -4,7 +4,9 @@
 import { cookies } from 'next/headers';
 import { UserRegisterRequest, LoginResponse, VerifyOtpRequest, TokenResponse } from '@/types/auth';
 
-const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://127.0.0.1:8000';
+// FIX: Server actions run ON the server. By communicating via 127.0.0.1, 
+// we bypass Cloudflare entirely, preventing DNS loops or SSL issues in production.
+const INTERNAL_API_URL = process.env.INTERNAL_API_URL || 'http://127.0.0.1:8000';
 
 export type ActionState = {
   error?: string;
@@ -12,10 +14,9 @@ export type ActionState = {
   data?: any;
 };
 
-// FIX: Removed 'prevState' and 'FormData' to receive a clean payload directly from the client.
 export async function registerAction(payload: UserRegisterRequest): Promise<ActionState> {
   try {
-    const res = await fetch(`${API_URL}/api/v1/auth/register`, {
+    const res = await fetch(`${INTERNAL_API_URL}/api/v1/auth/register`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(payload),
@@ -24,12 +25,20 @@ export async function registerAction(payload: UserRegisterRequest): Promise<Acti
     const data = await res.json();
 
     if (!res.ok) {
-      return { error: data.detail || 'Registration failed' };
+      // FIX: Gracefully parse Pydantic 422 Validation Errors instead of returning objects
+      let errorMessage = 'שגיאה בהרשמה. אנא נסה שוב.';
+      if (typeof data.detail === 'string') {
+        errorMessage = data.detail;
+      } else if (Array.isArray(data.detail)) {
+        errorMessage = data.detail.map((err: any) => err.msg).join(', ');
+      }
+      return { error: errorMessage };
     }
 
     return { success: true };
-  } catch (error) {
-    return { error: 'Network error. Please try again.' };
+  } catch (error: any) {
+    console.error("Auth Action Error (Register):", error);
+    return { error: `שגיאת תקשורת עם השרת. (${error.message})` };
   }
 }
 
@@ -42,7 +51,7 @@ export async function loginStepOneAction(prevState: ActionState, formData: FormD
   params.append('password', password);
 
   try {
-    const res = await fetch(`${API_URL}/api/v1/auth/login`, {
+    const res = await fetch(`${INTERNAL_API_URL}/api/v1/auth/login`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
       body: params,
@@ -51,12 +60,13 @@ export async function loginStepOneAction(prevState: ActionState, formData: FormD
     const data = await res.json();
 
     if (!res.ok) {
-      return { error: data.detail || 'Invalid credentials' };
+      return { error: data.detail || 'פרטים שגויים. נסה שוב.' };
     }
 
     return { success: true, data: data as LoginResponse };
-  } catch (error) {
-    return { error: 'Network error. Could not connect to server.' };
+  } catch (error: any) {
+    console.error("Auth Action Error (Login):", error);
+    return { error: 'שגיאת תקשורת עם השרת.' };
   }
 }
 
@@ -67,7 +77,7 @@ export async function verifyOtpAction(prevState: ActionState, formData: FormData
   };
 
   try {
-    const res = await fetch(`${API_URL}/api/v1/auth/verify-otp`, {
+    const res = await fetch(`${INTERNAL_API_URL}/api/v1/auth/verify-otp`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(payload),
@@ -76,7 +86,7 @@ export async function verifyOtpAction(prevState: ActionState, formData: FormData
     const data = await res.json();
 
     if (!res.ok) {
-      return { error: data.detail || 'Invalid OTP' };
+      return { error: data.detail || 'קוד ה-OTP שגוי או שפג תוקפו.' };
     }
 
     const tokenData = data as TokenResponse;
@@ -91,6 +101,6 @@ export async function verifyOtpAction(prevState: ActionState, formData: FormData
 
     return { success: true };
   } catch (error) {
-    return { error: 'Verification failed.' };
+    return { error: 'אימות נכשל. אנא נסה שוב.' };
   }
 }
