@@ -4,9 +4,9 @@
 import { cookies } from 'next/headers';
 import { UserRegisterRequest, LoginResponse, VerifyOtpRequest, TokenResponse } from '@/types/auth';
 
-// FIX: We route traffic through the public domain (via Cloudflare).
-// This completely bypasses the Rootless Podman localhost network isolation issues!
-const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://127.0.0.1:8000';
+// We route traffic completely internally (Backend to Backend) 
+// This bypasses Cloudflare WAF which blocks our datacenter IP with an HTML Captcha page.
+const INTERNAL_API_URL = process.env.INTERNAL_API_URL || 'http://127.0.0.1:8000';
 
 export type ActionState = {
   error?: string;
@@ -16,11 +16,18 @@ export type ActionState = {
 
 export async function registerAction(payload: UserRegisterRequest): Promise<ActionState> {
   try {
-    const res = await fetch(`${API_URL}/api/v1/auth/register`, {
+    const res = await fetch(`${INTERNAL_API_URL}/api/v1/auth/register`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(payload),
     });
+
+    // 1. SAFETY CHECK: Ensure Cloudflare/Nginx didn't return an HTML error page
+    const contentType = res.headers.get("content-type");
+    if (!contentType || !contentType.includes("application/json")) {
+        console.error(`[Auth] Received non-JSON response. Status: ${res.status}`);
+        return { error: 'המערכת מתעדכנת ברגעים אלו. אנא נסה שוב בעוד מספר דקות.' };
+    }
 
     const data = await res.json();
 
@@ -36,8 +43,9 @@ export async function registerAction(payload: UserRegisterRequest): Promise<Acti
 
     return { success: true };
   } catch (error: any) {
+    // 2. UX PROTECTION: Never expose raw JS error messages to the client
     console.error("Auth Action Error (Register):", error);
-    return { error: `שגיאת תקשורת עם השרת. (${error.message})` };
+    return { error: 'שגיאת תקשורת עם השרת. אנא ודא שהחיבור תקין ונסה שוב.' };
   }
 }
 
@@ -50,11 +58,17 @@ export async function loginStepOneAction(prevState: ActionState, formData: FormD
   params.append('password', password);
 
   try {
-    const res = await fetch(`${API_URL}/api/v1/auth/login`, {
+    const res = await fetch(`${INTERNAL_API_URL}/api/v1/auth/login`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
       body: params,
     });
+
+    const contentType = res.headers.get("content-type");
+    if (!contentType || !contentType.includes("application/json")) {
+        console.error(`[Auth] Received non-JSON response. Status: ${res.status}`);
+        return { error: 'המערכת כרגע בעומס. אנא נסה להתחבר שוב בעוד דקה.' };
+    }
 
     const data = await res.json();
 
@@ -65,7 +79,7 @@ export async function loginStepOneAction(prevState: ActionState, formData: FormD
     return { success: true, data: data as LoginResponse };
   } catch (error: any) {
     console.error("Auth Action Error (Login):", error);
-    return { error: 'שגיאת תקשורת עם השרת.' };
+    return { error: 'שגיאת תקשורת עולמית. אנחנו כבר מטפלים בזה.' };
   }
 }
 
@@ -76,11 +90,17 @@ export async function verifyOtpAction(prevState: ActionState, formData: FormData
   };
 
   try {
-    const res = await fetch(`${API_URL}/api/v1/auth/verify-otp`, {
+    const res = await fetch(`${INTERNAL_API_URL}/api/v1/auth/verify-otp`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(payload),
     });
+
+    const contentType = res.headers.get("content-type");
+    if (!contentType || !contentType.includes("application/json")) {
+        console.error(`[Auth] Received non-JSON response. Status: ${res.status}`);
+        return { error: 'שגיאה באימות מול השרת. אנא בקש קוד חדש.' };
+    }
 
     const data = await res.json();
 
@@ -100,6 +120,7 @@ export async function verifyOtpAction(prevState: ActionState, formData: FormData
 
     return { success: true };
   } catch (error) {
-    return { error: 'אימות נכשל. אנא נסה שוב.' };
+    console.error("Auth Action Error (OTP):", error);
+    return { error: 'אימות נכשל בשל שגיאת רשת. אנא נסה שוב.' };
   }
 }
