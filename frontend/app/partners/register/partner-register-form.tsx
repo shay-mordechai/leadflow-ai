@@ -18,24 +18,43 @@ export default function PartnerRegisterForm() {
         experience: "3-5 years"
     });
 
-    // Form submission handler
+    // Form submission handler connected to Backend
     const handleSubmit = async (e: React.FormEvent) => {
         e.preventDefault();
         setIsLoading(true);
         
-        // TODO: Replace with actual API call to backend
-        // Simulate partner registration - Backend will assign UserRole.PARTNER
-        setTimeout(() => {
-            toast.success("בקשת השותפות נשלחה! נחזור אליך תוך 24 שעות.", {
-                style: {
-                    borderRadius: '12px',
-                    background: '#1e293b',
-                    color: '#fff',
+        try {
+            // Using relative URL so the Reverse Proxy routes it to the FastAPI backend
+            const res = await fetch("/api/v1/partners/register", {
+                method: "POST",
+                headers: {
+                    "Content-Type": "application/json",
                 },
+                body: JSON.stringify(formData)
             });
+
+            const data = await res.json();
+
+            if (res.ok) {
+                toast.success("בקשת השותפות נשלחה בהצלחה! 🚀", {
+                    duration: 5000,
+                    style: {
+                        borderRadius: '12px',
+                        background: '#1e293b',
+                        color: '#fff',
+                    },
+                });
+                
+                // Redirect back to home page after success
+                router.push("/");
+            } else {
+                toast.error(data.detail || "שגיאה בשליחת הבקשה. האם האימייל כבר קיים במערכת?");
+            }
+        } catch (error) {
+            toast.error("שגיאת תקשורת מול השרת. אנא נסה שוב מאוחר יותר.");
+        } finally {
             setIsLoading(false);
-            router.push("/");
-        }, 1500);
+        }
     };
 
     return (
