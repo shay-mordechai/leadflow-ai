@@ -3,28 +3,39 @@ import logging
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.orm import Session
 from uuid import uuid4
-from typing import Optional
+from typing import Optional, List, Dict
 
 from src.database.session import get_db
 from src.database.models import User, BusinessProfile, AIAgent
 from src.security.dependencies import get_current_user
 from src.schemas.user import AISettingsSchema, AIAgentSchema
 from src.security.audit import audit_service
+from src.services.ai.engine import ai_engine
+from pydantic import BaseModel
 
-# Router configuration - prefix handled in main.py
+# Router configuration
 router = APIRouter(tags=["AI Configuration"])
 logger = logging.getLogger("LeadFlowSystem")
+
+# --- Schemas ---
+class ChatMessage(BaseModel):
+    role: str
+    content: str
+
+class SimulateRequest(BaseModel):
+    message: str
+    history: List[ChatMessage] = []
+
+# --- Routes ---
 
 @router.get("", response_model=AISettingsSchema)
 def get_settings(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user)
 ):
-    """Fetch current Business Profile and AI Agent settings."""
     profile = db.query(BusinessProfile).filter(BusinessProfile.user_id == current_user.id).first()
     agent = db.query(AIAgent).filter(AIAgent.user_id == current_user.id).first()
     
-    # Fallback if no profile exists yet
     if not profile:
         return AISettingsSchema(
             business_name=current_user.business_name or current_user.name,
@@ -61,12 +72,7 @@ def update_settings(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user)
 ):
-    """
-    Update Business Profile and AI Agent configuration.
-    Synthesizes a master system prompt and records the action in audit logs.
-    """
     try:
-        # 1. Upsert Business Profile
         profile = db.query(BusinessProfile).filter(BusinessProfile.user_id == current_user.id).first()
         
         if not profile:
@@ -90,10 +96,7 @@ def update_settings(
             profile.custom_instructions = data.custom_instructions
             profile.summary_template = data.summary_template
             
-        # 2. Upsert AI Agent (The Brain)
         agent = db.query(AIAgent).filter(AIAgent.user_id == current_user.id).first()
-        
-        # Generate the sophisticated system prompt based on user inputs
         master_prompt = _generate_master_prompt(data)
         
         if not agent:
@@ -114,7 +117,6 @@ def update_settings(
 
         db.commit()
 
-        # 3. Security: Audit Logging (Wrapped to ensure main save doesn't fail)
         try:
             audit_service.log(
                 db=db,
@@ -139,10 +141,52 @@ def update_settings(
             detail="לא הצלחנו לשמור את השינויים. צוות הפיתוח קיבל דיווח."
         )
 
+# --- NEW: AI Simulator Endpoint ---
+@router.post("/simulate")
+async def simulate_ai_chat(
+    data: SimulateRequest,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user)
+):
+    """
+    Allows the user to test their AI prompt live from the dashboard
+    without sending actual WhatsApp messages.
+    """
+    agent = db.query(AIAgent).filter(AIAgent.user_id == current_user.id).first()
+    
+    if not agent or not agent.system_prompt:
+        raise HTTPException(
+            status_code=400, 
+            detail="אנא הגדר ושמור את מוח ה-AI לפני השימוש בסימולטור."
+        )
+
+    try:
+        # Convert history to format expected by AI Engine
+        formatted_history = []
+        for msg in data.history:
+            formatted_history.append({
+                "sender_type": "user" if msg.role == "user" else "bot",
+                "content": msg.content
+            })
+
+        # Ask the AI Engine
+        ai_response = await ai_engine.analyze_interaction(
+            system_prompt=agent.system_prompt,
+            text_input=data.message,
+            sender_name="לקוח פוטנציאלי (סימולטור)",
+            chat_history=formatted_history
+        )
+
+        return {
+            "reply": ai_response.get("reply_text", "הייתה בעיה בניסוח התשובה."),
+            "needs_human": ai_response.get("needs_human_escalation", False)
+        }
+        
+    except Exception as e:
+        logger.error(f"Simulator error for {current_user.email}: {e}")
+        raise HTTPException(status_code=500, detail="שגיאה בסימולציית ה-AI")
+
 def _generate_master_prompt(data: AISettingsSchema) -> str:
-    """
-    Synthesizes user inputs into a structured Gemini prompt for the agent.
-    """
     tone_instruction = ""
     tone = data.ai_tone
     
