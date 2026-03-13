@@ -6,9 +6,11 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
-import { registerAction as registerUser } from "@/actions/auth"; // Server Action
+import { registerAction as registerUser } from "@/actions/auth"; 
 import { RefreshCw, Copy, Check, Eye, EyeOff } from "lucide-react";
 import toast from "react-hot-toast";
+// Import the type so we can enforce the correct structure
+import { UserRegisterRequest } from '@/types/auth'; 
 
 export default function RegisterForm() {
     const router = useRouter();
@@ -30,7 +32,6 @@ export default function RegisterForm() {
     const [showOtherBusinessType, setShowOtherBusinessType] = useState(false);
 
     const generateStrongPassword = () => {
-        // Prevent abuse (DDoS protection / UX anti-spam)
         if (isGenLocked) {
             toast.error(`המתן ${lockTimer} שניות לפני יצירת סיסמה נוספת.`);
             return;
@@ -39,7 +40,6 @@ export default function RegisterForm() {
         const charset = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789!@#$%^&*()_+";
         let newPassword = "";
         
-        // Ensure at least one of each required type for our backend validation
         newPassword += "ABCDEFGHIJKLMNOPQRSTUVWXYZ"[Math.floor(Math.random() * 26)];
         newPassword += "abcdefghijklmnopqrstuvwxyz"[Math.floor(Math.random() * 26)];
         newPassword += "0123456789"[Math.floor(Math.random() * 10)];
@@ -48,12 +48,10 @@ export default function RegisterForm() {
             newPassword += charset[Math.floor(Math.random() * charset.length)];
         }
         
-        // Shuffle the generated characters
         newPassword = newPassword.split('').sort(() => 0.5 - Math.random()).join('');
         
         setPassword(newPassword);
         
-        // Track clicks for anti-spam mechanism
         const newCount = genClickCount + 1;
         setGenClickCount(newCount);
         
@@ -68,7 +66,7 @@ export default function RegisterForm() {
                 if (timeLeft <= 0) {
                     clearInterval(countdown);
                     setIsGenLocked(false);
-                    setGenClickCount(0); // Reset count after lock expires
+                    setGenClickCount(0); 
                 }
             }, 1000);
             
@@ -109,14 +107,19 @@ export default function RegisterForm() {
         const form = e.currentTarget;
         const formData = new FormData(form);
 
-        // Ensure the controlled password state is submitted overriding the empty input
-        if (password) {
-            formData.set("password", password);
-        }
+        // FIX: Construct the exact payload expected by the server action
+        const payload: UserRegisterRequest = {
+            email: formData.get("email") as string,
+            password: password || (formData.get("password") as string),
+            full_name: formData.get("full_name") as string,
+            business_name: formData.get("business_name") as string,
+            business_type: showOtherBusinessType ? (formData.get("other_business_type") as string) : (formData.get("business_type") as string),
+            plan_tier: "starter" 
+        };
 
         try {
-            // FIX: Pass an empty object as the 'prevState' to match the Server Action signature
-            const result = await registerUser({}, formData);
+            // FIX: Pass the clean payload object directly
+            const result = await registerUser(payload);
 
             if (result.success) {
                 toast.success("נרשמת בהצלחה! מעביר אותך להתחברות...");
