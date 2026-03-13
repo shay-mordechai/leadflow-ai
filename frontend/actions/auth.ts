@@ -4,8 +4,6 @@
 import { cookies } from 'next/headers';
 import { UserRegisterRequest, LoginResponse, VerifyOtpRequest, TokenResponse } from '@/types/auth';
 
-// We route traffic completely internally (Backend to Backend) 
-// This bypasses Cloudflare WAF which blocks our datacenter IP with an HTML Captcha page.
 const INTERNAL_API_URL = process.env.INTERNAL_API_URL || 'http://127.0.0.1:8000';
 
 export type ActionState = {
@@ -22,7 +20,6 @@ export async function registerAction(payload: UserRegisterRequest): Promise<Acti
       body: JSON.stringify(payload),
     });
 
-    // 1. SAFETY CHECK: Ensure Cloudflare/Nginx didn't return an HTML error page
     const contentType = res.headers.get("content-type");
     if (!contentType || !contentType.includes("application/json")) {
         console.error(`[Auth] Received non-JSON response. Status: ${res.status}`);
@@ -43,7 +40,6 @@ export async function registerAction(payload: UserRegisterRequest): Promise<Acti
 
     return { success: true };
   } catch (error: any) {
-    // 2. UX PROTECTION: Never expose raw JS error messages to the client
     console.error("Auth Action Error (Register):", error);
     return { error: 'שגיאת תקשורת עם השרת. אנא ודא שהחיבור תקין ונסה שוב.' };
   }
@@ -110,15 +106,17 @@ export async function verifyOtpAction(prevState: ActionState, formData: FormData
 
     const tokenData = data as TokenResponse;
 
+    // FIX: Set httpOnly to false so the client-side React code can read the token and stay logged in.
     (await cookies()).set('access_token', tokenData.access_token, {
-      httpOnly: true,
+      httpOnly: false, 
       secure: process.env.NODE_ENV === 'production',
       maxAge: 60 * 60 * 24, 
       path: '/',
       sameSite: 'lax',
     });
 
-    return { success: true };
+    // FIX: Return the token data to the client so it can be stored in localStorage if needed by the AuthProvider.
+    return { success: true, data: tokenData };
   } catch (error) {
     console.error("Auth Action Error (OTP):", error);
     return { error: 'אימות נכשל בשל שגיאת רשת. אנא נסה שוב.' };
