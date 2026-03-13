@@ -4,14 +4,14 @@ import RegisterForm from "./register-form";
 
 // Server-side Metadata for SEO
 export const metadata: Metadata = {
-    title: "Sign Up - MyLeads AI",
-    description: "Create your account and start automating calls.",
+    title: "יצירת חשבון | MyLeads AI",
+    description: "הירשמו עכשיו והתחילו לסגור עסקאות עם סוכן מכירות וירטואלי (AI) שעובד 24/7.",
 };
 
 export default function RegisterPage() {
     return (
-        <div className="flex min-h-screen items-center justify-center bg-gray-50 dark:bg-gray-900 p-4">
-            {/* Render the Client Component */}
+        <div className="flex min-h-screen items-center justify-center bg-slate-50 dark:bg-slate-900 p-4">
+            {/* Render the Client Component containing all the logic and UI */}
             <RegisterForm />
         </div>
     );
