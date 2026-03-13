@@ -1,4 +1,4 @@
-# Professional English Comment:
+# Dockerfile
 # Optimized Dockerfile for FastAPI with AI processing capabilities (Whisper).
 # Uses a non-root user and slim base for enhanced security and reduced footprint.
 
@@ -55,14 +55,5 @@ USER leadflowuser
 EXPOSE 8000
 
 # Professional English Comment:
-# Gunicorn is configured with 1 worker for SQLite concurrency safety.
-# Timeout is set to 120s to allow AI models (Whisper/Gemini) time to process.
-# Logs are piped directly to the container engine.
-CMD ["gunicorn", "src.main:app", \
-    "--workers", "1", \
-    "--worker-class", "uvicorn.workers.UvicornWorker", \
-    "--bind", "0.0.0.0:8000", \
-    "--timeout", "120", \
-    "--access-logfile", "-", \
-    "--error-logfile", "-", \
-    "--log-level", "info"]
+# Execute uvicorn directly to ensure maximum stability and prevent container crash loops
+CMD ["python3", "-m", "uvicorn", "src.main:app", "--host", "0.0.0.0", "--port", "8000"]
