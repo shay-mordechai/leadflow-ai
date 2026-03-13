@@ -266,7 +266,7 @@ jobs:
           podman rm -f leadflow-redis 2>/dev/null || true
           podman run -d --name leadflow-redis --network host --replace docker.io/library/redis:7-alpine
           
-          # FIX: Running backend exactly as defined in the optimized Dockerfile
+          # FIX: Let the Dockerfile's CMD handle execution
           podman run -d --name leadflow-backend --network host --replace --env APP_ENV=production --env AWS_REGION=$AWS_REGION --env DATABASE_URL=sqlite:////app/data/leads.db --env REDIS_URL=redis://127.0.0.1:6379/0 -v ~/leadflow-ai/storage:/app/storage:Z -v ~/leadflow-ai/data:/app/data:Z "$BACKEND_IMG"
           
           # Worker
