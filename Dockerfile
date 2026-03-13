@@ -15,7 +15,7 @@ ENV HF_HOME=/app/data/huggingface_cache
 
 WORKDIR /app
 
-# Install system dependencies (Removed Postgres libs since we use SQLite)
+# Install system dependencies
 # Includes ffmpeg and libraries for audio processing (PyAV/faster-whisper)
 RUN apt-get update && apt-get install -y --no-install-recommends \
     ffmpeg \
@@ -36,15 +36,14 @@ COPY requirements.txt .
 
 # SECURITY & SIZE OPTIMIZATION: 
 # Using --no-cache-dir for all installations to keep the image lean.
-# Installing PyTorch CPU version explicitly to save massive amounts of space.
 RUN pip install --no-cache-dir torch torchvision torchaudio --index-url https://download.pytorch.org/whl/cpu
 RUN pip install --no-cache-dir -r requirements.txt
 
 # Copy the rest of the application code
 COPY . .
 
-# Create storage and data directories for SQLite, media, and AI model caching
-RUN mkdir -p storage/audio data/huggingface_cache
+# FIX: Pre-create ALL required storage directories (including kyc) to prevent PermissionError
+RUN mkdir -p storage/audio storage/kyc data/huggingface_cache
 
 # SECURITY: Run as a non-privileged user. 
 # Prevents container breakout attacks and follows the Principle of Least Privilege.
@@ -54,7 +53,6 @@ USER leadflowuser
 # Expose the port for FastAPI
 EXPOSE 8000
 
-# Professional English Comment:
 # Gunicorn is configured with 1 worker for SQLite concurrency safety.
 # Timeout is set to 120s to allow AI models (Whisper/Gemini) time to process.
 # Logs are piped directly to the container engine.
