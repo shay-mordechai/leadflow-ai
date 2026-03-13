@@ -1,4 +1,5 @@
 # src/routers/settings.py
+import logging
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.orm import Session
 from uuid import uuid4
@@ -12,6 +13,7 @@ from src.security.audit import audit_service
 
 # Router configuration - prefix handled in main.py
 router = APIRouter(tags=["AI Configuration"])
+logger = logging.getLogger("LeadFlowSystem")
 
 @router.get("", response_model=AISettingsSchema)
 def get_settings(
@@ -30,7 +32,7 @@ def get_settings(
             ai_tone="Professional",
             products_services="",
             custom_instructions="",
-            summary_template="", # NEW
+            summary_template="",
             ai_agent=None
         )
     
@@ -49,7 +51,7 @@ def get_settings(
         ai_tone=profile.ai_tone,
         products_services=profile.products_services,
         custom_instructions=profile.custom_instructions,
-        summary_template=profile.summary_template, # NEW
+        summary_template=profile.summary_template,
         ai_agent=agent_data
     )
 
@@ -68,6 +70,7 @@ def update_settings(
         profile = db.query(BusinessProfile).filter(BusinessProfile.user_id == current_user.id).first()
         
         if not profile:
+            logger.info(f"Creating new business profile for user {current_user.email}")
             profile = BusinessProfile(
                 id=uuid4(),
                 user_id=current_user.id,
@@ -76,7 +79,7 @@ def update_settings(
                 ai_tone=data.ai_tone,
                 products_services=data.products_services,
                 custom_instructions=data.custom_instructions,
-                summary_template=data.summary_template # NEW
+                summary_template=data.summary_template
             )
             db.add(profile)
         else:
@@ -85,7 +88,7 @@ def update_settings(
             profile.ai_tone = data.ai_tone
             profile.products_services = data.products_services
             profile.custom_instructions = data.custom_instructions
-            profile.summary_template = data.summary_template # NEW
+            profile.summary_template = data.summary_template
             
         # 2. Upsert AI Agent (The Brain)
         agent = db.query(AIAgent).filter(AIAgent.user_id == current_user.id).first()
@@ -111,23 +114,30 @@ def update_settings(
 
         db.commit()
 
-        # 3. Security: Audit Logging
-        audit_service.log(
-            db=db,
-            user_id=str(current_user.id),
-            action="AI_SETTINGS_UPDATED",
-            details={
-                "business_name": data.business_name,
-                "ai_tone": data.ai_tone,
-                "prompt_length": len(master_prompt)
-            }
-        )
+        # 3. Security: Audit Logging (Wrapped to ensure main save doesn't fail)
+        try:
+            audit_service.log(
+                db=db,
+                user_id=str(current_user.id),
+                action="AI_SETTINGS_UPDATED",
+                details={
+                    "business_name": data.business_name,
+                    "ai_tone": data.ai_tone,
+                    "prompt_length": len(master_prompt)
+                }
+            )
+        except Exception as audit_err:
+            logger.warning(f"Audit log failed but settings were saved: {audit_err}")
 
         return {"status": "success", "message": "Business Profile and AI Brain updated successfully."}
 
     except Exception as e:
         db.rollback()
-        raise HTTPException(status_code=500, detail=str(e))
+        logger.error(f"Failed to update settings for {current_user.email}: {str(e)}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, 
+            detail="לא הצלחנו לשמור את השינויים. צוות הפיתוח קיבל דיווח."
+        )
 
 def _generate_master_prompt(data: AISettingsSchema) -> str:
     """
