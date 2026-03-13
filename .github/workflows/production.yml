@@ -254,18 +254,11 @@ jobs:
           
           mkdir -p ~/leadflow-ai/storage ~/leadflow-ai/data "$SYSTEMD_DIR"
           
-          if [ "$UPDATE_BACKEND" == "true" ]; then
-              echo "🔄 Updating Backend..."
-              echo "⏳ Pulling Backend Image (High RAM Operation)..."
-              podman pull "$BACKEND_IMG"
-              echo "✅ Backend Pull successful!"
-          fi
-          
-          if [ "$UPDATE_FRONTEND" == "true" ]; then
-              echo "🔄 Updating Frontend..."
-              echo "⏳ Pulling Frontend Image..."
-              podman pull "$FRONTEND_IMG"
-          fi
+          # FIX: Always pull both images unconditionally to ensure they exist after the system prune
+          echo "🔄 Pulling Required Images from ECR..."
+          podman pull "$BACKEND_IMG"
+          podman pull "$FRONTEND_IMG"
+          echo "✅ Pull successful!"
 
           echo "🚀 Recreating and Starting all services (Safeguard)..."
           
@@ -274,9 +267,10 @@ jobs:
           podman rm -f leadflow-redis 2>/dev/null || true
           podman run -d --name leadflow-redis --network host --replace docker.io/library/redis:7-alpine
           
-          # Backend & Worker
-          podman run -d --name leadflow-backend --network host --replace --env APP_ENV=production --env AWS_REGION=$AWS_REGION --env DATABASE_URL=sqlite:////app/data/leads.db --env REDIS_URL=redis://127.0.0.1:6379/0 -v ~/leadflow-ai/storage:/app/storage:Z -v ~/leadflow-ai/data:/app/data:Z "$BACKEND_IMG" gunicorn src.main:app --workers 1 --worker-class uvicorn.workers.UvicornWorker --bind 0.0.0.0:8000
+          # Backend: Running uvicorn directly
+          podman run -d --name leadflow-backend --network host --replace --env APP_ENV=production --env AWS_REGION=$AWS_REGION --env DATABASE_URL=sqlite:////app/data/leads.db --env REDIS_URL=redis://127.0.0.1:6379/0 -v ~/leadflow-ai/storage:/app/storage:Z -v ~/leadflow-ai/data:/app/data:Z "$BACKEND_IMG" uvicorn src.main:app --host 0.0.0.0 --port 8000
           
+          # Worker
           podman run -d --name leadflow-worker --network host --replace --memory="400m" --memory-swap="2.4g" --env APP_ENV=production --env AWS_REGION=$AWS_REGION --env DATABASE_URL=sqlite:////app/data/leads.db --env REDIS_URL=redis://127.0.0.1:6379/0 -v ~/leadflow-ai/storage:/app/storage:Z -v ~/leadflow-ai/data:/app/data:Z "$BACKEND_IMG" celery -A src.worker.celery_app worker --loglevel=info --concurrency=2
           
           # Frontend
