@@ -4,23 +4,18 @@ from typing import Optional
 from uuid import UUID
 import re
 
-# --- Constants for Security Regex Patterns ---
-# FIXED: Added support for double quotes (") and periods (.) for valid Israeli business names
 NAME_REGEX = r'^[a-zA-Zא-ת\s\-\'\"\.]+$'
 PHONE_REGEX = r"^(\+972|05)[0-9\-]{8,15}$"
 SAFE_TEXT_REGEX = r'^[a-zA-Zא-ת0-9\s\-\.\'\"]+$'
 
-# --- Base Schema (Shared Fields) ---
 class UserBase(BaseModel):
-    plan_tier: Optional[str] = "starter" 
+    plan_tier: Optional[str] = "STARTER" 
     email: EmailStr
     full_name: str = Field(..., min_length=2, max_length=50, description="User full name")
-    
     business_name: Optional[str] = Field(None, max_length=100)
     business_type: str = Field(..., max_length=50)
     other_business_type: Optional[str] = Field(None, max_length=50)
     city_coverage: Optional[str] = Field(None, max_length=50)
-    
     personal_whatsapp: Optional[str] = Field(None, max_length=20)
     business_whatsapp: Optional[str] = Field(None, max_length=20)
     needs_new_number: bool = False
@@ -29,7 +24,7 @@ class UserBase(BaseModel):
     @classmethod
     def validate_safe_text(cls, v: str | None):
         if v and not re.match(NAME_REGEX, v):
-            raise ValueError("Field contains invalid characters. Only letters, spaces, and hyphens allowed.")
+            raise ValueError("Field contains invalid characters.")
         return v
 
     @field_validator('personal_whatsapp', 'business_whatsapp')
@@ -51,26 +46,16 @@ class UserBase(BaseModel):
             v = re.sub(r'[<>]', '', v)
         return v
 
-# --- Schema for Registration (Input) ---
 class UserCreate(UserBase):
-    # Professional English Comment:
-    # Security Enforcement: Passwords must be 12+ chars, mixed case, numbers & symbols.
     password: str = Field(..., min_length=12, description="Strong password required")
 
     @field_validator("password")
     @classmethod
     def validate_password_strength(cls, v):
-        """
-        Enforces strict password policy to prevent brute-force attacks.
-        """
-        if len(v) < 12:
-            raise ValueError("Password must be at least 12 characters long")
-        if not re.search(r"[A-Z]", v):
-            raise ValueError("Password must contain at least one uppercase letter")
-        if not re.search(r"[a-z]", v):
-            raise ValueError("Password must contain at least one lowercase letter")
-        if not re.search(r"\d", v):
-            raise ValueError("Password must contain at least one digit")
+        if len(v) < 12: raise ValueError("Password must be at least 12 characters long")
+        if not re.search(r"[A-Z]", v): raise ValueError("Password must contain at least one uppercase letter")
+        if not re.search(r"[a-z]", v): raise ValueError("Password must contain at least one lowercase letter")
+        if not re.search(r"\d", v): raise ValueError("Password must contain at least one digit")
         return v
 
     @model_validator(mode='after')
@@ -79,28 +64,21 @@ class UserCreate(UserBase):
             raise ValueError("Please specify your business type in the text field.")
         return self
 
-# --- Schema for OTP Verification ---
 class VerifyOTP(BaseModel):
     email: EmailStr
     otp_code: str = Field(..., min_length=6, max_length=6)
 
-# --- Schema for Reading/Response (The Security Filter) 🛡️ ---
 class UserResponse(BaseModel):
-    """
-    This is the First Line of Defense.
-    It defines exactly what data is allowed to leave the API.
-    Sensitive fields (password_hash, otp_code, etc.) are strictly excluded.
-    """
     id: UUID
     email: EmailStr
-    
     full_name: str = Field(..., alias="name") 
     name: Optional[str] = None 
-    
     business_name: Optional[str] = None
     business_type: Optional[str] = None
     
-    plan_tier: str = Field(default="free", alias="plan_type") 
+    # FIX: Removed the alias that was confusing the frontend. 
+    # Now it perfectly syncs your PRO status!
+    plan_tier: str = Field(default="STARTER") 
     
     profile_image_url: Optional[str] = None
     assigned_phone: Optional[str] = None
@@ -112,10 +90,10 @@ class UserResponse(BaseModel):
             self.name = self.full_name
         return self
 
-    model_config = ConfigDict(from_attributes=True, populate_by_name=True)
+    # FIX: Added use_enum_values to ensure PlanTier.PRO is sent as "PRO"
+    model_config = ConfigDict(from_attributes=True, populate_by_name=True, use_enum_values=True)
 
 
-# --- Schemas for AI Settings (Dashboard) ---
 class AIAgentSchema(BaseModel):
     system_prompt: Optional[str] = None
     voice_id: str = "default_voice_1"
@@ -123,20 +101,12 @@ class AIAgentSchema(BaseModel):
     is_active: bool = True
 
 class AISettingsSchema(BaseModel):
-    """
-    Input/Output schema for the Settings page.
-    Combines BusinessProfile data and AIAgent data.
-    """
     business_name: str = Field(..., description="שם העסק")
     business_type: str = Field(..., description="תחום העיסוק")
     ai_tone: str = Field(default="Professional", description="סגנון דיבור (רשמי/חברי/מכירתי)")
     products_services: Optional[str] = Field(None, description="ידע עסקי: שירותים ומחירים")
     custom_instructions: Optional[str] = Field(None, description="הנחיות אישיות לבוט")
-    
-    # --- NEW: Summary Template for NLP Coaching Sessions ---
     summary_template: Optional[str] = Field(None, description="תבנית סיכום פגישות מותאמת אישית")
-    
-    # Optional nested agent info if it exists
     ai_agent: Optional[AIAgentSchema] = None
 
     model_config = ConfigDict(from_attributes=True)
