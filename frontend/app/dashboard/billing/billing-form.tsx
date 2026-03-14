@@ -72,7 +72,7 @@ export default function BillingForm({ token }: { token: string }) {
             <div>
                 <h3 className="font-bold text-slate-800 mb-2">שדרוג לתוכנית PRO</h3>
                 <p className="text-sm text-slate-500 mb-4">
-                    שדרוג לתוכנית המלאה בעלות של 199₪ לחודש. התשלום מבוצע בצורה מאובטחת.
+                    שדרוג לתוכנית המלאה בעלות של 499₪ לחודש. התשלום מבוצע בצורה מאובטחת.
                 </p>
                 <button 
                     onClick={handlePaymentClick}
