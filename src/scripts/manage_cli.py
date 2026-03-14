@@ -1,4 +1,4 @@
-# manage_cli.py
+# src/scripts/manage_cli.py
 import sys
 import argparse
 from prettytable import PrettyTable

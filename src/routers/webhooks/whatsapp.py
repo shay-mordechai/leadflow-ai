@@ -19,7 +19,7 @@ router = APIRouter(tags=["Webhooks - WhatsApp"])
 logger = logging.getLogger("WhatsAppWebhook")
 
 # --- Usage Limit Constants ---
-STARTER_MESSAGE_LIMIT = 50
+STARTER_MESSAGE_LIMIT = 10
 PRO_MESSAGE_LIMIT = 2000
 # ----------------------------------
 
