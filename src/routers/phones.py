@@ -13,7 +13,8 @@ from src.services.phone import phone_service
 from src.services.providers.twilio import twilio_provider
 from src.services.storage.s3_service import s3_service
 
-router = APIRouter(prefix="/api/v1/phones", tags=["Phones"])
+# FIX: Removed the double prefix. main.py already adds "/api/v1/phones"
+router = APIRouter(tags=["Phones"])
 logger = logging.getLogger("PhoneRouter")
 
 class PhoneResult(BaseModel):
