@@ -1,10 +1,9 @@
 // frontend/app/dashboard/phone/phone-form.tsx
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
-import { Search, Loader2, PhoneCall, AlertCircle, Clock, CheckCircle2, MapPin, FileText, Upload, ShieldAlert, Lock } from "lucide-react";
-import Link from "next/link";
+import { Search, Loader2, PhoneCall, MapPin, FileText, Upload, ShieldAlert, Lock } from "lucide-react";
 import toast from "react-hot-toast";
 
 interface PhoneResult {
@@ -42,6 +41,14 @@ export default function PhoneForm({ userData, token }: { userData: UserData, tok
 
     const isPro = userData.plan_tier === "PRO";
 
+    // FIX: Remember KYC status using localStorage so it doesn't ask again on refresh
+    useEffect(() => {
+        const isVerified = localStorage.getItem("kyc_verified") === "true";
+        if (isVerified) {
+            setKycSubmitted(true);
+        }
+    }, []);
+
     if (userData.assigned_phone) {
         return (
             <div className="space-y-6" dir="rtl">
@@ -66,15 +73,15 @@ export default function PhoneForm({ userData, token }: { userData: UserData, tok
     }
 
     const handleKycSubmit = async () => {
-        if (!kycFile) {
+        if (!kycFile && !kycSubmitted) {
             toast.error("אנא בחר מסמך מזהה להעלאה.");
             return;
         }
 
         setIsKycUploading(true);
-        // Simulate upload for now (Frontend only validation until backend is wired)
         setTimeout(() => {
             setKycSubmitted(true);
+            localStorage.setItem("kyc_verified", "true"); // Save to browser memory
             setIsKycUploading(false);
             toast.success("המסמכים אושרו! כעת ניתן לחפש מספרים.", { style: { background: '#059669', color: '#fff' }});
         }, 1500);
@@ -91,21 +98,29 @@ export default function PhoneForm({ userData, token }: { userData: UserData, tok
         setAvailableNumbers([]);
         
         try {
-            const res = await fetch(`/api/v1/phones/available?country_code=IL&area_code=${selectedRegion}`, {
+            const apiUrl = process.env.NEXT_PUBLIC_API_URL || "https://my-leads.app";
+            const res = await fetch(`${apiUrl}/api/v1/phones/available?country_code=IL&area_code=${selectedRegion}`, {
                 headers: { "Authorization": `Bearer ${token}` }
             });
             
-            if (!res.ok) throw new Error("Failed to fetch numbers");
+            // FIX: Gracefully handle 500 errors (like missing Twilio keys in dev)
+            if (!res.ok) {
+                const errData = await res.json().catch(() => ({}));
+                throw new Error(errData.detail || "שגיאת תקשורת מול השרת");
+            }
+
             const data = await res.json();
             
             if (data.length === 0) {
                 setError(`לא מצאנו מספרים פנויים לאזור ${selectedRegion}. נסה אזור אחר.`);
             } else {
                 setAvailableNumbers(data);
-                toast.success(`נמצאו ${data.length} מספרים פנויים!`);
+                toast.success(`נמצאו ${data.length} מספרים!`);
             }
-        } catch (err) {
-            setError("שגיאה בחיפוש מספרים. אנא נסה שוב מאוחר יותר.");
+        } catch (err: any) {
+            console.error("Search failed:", err);
+            setError(err.message || "שגיאה בחיפוש מספרים. אנא נסה שוב מאוחר יותר.");
+            toast.error(err.message || "תקלה במשיכת מספרים");
         } finally {
             setIsSearching(false);
         }
@@ -118,7 +133,6 @@ export default function PhoneForm({ userData, token }: { userData: UserData, tok
             return;
         }
         
-        // Purchase Logic (Only triggers if PRO)
         setPurchasingNumber(phone.number);
         setTimeout(() => {
             toast.success("המספר נרכש בהצלחה!");
@@ -139,7 +153,7 @@ export default function PhoneForm({ userData, token }: { userData: UserData, tok
                             <h3 className="font-bold text-slate-800 text-lg">תהליך זיהוי קצר (לפני בחירת מספר)</h3>
                             <p className="text-slate-600 text-sm leading-relaxed">
                                 על פי דרישות משרד התקשורת בישראל, כדי להציג לך מספרי טלפון אמיתיים לבחירה, עלינו לאמת את זהותך.
-                                אנא העלה צילום ברור של <strong>תעודת זהות או ח.פ</strong>. (הקובץ מוצפן ונמחק לאחר האימות).
+                                אנא העלה צילום ברור של <strong>תעודת זהות או ח.פ</strong>.
                             </p>
                             
                             <div className="flex flex-col md:flex-row gap-3 pt-2">
@@ -195,12 +209,19 @@ export default function PhoneForm({ userData, token }: { userData: UserData, tok
                 <button
                     onClick={handleSearch}
                     disabled={isSearching || !selectedRegion}
-                    className="w-full bg-slate-900 text-white py-4 rounded-xl font-bold shadow-lg flex items-center justify-center gap-2 hover:bg-slate-800 transition"
+                    className="w-full bg-slate-900 text-white py-4 rounded-xl font-bold shadow-lg flex items-center justify-center gap-2 hover:bg-slate-800 transition disabled:bg-slate-700"
                 >
                     {isSearching ? <Loader2 className="w-5 h-5 animate-spin" /> : <Search className="w-5 h-5" />}
-                    {isSearching ? "מחפש במסד הנתונים..." : "חפש מספרים פנויים עכשיו"}
+                    {isSearching ? "מחפש במסד הנתונים (אנא המתן)..." : "חפש מספרים פנויים עכשיו"}
                 </button>
             </div>
+
+            {/* ERROR DISPLAY */}
+            {error && (
+                <div className="bg-red-50 text-red-600 p-4 rounded-xl border border-red-100 text-sm font-bold text-center animate-in fade-in">
+                    {error}
+                </div>
+            )}
 
             {kycSubmitted && availableNumbers.length > 0 && (
                 <div className="bg-white rounded-2xl shadow-sm border border-slate-100 overflow-hidden animate-in fade-in slide-in-from-bottom-4 duration-500" dir="rtl">
