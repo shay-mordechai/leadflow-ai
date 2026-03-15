@@ -3,7 +3,7 @@ import logging
 import hmac
 import hashlib
 from datetime import datetime
-from zoneinfo import ZoneInfo # FIXED: Modern timezone handling for AI temporal awareness
+from zoneinfo import ZoneInfo 
 from fastapi import APIRouter, Request, Query, HTTPException, Depends, status
 from fastapi.responses import PlainTextResponse
 from sqlalchemy.orm import Session
@@ -11,19 +11,16 @@ from sqlalchemy.orm import Session
 # Internal imports
 from src.config import settings
 from src.database.session import SessionLocal
-from src.database.models import PhoneNumber, AIAgent, User, PlanTier, Lead, LeadStatus
+from src.database.models import PhoneNumber, AIAgent, User, PlanTier, Lead, LeadStatus, Message, LeadSource
 from src.services.ai.engine import ai_engine
-from src.services.communication.whatsapp import whatsapp_adapter # UNCOMMENTED: To actually send messages
+from src.services.communication.whatsapp import whatsapp_adapter 
 
 router = APIRouter(tags=["Webhooks - WhatsApp"])
 logger = logging.getLogger("WhatsAppWebhook")
 
-# --- Usage Limit Constants ---
 STARTER_MESSAGE_LIMIT = 10
 PRO_MESSAGE_LIMIT = 2000
-# ----------------------------------
 
-# Helper to get a DB session inside a webhook
 def get_db_session():
     db = SessionLocal()
     try:
@@ -47,7 +44,6 @@ async def verify_whatsapp_signature(request: Request):
     received_hash = signature[7:]
     body = await request.body()
     
-    # Securely retrieve the App Secret
     secret = getattr(settings, 'WHATSAPP_APP_SECRET', "")
     expected_hash = hmac.new(
         secret.encode('utf-8'),
@@ -59,18 +55,14 @@ async def verify_whatsapp_signature(request: Request):
         logger.error(f"❌ SECURITY ALERT: Invalid WhatsApp signature from {request.client.host}")
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid signature")
 
-# ------------------------------------------------------------------
-# 1. Verification Endpoint (GET)
-# ------------------------------------------------------------------
+
 @router.get("/")
 async def verify_webhook(
     mode: str = Query(..., alias="hub.mode"),
     token: str = Query(..., alias="hub.verify_token"),
     challenge: str = Query(..., alias="hub.challenge")
 ):
-    """
-    Meta (Facebook) Verification Handshake.
-    """
+    """Meta (Facebook) Verification Handshake."""
     verify_token = settings.WHATSAPP_VERIFY_TOKEN
 
     if mode == "subscribe" and token == verify_token:
@@ -81,18 +73,12 @@ async def verify_webhook(
     raise HTTPException(status_code=403, detail="Verification failed")
 
 
-# ------------------------------------------------------------------
-# 2. Event Listener (POST)
-# ------------------------------------------------------------------
 @router.post("/")
 async def whatsapp_event_listener(request: Request):
     """
-    Receives incoming WhatsApp messages. 
-    Updates Lead status to stop follow-ups and triggers AI response.
+    Receives incoming Meta WhatsApp messages.
+    Supports Human Takeover logic by checking bot_active status.
     """
-    # SECURITY CHECK (Uncomment in production when WHATSAPP_APP_SECRET is set)
-    # await verify_whatsapp_signature(request)
-
     try:
         data = await request.json()
         
@@ -116,7 +102,6 @@ async def whatsapp_event_listener(request: Request):
             
             db = next(get_db_session())
             
-            # 1. Find the bot's owner
             phone_record = db.query(PhoneNumber).filter(PhoneNumber.number.contains(bot_phone_number)).first()
             if not phone_record:
                 logger.warning(f"⚠️ Received message for unassigned number: {bot_phone_number}")
@@ -130,55 +115,55 @@ async def whatsapp_event_listener(request: Request):
                 return {"status": "agent_disabled"}
             
             # ------------------------------------------------------------------
-            # 2. Update Lead Status (Stop Follow-ups)
+            # 1. Lead Resolution (Robust)
             # ------------------------------------------------------------------
             clean_sender_id = sender_id.replace("+", "")
             
-            # Security Note: Because phone numbers are encrypted in DB, we fetch 
-            # active leads for this user and check in memory.
-            active_leads = db.query(Lead).filter(
+            lead_record = db.query(Lead).filter(
                 Lead.user_id == user.id,
-                Lead.status == LeadStatus.NEW
-            ).all()
+                Lead.phone_number.like(f"%{clean_sender_id[-9:]}%")
+            ).first()
             
-            lead_to_update = None
-            for l in active_leads:
-                if l.phone_number and clean_sender_id[-9:] in l.phone_number:
-                    lead_to_update = l
-                    break
-            
-            if lead_to_update:
-                logger.info(f"🛑 Stopping follow-ups for lead {lead_to_update.id}. Status changed to IN_PROGRESS.")
-                lead_to_update.status = LeadStatus.IN_PROGRESS
-                lead_to_update.needs_followup = False
+            if not lead_record:
+                lead_record = Lead(user_id=user.id, name=sender_name, phone_number=clean_sender_id, source=LeadSource.WHATSAPP)
+                db.add(lead_record)
                 db.commit()
-            else:
-                logger.info(f"🆕 Unknown number {clean_sender_id} messaged the bot. Treating as generic inquiry.")
+                db.refresh(lead_record)
+
+            if lead_record.status == LeadStatus.NEW:
+                logger.info(f"🛑 Stopping follow-ups for lead {lead_record.id}. Status changed to IN_PROGRESS.")
+                lead_record.status = LeadStatus.IN_PROGRESS
+                lead_record.needs_followup = False
+                db.commit()
 
             # ------------------------------------------------------------------
-            # 3. Check Usage Limits
-            # ------------------------------------------------------------------
-            max_limit = PRO_MESSAGE_LIMIT if user.plan_tier == PlanTier.PRO else STARTER_MESSAGE_LIMIT
-            if user.monthly_ai_messages >= max_limit:
-                logger.warning(f"🚫 User {user.email} exceeded AI message limit.")
-                limit_reply = "We apologize, but this automated assistant is temporarily unavailable. A human representative will contact you soon."
-                whatsapp_adapter.send_message(to_phone=clean_sender_id, text=limit_reply)
-                return {"status": "limit_exceeded"}
-
-            # ------------------------------------------------------------------
-            # 4. AI Processing & Reply
+            # 2. Save Message & Human Takeover Check
             # ------------------------------------------------------------------
             if msg_type == "text":
                 text_body = message["text"]["body"]
                 
-                # --- TIER 1 RELIABILITY: TEMPORAL AWARENESS ---
-                # Inject current local time so the AI Agent correctly calculates "tomorrow" or "next week"
+                # FIX: Save incoming message to history regardless of bot status
+                db.add(Message(lead_id=lead_record.id, sender_type="user", content=text_body))
+                db.commit()
+
+                # FIX: Human Takeover check AFTER saving message
+                if not lead_record.bot_active:
+                    logger.info(f"🛑 Muted lead {clean_sender_id} (Human Takeover) - Message saved, skipping AI.")
+                    return {"status": "muted"}
+
+                # Check Usage Limits
+                max_limit = PRO_MESSAGE_LIMIT if user.plan_tier == PlanTier.PRO else STARTER_MESSAGE_LIMIT
+                if user.monthly_ai_messages >= max_limit:
+                    logger.warning(f"🚫 User {user.email} exceeded AI message limit.")
+                    limit_reply = "We apologize, but this automated assistant is temporarily unavailable. A human representative will contact you soon."
+                    whatsapp_adapter.send_message(to_phone=clean_sender_id, text=limit_reply)
+                    return {"status": "limit_exceeded"}
+
+                # --- AI Processing ---
                 israel_tz = ZoneInfo("Asia/Jerusalem")
                 current_time_il = datetime.now(israel_tz).strftime("%A, %Y-%m-%d %H:%M:%S")
+                time_aware_system_prompt = f"{agent.system_prompt}\n\n[SYSTEM CLOCK]\nThe current Date and Time in Israel is: {current_time_il}"
                 
-                time_aware_system_prompt = f"{agent.system_prompt}\n\n[SYSTEM CLOCK]\nThe current Date and Time in Israel is: {current_time_il}\nUse this exact time as your reference point for scheduling or answering temporal questions."
-                
-                # Note: Next step in Phase 3 is injecting 'chat_history' here from the Message table
                 ai_response = await ai_engine.analyze_interaction(
                     system_prompt=time_aware_system_prompt,
                     text_input=text_body,
@@ -191,17 +176,21 @@ async def whatsapp_event_listener(request: Request):
                 user.monthly_ai_messages += 1
                 db.commit()
                 
-                # Send Reply via WhatsApp
-                success = whatsapp_adapter.send_message(to_phone=clean_sender_id, text=reply_text)
+                # Handoff Detection
+                handoff_keys = ["נציג", "אנושי", "מנהל", "human", "representative", "manager"]
+                if ai_response.get("needs_human_escalation") or any(k in text_body.lower() for k in handoff_keys):
+                    logger.info(f"🚨 Handoff triggered for {clean_sender_id}")
+                    lead_record.bot_active = False
+                    lead_record.requires_human = True
+                    db.commit()
                 
-                if success:
-                    logger.info(f"✅ Reply sent successfully to {clean_sender_id}")
-                else:
-                    logger.error(f"❌ Failed to send reply to {clean_sender_id}")
+                # Save & Send Reply
+                db.add(Message(lead_id=lead_record.id, sender_type="bot", content=reply_text))
+                db.commit()
+                whatsapp_adapter.send_message(to_phone=clean_sender_id, text=reply_text)
 
             elif msg_type == "audio":
-                logger.info("🎤 Audio message received. Audio processing not yet implemented.")
-                # audio_id = message["audio"]["id"]
+                logger.info("🎤 Audio message received via Meta API. (Routing not yet fully implemented for Meta Audio)")
 
         return {"status": "received"}
 

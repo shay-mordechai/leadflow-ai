@@ -3,7 +3,7 @@ import logging
 import uuid
 from uuid import UUID
 import hashlib
-from datetime import datetime, timezone  # FIXED: Imported timezone for strict UTC handling
+from datetime import datetime, timezone
 from fastapi import APIRouter, HTTPException, status, Depends, Query, Request
 from sqlalchemy.orm import Session
 from pydantic import BaseModel, Field, EmailStr
@@ -14,8 +14,8 @@ from slowapi import Limiter
 from slowapi.util import get_remote_address
 
 from src.database.session import get_db
-# TIER 1 RELIABILITY: Imported WebhookDLQ and WebhookProvider for Fail-Safe queue
-from src.database.models import Lead, User, LeadSource, LeadStatus, WebhookDLQ, WebhookProvider
+# FIXED: Added 'Message' to imports for Manual Message logging
+from src.database.models import Lead, User, LeadSource, LeadStatus, WebhookDLQ, WebhookProvider, Message
 from src.security.dependencies import get_current_user
 from src.services.communication.whatsapp import whatsapp_adapter
 
@@ -37,7 +37,6 @@ class PagixLead(BaseModel):
     phone: str = Field(..., min_length=9, max_length=20, description="Lead's phone number")
     email: Optional[EmailStr] = None
     source: str = Field(default="LANDING_PAGE", max_length=50) 
-    # NEW: Allow Meta/Zapier to pass their unique event ID to prevent duplicates
     idempotency_key: Optional[str] = Field(None, description="Unique event ID from Zapier/Make to prevent duplicates")
 
 class LeadResponse(BaseModel):
@@ -56,10 +55,17 @@ class LeadResponse(BaseModel):
     
     model_config = {"from_attributes": True}
 
+# NEW: Schemas for Human Takeover
+class ManualMessageRequest(BaseModel):
+    content: str = Field(..., min_length=1, description="Text content of the manual message")
+
+class BotStatusRequest(BaseModel):
+    bot_active: bool = Field(..., description="True to enable AI, False to mute (Human Takeover)")
+
 # --- Routes ---
 
 @router.get("/", response_model=List[LeadResponse])
-@limiter.limit("60/minute") # Security: Prevent scraping (1 req/sec)
+@limiter.limit("60/minute") 
 async def get_my_leads(
     request: Request,
     limit: int = Query(50, ge=1, le=100),
@@ -70,15 +76,91 @@ async def get_my_leads(
     """
     SECURE ENDPOINT: Returns leads ONLY for the logged-in user.
     """
-    # Security: IDOR Protection
     query = db.query(Lead).filter(Lead.user_id == current_user.id)
     leads = query.order_by(Lead.created_at.desc()).offset(offset).limit(limit).all()
-    
     return leads
 
-# --- NEW: AI Feedback Loop Endpoint ---
+# --- HUMAN TAKEOVER ENDPOINTS ---
+
+@router.patch("/{lead_id}/bot-status")
+@limiter.limit("30/minute")
+async def toggle_bot_status(
+    request: Request,
+    lead_id: UUID,
+    data: BotStatusRequest,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user)
+):
+    """
+    SECURE ENDPOINT: Toggles the AI bot on/off for a specific lead.
+    When off, the bot will not respond to incoming WhatsApp messages.
+    """
+    lead = db.query(Lead).filter(Lead.id == lead_id, Lead.user_id == current_user.id).first()
+    if not lead:
+        raise HTTPException(status_code=404, detail="Lead not found")
+    
+    lead.bot_active = data.bot_active
+    # If the bot is turned back on, we remove the "requires human" flag
+    if data.bot_active:
+        lead.requires_human = False
+        
+    db.commit()
+    
+    status_msg = "פעיל" if data.bot_active else "מושתק (Human Takeover)"
+    logger.info(f"Bot status for Lead {lead_id} changed to {data.bot_active} by {current_user.email}")
+    return {"success": True, "bot_active": lead.bot_active, "message": f"הבוט כעת {status_msg}"}
+
+@router.post("/{lead_id}/send-message")
+@limiter.limit("30/minute")
+async def send_manual_message(
+    request: Request,
+    lead_id: UUID,
+    data: ManualMessageRequest,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user)
+):
+    """
+    SECURE ENDPOINT: Sends a manual WhatsApp message to the lead.
+    Automatically disables the bot for this lead to prevent AI interference.
+    """
+    lead = db.query(Lead).filter(Lead.id == lead_id, Lead.user_id == current_user.id).first()
+    if not lead:
+        raise HTTPException(status_code=404, detail="Lead not found")
+
+    try:
+        # 1. Clean the phone number and send via WhatsApp Adapter
+        clean_phone = ''.join(filter(str.isdigit, lead.phone_number))
+        success = whatsapp_adapter.send_message(to_phone=clean_phone, text=data.content)
+        
+        if not success:
+            raise Exception("Communication provider returned failure")
+
+        # 2. Log the manual message in the database as 'human'
+        new_msg = Message(
+            lead_id=lead.id,
+            sender_type="human", 
+            content=data.content
+        )
+        db.add(new_msg)
+        
+        # 3. Disable the bot automatically (Human Takeover)
+        lead.bot_active = False
+        lead.requires_human = False 
+        
+        db.commit()
+        logger.info(f"👤 Manual message sent to {clean_phone} by {current_user.email}. Bot muted.")
+        
+        return {"success": True, "message": "הודעה נשלחה בהצלחה והבוט הושתק."}
+
+    except Exception as e:
+        db.rollback()
+        logger.error(f"Failed to send manual message: {e}")
+        raise HTTPException(status_code=500, detail="שגיאה בשליחת הודעה. ייתכן ואין לך מספר מחובר.")
+
+# --- OTHER ENDPOINTS (Feedback & Webhooks) ---
+
 @router.post("/{lead_id}/feedback")
-@limiter.limit("20/minute") # Security: Prevent feedback spam
+@limiter.limit("20/minute")
 async def submit_lead_feedback(
     request: Request,
     lead_id: str, 
@@ -87,68 +169,44 @@ async def submit_lead_feedback(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user)
 ):
-    """
-    SECURE ENDPOINT: Submit AI feedback for a specific lead's interaction.
-    Allows users to rate the AI's performance (👍/👎).
-    """
-    # 1. Security: Find the lead and verify ownership (IDOR protection)
     lead = db.query(Lead).filter(Lead.id == lead_id, Lead.user_id == current_user.id).first()
-    
     if not lead:
         raise HTTPException(status_code=404, detail="Lead not found")
-    
     if rating not in [1, -1, 0]:
         raise HTTPException(status_code=400, detail="Invalid rating value. Must be 1 or -1.")
 
-    # 2. Update feedback
     lead.ai_rating = rating
-    if note:
-        lead.ai_feedback_note = note
-        
+    if note: lead.ai_feedback_note = note
     db.commit()
     logger.info(f"🧠 AI Feedback recorded for Lead {lead_id} by User {current_user.email}: Rating {rating}")
-    
     return {"status": "success", "message": "Feedback recorded. The AI is learning!"}
 
 @router.post("/webhook/{user_id}", status_code=status.HTTP_200_OK)
-@limiter.limit("10/minute") # Security: Prevent spam attack via public webhook
+@limiter.limit("10/minute")
 async def receive_external_lead(
     request: Request,
     user_id: str,
     lead_data: PagixLead, 
     db: Session = Depends(get_db)
 ):
-    """
-    Webhook Endpoint.
-    Security Risks: Public endpoint.
-    Mitigation: Rate Limited. Validates UUID format. Idempotency Key protection.
-    Reliability: Wrapped in DLQ logic to prevent data loss on crashes.
-    """
     raw_payload = {}
     try:
-        # Attempt to capture raw request JSON for DLQ fallback (Fail-Safe)
         raw_payload = await request.json()
     except Exception:
-        pass # Ignore parsing errors here, we'll use Pydantic model dump instead
+        pass
 
     try:
-        # 1. Security: Validate UUID format
-        try:
-            uuid_obj = uuid.UUID(user_id)
-        except ValueError:
-             raise HTTPException(status_code=400, detail="Invalid User ID format")
+        try: uuid_obj = uuid.UUID(user_id)
+        except ValueError: raise HTTPException(status_code=400, detail="Invalid User ID format")
 
-        # 2. Validate User Exists
         target_user = db.query(User).filter(User.id == user_id).first()
         if not target_user:
              logger.warning(f"Webhook failed: User ID {user_id} not found.")
              raise HTTPException(status_code=404, detail="Target user not found")
 
-        # 3. SECURITY: Idempotency Check (The "Retry Storm" Shield)
         if lead_data.idempotency_key:
             idemp_key = lead_data.idempotency_key
         else:
-            # TIER 1 RELIABILITY: Using timezone-aware UTC datetime instead of naive utcnow()
             raw_key = f"{lead_data.phone}-{lead_data.source}-{datetime.now(timezone.utc).strftime('%Y-%m-%d')}"
             idemp_key = hashlib.md5(raw_key.encode()).hexdigest()
 
@@ -158,12 +216,10 @@ async def receive_external_lead(
         ).first()
 
         if existing_lead:
-            logger.info(f"🛡️ Idempotency Shield: Caught duplicate lead {lead_data.phone}. Returning 200 OK to stop retries.")
+            logger.info(f"🛡️ Idempotency Shield: Caught duplicate lead {lead_data.phone}.")
             return {"status": "success", "message": "Lead already processed", "lead_id": str(existing_lead.id)}
 
-        # 4. Create DB Entry 
         safe_source = lead_data.source.upper() if lead_data.source else "LANDING_PAGE"
-        
         new_lead = Lead(
             user_id=target_user.id,
             name=lead_data.name,
@@ -173,28 +229,16 @@ async def receive_external_lead(
             status=LeadStatus.NEW,
             idempotency_key=idemp_key 
         )
-        
         db.add(new_lead)
         db.commit()
-        
         logger.info(f"✅ New Lead Saved via Webhook: {lead_data.name} for User: {target_user.email}")
 
-        # 5. SPEED TO LEAD: Proactive WhatsApp Outreach
         try:
             clean_phone = ''.join(filter(str.isdigit, lead_data.phone))
-            biz_name = getattr(target_user, "business_name", "העסק שלנו") 
-            if not biz_name:
-                biz_name = "העסק שלנו"
-            
+            biz_name = getattr(target_user, "business_name", "העסק שלנו") or "העסק שלנו"
             intro_text = f"היי {lead_data.name}, תודה שהשארת פרטים! אני המזכירה הווירטואלית של {biz_name}. איך אפשר לעזור לך היום?"
-            
             success = whatsapp_adapter.send_message(to_phone=clean_phone, text=intro_text)
-            
-            if success:
-                logger.info(f"🚀 Speed-to-Lead: Proactive WhatsApp message sent to {clean_phone}")
-            else:
-                logger.warning(f"⚠️ Speed-to-Lead: Failed to send proactive WhatsApp message to {clean_phone}")
-                
+            if success: logger.info(f"🚀 Speed-to-Lead: Proactive message sent to {clean_phone}")
         except Exception as wa_err:
             logger.error(f"WhatsApp outreach failed for lead {new_lead.id}: {wa_err}")
 
@@ -203,26 +247,14 @@ async def receive_external_lead(
     except HTTPException as he:
         raise he
     except Exception as e:
-        # Rollback the broken transaction
         db.rollback()
         logger.error(f"Error processing webhook: {str(e)}")
-        
-        # --- TIER 1 RELIABILITY: DEAD LETTER QUEUE (DLQ) ---
         try:
-            fallback_payload = raw_payload if raw_payload else (lead_data.model_dump(mode='json') if lead_data else {"raw": "Unknown payload"})
-            
-            dlq_entry = WebhookDLQ(
-                provider=WebhookProvider.CUSTOM,
-                payload=fallback_payload,
-                error_reason=str(e)
-            )
+            fallback_payload = raw_payload if raw_payload else (lead_data.model_dump(mode='json') if lead_data else {"raw": "Unknown"})
+            dlq_entry = WebhookDLQ(provider=WebhookProvider.CUSTOM, payload=fallback_payload, error_reason=str(e))
             db.add(dlq_entry)
             db.commit()
-            logger.warning(f"🚨 Webhook failed but saved to Dead Letter Queue (DLQ) for User {user_id}. Lead Data saved for manual retry.")
         except Exception as dlq_err:
-            logger.critical(f"🔥 FATAL: Could not save failed webhook to DLQ. Data Loss Risk! Error: {str(dlq_err)}")
+            logger.critical(f"🔥 FATAL: Could not save failed webhook to DLQ. Error: {str(dlq_err)}")
 
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail="Error processing lead. Our team has been notified."
-        )
+        raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail="Error processing lead.")

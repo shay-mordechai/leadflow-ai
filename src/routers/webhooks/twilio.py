@@ -10,7 +10,6 @@ from src.config import settings
 from src.database.session import get_db
 from src.database.models import PhoneNumber, Lead, User, Message, LeadSource, Tag
 from src.services.ai.engine import ai_engine
-# Assuming you have a whisper service for local transcription
 from src.services.ai.whisper import whisper_service 
 from src.services.communication.whatsapp import whatsapp_adapter
 from src.tasks.audio_tasks import process_audio_message
@@ -37,7 +36,6 @@ async def incoming_sms_message(
     phone_record = db.query(PhoneNumber).filter(PhoneNumber.number == clean_to, PhoneNumber.is_active == True).first()
     
     if not phone_record:
-        # --- QA TESTING FALLBACK: Route test number to the newest user ---
         if clean_to == "+97233829709":
             owner = db.query(User).order_by(User.created_at.desc()).first()
             if not owner:
@@ -55,8 +53,6 @@ async def incoming_sms_message(
         logger.info(f"👑 Owner Command detected from {clean_from}")
         command_text = Body
         
-        # Keeping this synchronous for now as Owner commands are usually short 
-        # and we want immediate feedback for the business owner.
         if NumMedia > 0 and "audio" in (MediaContentType0 or ""):
             command_text = await whisper_service.transcribe_from_url(MediaUrl0)
 
@@ -98,31 +94,31 @@ async def incoming_sms_message(
 
     if not lead_record:
         lead_record = Lead(user_id=owner.id, name="New Lead", phone_number=clean_from, source=LeadSource.WHATSAPP)
-        db.add(lead_record); db.commit(); db.refresh(lead_record)
-
-    if not lead_record.bot_active:
-        logger.info(f"Muted lead {clean_from} - skipping AI.")
-        return Response(content=str(MessagingResponse()), media_type="application/xml")
+        db.add(lead_record)
+        db.commit()
+        db.refresh(lead_record)
 
     # 2. AUDIO ROUTING (ASYNC CELERY QUEUE)
     if NumMedia > 0 and "audio" in (MediaContentType0 or ""):
         logger.info(f"🎧 Customer Audio Detected. Offloading to Celery Worker.")
-        # Push to Redis queue for background processing
+        # Audio tasks have their own bot_active check and save their transcriptions natively.
         process_audio_message.delay(
             media_url=MediaUrl0, 
             sender_id=clean_from, 
             bot_phone_number=clean_to
         )
-        
-        # Instantly reply to the customer so they know we are "listening"
-        # This prevents Twilio from timing out waiting for a slow transcription
         whatsapp_adapter.send_message(to_phone=clean_from, text="מקשיב להודעה הקולית שלך... 🎧")
         return Response(content=str(MessagingResponse()), media_type="application/xml")
 
     # 3. TEXT ROUTING (STANDARD SYNC PROCESSING)
-    # Save user text message
+    # FIX: Save user text message FIRST so human takeover mode sees the history!
     db.add(Message(lead_id=lead_record.id, sender_type="user", content=Body))
     db.commit()
+
+    # FIX: Human Takeover Check - Moved AFTER saving the user message to DB
+    if not lead_record.bot_active:
+        logger.info(f"🛑 Muted lead {clean_from} (Human Takeover) - User message saved, skipping AI.")
+        return Response(content=str(MessagingResponse()), media_type="application/xml")
 
     # Conversational Memory (Last 10 messages)
     history = db.query(Message).filter(Message.lead_id == lead_record.id).order_by(Message.created_at.desc()).limit(10).all()
