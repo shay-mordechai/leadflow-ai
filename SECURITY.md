@@ -61,8 +61,7 @@ Atomic operation sequence:
 - A custom **WebAssembly (WASM)** filter written in **Rust**, running directly inside an **Envoy Proxy** sidecar container.
 - **Fail-Closed architecture:** The filter intercepts errors Out-of-Process. Any `5xx` response is cut, the stack trace is stripped, and the client receives a sanitized generic JSON: `{"error": "Internal Security Proxy Intervention"}`.
 
-**Why not eBPF?**  
-eBPF is excellent for observability but is Read-Only on data payloads. The kernel verifier does not permit dynamic mutation of Layer 7 payloads at runtime — making Envoy WASM the correct architectural choice.
+**Why not eBPF?** eBPF is excellent for observability but is Read-Only on data payloads. The kernel verifier does not permit dynamic mutation of Layer 7 payloads at runtime — making Envoy WASM the correct architectural choice.
 
 ---
 
@@ -83,6 +82,7 @@ async def get_current_user(token: str = Depends(oauth2_scheme), db: Session = De
         raise credentials_exception
     user = db.query(User).filter(User.email == email).first()
     return user
+
 ```
 
 ---
@@ -92,9 +92,10 @@ async def get_current_user(token: str = Depends(oauth2_scheme), db: Session = De
 **Threat:** A database breach exposes customer phone numbers and AI conversation transcripts.
 
 **Implementation (`src/security/encryption.py`):**
-- Symmetric encryption using **Fernet (AES-128 CBC)** via the `cryptography` library.
-- **Lazy Initialization:** The cipher is not instantiated until the `ENCRYPTION_KEY` is loaded from AWS SSM — prevents cryptographic operations with a missing or incomplete key.
-- **Fail-Safe Decryption:** Decryption failure (key rotation / corrupted ciphertext) does not crash the application — logs a security audit event and returns `[DECRYPTION_FAILED]` as a safe placeholder.
+
+* Symmetric encryption using **Fernet (AES-128 CBC)** via the `cryptography` library.
+* **Lazy Initialization:** The cipher is not instantiated until the `ENCRYPTION_KEY` is loaded from AWS SSM — prevents cryptographic operations with a missing or incomplete key.
+* **Fail-Safe Decryption:** Decryption failure (key rotation / corrupted ciphertext) does not crash the application — logs a security audit event and returns `[DECRYPTION_FAILED]` as a safe placeholder.
 
 ```python
 def decrypt(self, ciphertext: str) -> Optional[str]:
@@ -103,6 +104,7 @@ def decrypt(self, ciphertext: str) -> Optional[str]:
     except Exception as e:
         logger.error(f"Decryption failed. Key might be rotated or invalid: {e}")
         return "[DECRYPTION_FAILED]"
+
 ```
 
 ---
@@ -112,8 +114,9 @@ def decrypt(self, ciphertext: str) -> Optional[str]:
 **Threat:** An exposed admin panel is a primary target for web exploits.
 
 **Implementation:**
-- Admin actions are **fully disabled in the web UI** and moved to a unified CLI tool (`manage_cli.py`) accessible only via SSH.
-- **Global Exception Handler ("The Airbag"):** Intercepts all 500 errors globally, strips stack traces, renders a localized generic message to the client, and dispatches a detailed HTML crash report to `ADMIN_EMAIL` out-of-band.
+
+* Admin actions are **fully disabled in the web UI** and moved to a unified CLI tool (`manage_cli.py`) accessible only via SSH.
+* **Global Exception Handler:** Intercepts all 500 errors globally, strips stack traces, renders a localized generic message to the client, and dispatches a detailed HTML crash report to `ADMIN_EMAIL` out-of-band.
 
 ---
 
@@ -122,7 +125,8 @@ def decrypt(self, ciphertext: str) -> Optional[str]:
 **Threat:** A standard rate limiter behind Cloudflare throttles the tunnel's loopback IP (`127.0.0.1`) — causing a Global DoS affecting all legitimate users.
 
 **Implementation (`src/security/rate_limiter.py`):**
-- Custom `get_real_ip` function extracts the `CF-Connecting-IP` header injected by Cloudflare's edge — directing the rate limiter at the actual attacker IP, not the proxy.
+
+* Custom `get_real_ip` function extracts the `CF-Connecting-IP` header injected by Cloudflare's edge — directing the rate limiter at the actual attacker IP, not the proxy.
 
 ```python
 def get_real_ip(request: Request):
@@ -132,6 +136,7 @@ def get_real_ip(request: Request):
     not the reverse proxy's loopback address.
     """
     return request.headers.get("CF-Connecting-IP", get_remote_address(request))
+
 ```
 
 ---
@@ -141,10 +146,12 @@ def get_real_ip(request: Request):
 **Threat:** HTML-to-PDF engines (e.g., `wkhtmltopdf`) execute network requests based on user-supplied content, enabling `file:///etc/passwd` or AWS metadata exfiltration embedded in generated documents.
 
 **Implementation:**
-- Uses **FPDF**, which renders plain text cells only — no HTML parsing, no network calls. SSRF risk = zero by design.
 
-**Open Finding (Self Code Review):**
-- `os.path.join(output_dir, filename)` used without filename sanitization — potential Path Traversal if the caller controls the filename. Planned remediation: `secure_filename` wrapper before `os.path.join`.
+* Uses **FPDF**, which renders plain text cells only — no HTML parsing, no network calls. SSRF risk = zero by design.
+
+**Open Finding:**
+
+* `os.path.join(output_dir, filename)` used without filename sanitization — potential Path Traversal if the caller controls the filename. Planned remediation: `secure_filename` wrapper before `os.path.join` [Tracked in Ticket: SEC-012].
 
 ---
 
@@ -153,8 +160,9 @@ def get_real_ip(request: Request):
 **Threat:** Absence of logging allows attackers to operate undetected (OWASP A09:2021 — Security Logging and Monitoring Failures).
 
 **Implementation (`src/security/audit.py`):**
-- Dual-write pattern: every security event is written to the DB **and** emitted as a **Structured JSON log** — ready for ingestion by AWS CloudWatch, ELK, or Splunk.
-- **Fail-Safe:** DB write failure falls back to `logger.error` without raising — an attacker cannot trigger Application DoS by exhausting the audit table.
+
+* Dual-write pattern: every security event is written to the DB **and** emitted as a **Structured JSON log** — ready for ingestion by AWS CloudWatch, ELK, or Splunk.
+* **Fail-Safe:** DB write failure falls back to `logger.error` without raising — an attacker cannot trigger Application DoS by exhausting the audit table.
 
 ```python
 @staticmethod
@@ -166,6 +174,7 @@ def log(db: Session, user_id: str, action: str, details: dict = None):
     except Exception as e:
         logger.error(f"Failed to save Audit Log: {e}")
         # Do not re-raise — audit failure must never crash the API
+
 ```
 
 ---
@@ -174,7 +183,7 @@ def log(db: Session, user_id: str, action: str, details: dict = None):
 
 **Threat:** `src/routers/webhooks/twilio.py` accepts the `From` parameter from Form Data without cryptographic signature validation. An attacker who knows the webhook URL can forge `From` to impersonate the business owner and trigger Admin Command Mode — sending mass broadcasts at the platform's expense.
 
-**Status:** Identified via self-directed code review. Planned remediation: **Twilio Signature Validation Middleware** validating the `X-Twilio-Signature` header on every inbound webhook request.
+**Status:** Identified via self-directed code review. Planned remediation: **Twilio Signature Validation Middleware** validating the `X-Twilio-Signature` header on every inbound webhook request [Tracked in Ticket: SEC-015].
 
 **Why this is documented as an open finding:** Full transparency about the current security posture is part of the Secure-by-Design philosophy. Early identification is preferable to concealment.
 
@@ -182,8 +191,8 @@ def log(db: Session, user_id: str, action: str, details: dict = None):
 
 ## Defense-in-Depth Summary
 
-| Layer | Control |
-|---|---|
+| Security Layer | Mitigation Strategy |
+| --- | --- |
 | Network | Ghost Server + Cloudflare Tunnel |
 | Secrets | AWS SSM In-Memory bootstrapping, zero `.env` on disk |
 | Authentication | Single-Use OTP, CSPRNG, Atomic Delete-Before-Issue |
@@ -196,4 +205,4 @@ def log(db: Session, user_id: str, action: str, details: dict = None):
 
 ---
 
-*Last updated: June 2026. All open findings are tracked in Section 11.*
+*Last updated: June 2026. All open findings are tracked internally.*
