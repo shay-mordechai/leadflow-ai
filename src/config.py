@@ -37,9 +37,14 @@ def _get_or_create_cache_key() -> bytes:
         return key
 
 def load_aws_configurations():
-    if os.getenv("APP_ENV") == "development":
+    # [12-Factor] Bypass AWS SSM unless explicitly enabled via environment variable
+    if os.getenv("ENABLE_AWS_SSM", "false").lower() != "true":
+        logger.info("Cloud-agnostic mode: skipping AWS SSM and using local environment variables.")
         return
 
+    if os.getenv("APP_ENV") == "development":
+        return
+    
     # 1. Check local ENCRYPTED cache first
     try:
         if os.path.exists(SSM_CACHE_FILE):
@@ -133,7 +138,8 @@ class Settings(BaseSettings):
     SECRET_KEY: str = "temporary_dev_key" 
     ALGORITHM: str = "HS256"
     ACCESS_TOKEN_EXPIRE_MINUTES: int = 1440
-    BASE_URL: str = "https://my-leads.app"
+    # [12-Factor] Removed hardcoded production domain. Default to localhost.
+    BASE_URL: str = "http://localhost:8000"
     ALLOWED_HOSTS: str = "*"
     
     # --- Database & Queues ---
@@ -141,7 +147,8 @@ class Settings(BaseSettings):
     REDIS_URL: str = "redis://127.0.0.1:6379/0"
     
     # --- Infrastructure ---
-    S3_BUCKET_NAME: str = "leadflow-user-assets-prod"
+    # [12-Factor] Removed hardcoded environment suffix
+    S3_BUCKET_NAME: str = ""
     ENCRYPTION_KEY: str = "" 
     
     # --- External AI APIs ---
@@ -169,24 +176,11 @@ class Settings(BaseSettings):
     # --- Email (SMTP) & Alerts ---
     MAIL_USERNAME: str = ""
     MAIL_PASSWORD: str = ""
-    MAIL_FROM: str = "noreply@leadflow.ai"
+    MAIL_FROM: str = "noreply@localhost"
     MAIL_PORT: int = 587
     MAIL_SERVER: str = "smtp-relay.brevo.com"
-    ADMIN_EMAIL: str = "admin@my-leads.app" # NEW: Where crash reports go
-    
-    # --- Billing (Meshulam) ---
-    MESHULAM_PAGE_CODE: str = ""
-    MESHULAM_API_KEY: str = ""
-
-    # --- Analytics (PostHog) ---
-    NEXT_PUBLIC_POSTHOG_HOST: str = "https://eu.i.posthog.com"
-    NEXT_PUBLIC_POSTHOG_KEY: str = ""
-    POSTHOG_PROJECT_ID: str = ""
-
-    ENABLE_REAL_PHONE_PURCHASE: bool = True
-    SENTRY_DSN: Optional[str] = None
-    
-    model_config = SettingsConfigDict(case_sensitive=True, extra="ignore", env_file=".env")
+    # [12-Factor] Removed hardcoded production domain
+    ADMIN_EMAIL: str = ""
 
 def validate_config(s: Settings):
     if not (s.GOOGLE_API_KEY or s.OPENAI_API_KEY):
