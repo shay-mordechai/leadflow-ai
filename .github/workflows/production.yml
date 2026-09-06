@@ -95,6 +95,20 @@ jobs:
           username: deployer
           key: ${{ secrets.HETZNER_DEPLOY_KEY }}
           script: |
+            mkdir -p ~/app/data ~/app/storage
+            
+            cat << 'EOF' > ~/app/.env.production
+            APP_ENV=production
+            DATABASE_URL=sqlite:////app/data/leads.db
+            REDIS_URL=redis://127.0.0.1:6379/0
+            SECRET_KEY=${{ secrets.PRODUCTION_SECRET_KEY }}
+            ENABLE_AWS_SSM=false
+            BASE_URL=${{ secrets.PRODUCTION_BASE_URL }}
+            ADMIN_EMAIL=${{ secrets.PRODUCTION_ADMIN_EMAIL }}
+            EOF
+
+            chmod 600 ~/app/.env.production
+
             cd ~/app
             git pull origin main
             podman compose pull
