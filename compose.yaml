@@ -1,0 +1,37 @@
+services:
+  redis:
+    image: docker.io/library/redis:7-alpine
+    container_name: leadflow-redis
+    network_mode: host
+    restart: unless-stopped
+
+  backend:
+    image: ghcr.io/shay-mordechai/leadflow-backend:latest
+    container_name: leadflow-backend
+    network_mode: host
+    restart: unless-stopped
+    env_file:
+      - .env.production
+    volumes:
+      - ./storage:/app/storage:Z
+      - ./data:/app/data:Z
+
+  worker:
+    image: ghcr.io/shay-mordechai/leadflow-backend:latest
+    container_name: leadflow-worker
+    network_mode: host
+    restart: unless-stopped
+    command: ["celery", "-A", "src.worker.celery_app", "worker", "--loglevel=info", "--concurrency=2"]
+    env_file:
+      - .env.production
+    volumes:
+      - ./storage:/app/storage:Z
+      - ./data:/app/data:Z
+
+  frontend:
+    image: ghcr.io/shay-mordechai/leadflow-frontend:latest
+    container_name: leadflow-frontend
+    network_mode: host
+    restart: unless-stopped
+    environment:
+      - NEXT_PUBLIC_API_URL=https://my-leads.app
