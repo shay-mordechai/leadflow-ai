@@ -1,31 +1,20 @@
-# ==============================================================================
-# ⚠️  CRITICAL CONFIGURATION WARNING ⚠️
-# ==============================================================================
-# Target Server OS: Amazon Linux 2023 / RHEL 10
-# Container Runtime: PODMAN
-# Architecture: Zero Trust (Cloudflare Tunnel)
-# Registry: AWS ECR
-# ==============================================================================
-name: LeadFlow Production Deploy
+name: LeadFlow Production Deploy (GHCR & Hetzner)
 
 on:
   push:
     branches: [ main ]
     paths:
       - 'src/**'
-      - 'tests/**'
       - 'frontend/**'
+      - 'data-gate/**'
+      - 'compose.yaml'
       - 'Dockerfile'
       - 'requirements.txt'
       - '.github/workflows/production.yml'
 
 env:
-  AWS_ACCOUNT_ID: "${{ secrets.AWS_ACCOUNT_ID }}" 
-  AWS_REGION: "eu-north-1"
-  ECR_REGISTRY: "${{ secrets.AWS_ACCOUNT_ID }}.dkr.ecr.eu-north-1.amazonaws.com"
-  IMAGE_BACKEND: "leadflow-backend"
-  IMAGE_FRONTEND: "leadflow-frontend"
-  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
+  REGISTRY: ghcr.io
+  IMAGE_NAME: ${{ github.repository_owner }}
 
 jobs:
   detect-changes:
@@ -33,279 +22,82 @@ jobs:
     outputs:
       backend: ${{ steps.filter.outputs.backend }}
       frontend: ${{ steps.filter.outputs.frontend }}
+      datagate: ${{ steps.filter.outputs.datagate }}
     steps:
       - uses: actions/checkout@v4
-        with:
-          fetch-depth: 2 
-      
-      - name: Check for changed paths
+      - uses: dorny/paths-filter@v3
         id: filter
-        uses: dorny/paths-filter@v3
         with:
           filters: |
             backend:
               - 'src/**'
-              - 'tests/**'
               - 'Dockerfile'
               - 'requirements.txt'
-              - '.github/workflows/production.yml'
             frontend:
               - 'frontend/**'
-              - 'tests/**'
-              - '.github/workflows/production.yml'
+            datagate:
+              - 'data-gate/**'
 
-  test-backend:
+  build-and-push:
     needs: detect-changes
-    if: ${{ needs.detect-changes.outputs.backend == 'true' }}
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
     steps:
-      - name: Checkout code
+      - name: Checkout Code
         uses: actions/checkout@v4
 
-      - name: Set up Python
-        uses: actions/setup-python@v5
+      - name: Install Rust Toolchain (WASM)
+        uses: dtolnay/rust-toolchain@stable
         with:
-          python-version: '3.11'
-          cache: 'pip'
+          targets: wasm32-unknown-unknown
 
-      - name: Install OS Dependencies
+      - name: Build WASM Filter
+        working-directory: ./data-gate
+        run: cargo build --target wasm32-unknown-unknown --release
+
+      - name: Log in to GHCR
+        uses: docker/login-action@v3
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Build and Push Backend Image
         run: |
-          sudo apt-get update
-          sudo apt-get install -y ffmpeg libavformat-dev libavcodec-dev libavdevice-dev libavutil-dev libavfilter-dev libswscale-dev libswresample-dev pkg-config
+          IMAGE_URL="${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}/leadflow-backend:latest"
+          docker build -t "$IMAGE_URL" .
+          docker push "$IMAGE_URL"
 
-      - name: Install Python Dependencies
-        run: |
-          python -m pip install --upgrade pip setuptools wheel
-          if [ -f requirements.txt ]; then pip install -r requirements.txt; fi
-          pip install pytest httpx sqlalchemy fastapi passlib python-jose python-multipart
-
-      - name: Run Pytest
-        env:
-          PYTHONPATH: .
-          APP_ENV: "testing"
-          SECRET_KEY: "testing_secret_key_123"
-          DATABASE_URL: "sqlite:///:memory:"
-          AWS_REGION: "eu-north-1"
-        run: |
-          if [ -f "tests/test_main.py" ]; then
-            pytest tests/test_main.py -v
-          else
-            echo "⚠️ Backend test_main.py not found! Skipping internal tests."
-          fi
-
-  test-frontend:
-    needs: detect-changes
-    if: ${{ needs.detect-changes.outputs.frontend == 'true' }}
-    runs-on: ubuntu-latest
-    defaults:
-      run:
+      - name: Build and Push Frontend Image
         working-directory: ./frontend
-    steps:
-      - name: Checkout code
-        uses: actions/checkout@v4
-
-      - name: Set up Node.js
-        uses: actions/setup-node@v4
-        with:
-          node-version: '20'
-          cache: 'npm'
-          cache-dependency-path: './frontend/package-lock.json'
-
-      - name: Install Dependencies
-        run: npm ci --legacy-peer-deps
-
-      - name: Install Playwright Browsers
-        run: npx playwright install --with-deps
-
-      - name: Phase 1 - Validate Next.js Build
-        run: npm run build
-        env:
-          NEXT_PUBLIC_API_URL: "https://my-leads.app"
-
-      - name: Phase 2 - Run Unit Tests
-        run: npm run test:unit || true
-
-      - name: Phase 3 - Run E2E Tests
-        run: npm run test:e2e || true
-
-  build-backend:
-    needs: [detect-changes, test-backend]
-    if: ${{ needs.detect-changes.outputs.backend == 'true' }}
-    runs-on: ubuntu-latest
-    steps:
-      - name: Checkout code
-        uses: actions/checkout@v4
-
-      - name: Configure AWS credentials
-        uses: aws-actions/configure-aws-credentials@v4
-        with:
-          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
-          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
-          aws-region: ${{ env.AWS_REGION }}
-
-      - name: Login to Amazon ECR
-        id: login-ecr
-        uses: aws-actions/amazon-ecr-login@v2
-
-      - name: Build and push image
-        env:
-          ECR_REGISTRY: ${{ steps.login-ecr.outputs.registry }}
-          IMAGE_TAG: ${{ github.sha }}
         run: |
-          docker build -t $ECR_REGISTRY/$IMAGE_BACKEND:$IMAGE_TAG -t $ECR_REGISTRY/$IMAGE_BACKEND:latest .
-          docker push $ECR_REGISTRY/$IMAGE_BACKEND --all-tags
+          IMAGE_URL="${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}/leadflow-frontend:latest"
+          docker build -t "$IMAGE_URL" .
+          docker push "$IMAGE_URL"
 
-  build-frontend:
-    needs: [detect-changes, test-frontend] 
-    if: ${{ needs.detect-changes.outputs.frontend == 'true' }}
-    runs-on: ubuntu-latest
-    steps:
-      - name: Checkout code
-        uses: actions/checkout@v4
-
-      - name: Configure AWS credentials
-        uses: aws-actions/configure-aws-credentials@v4
-        with:
-          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
-          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
-          aws-region: ${{ env.AWS_REGION }}
-
-      - name: Login to Amazon ECR
-        id: login-ecr
-        uses: aws-actions/amazon-ecr-login@v2
-
-      - name: Build and push image
-        env:
-          ECR_REGISTRY: ${{ steps.login-ecr.outputs.registry }}
-          IMAGE_TAG: ${{ github.sha }}
+      - name: Build and Push Data Gate Image
+        working-directory: ./data-gate
         run: |
-          docker build -t $ECR_REGISTRY/$IMAGE_FRONTEND:$IMAGE_TAG -t $ECR_REGISTRY/$IMAGE_FRONTEND:latest ./frontend
-          docker push $ECR_REGISTRY/$IMAGE_FRONTEND --all-tags
+          IMAGE_URL="${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}/leadflow-data-gate:latest"
+          docker build -t "$IMAGE_URL" .
+          docker push "$IMAGE_URL"
 
   deploy:
-    needs: [detect-changes, build-backend, build-frontend]
-    if: |
-      always() && 
-      (needs.detect-changes.outputs.backend == 'true' || needs.detect-changes.outputs.frontend == 'true') &&
-      needs.build-backend.result != 'failure' && 
-      needs.build-frontend.result != 'failure'
+    needs: build-and-push
     runs-on: ubuntu-latest
     steps:
-      - name: Configure AWS credentials
-        uses: aws-actions/configure-aws-credentials@v4
+      - name: Deploy to Hetzner CX23 via SSH
+        uses: appleboy/ssh-action@v1.0.3
         with:
-          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
-          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
-          aws-region: ${{ env.AWS_REGION }}
-
-      - name: Setup SSH & Cloudflared
-        run: |
-          wget -q https://github.com/cloudflare/cloudflared/releases/latest/download/cloudflared-linux-amd64.deb
-          sudo dpkg -i cloudflared-linux-amd64.deb
-          mkdir -p ~/.ssh/
-          echo "${{ secrets.EC2_SSH_KEY }}" > ~/.ssh/id_rsa
-          chmod 600 ~/.ssh/id_rsa
-          
-          cat > ~/.ssh/config <<EOF
-          Host production
-            HostName ${{ secrets.CF_SSH_HOSTNAME }}
-            User ec2-user
-            IdentityFile ~/.ssh/id_rsa
-            StrictHostKeyChecking no
-            UserKnownHostsFile /dev/null
-            ServerAliveInterval 120
-            ServerAliveCountMax 30
-            TCPKeepAlive no
-            ProxyCommand /usr/local/bin/cloudflared access ssh --hostname %h --id ${{ secrets.CF_SERVICE_ID }} --secret ${{ secrets.CF_SERVICE_SECRET }}
-          EOF
-
-      - name: Execute Inline Deployment
-        env:
-          UPDATE_BACKEND: ${{ needs.detect-changes.outputs.backend }}
-          UPDATE_FRONTEND: ${{ needs.detect-changes.outputs.frontend }}
-        run: |
-          ECR_TEMP_TOKEN=$(aws ecr get-login-password --region ${{ env.AWS_REGION }})
-          
-          cat > deploy_script.sh << 'EOF'
-          set -e
-          
-          SYSTEMD_DIR="$HOME/.config/systemd/user"
-          
-          echo "🧹 Clearing System Cache & Buffers to free physical RAM..."
-          sudo sync && echo 3 | sudo tee /proc/sys/vm/drop_caches || true
-          
-          echo "🛑 Stopping heavy containers to free up RAM..."
-          systemctl --user stop container-leadflow-backend container-leadflow-worker container-leadflow-frontend 2>/dev/null || true
-          podman rm -f leadflow-backend leadflow-worker leadflow-frontend 2>/dev/null || true
-          
-          echo "🧹 Pruning ALL unused images/containers to free Disk Space..."
-          podman system prune -a -f || true
-          
-          echo "🔐 Logging into AWS ECR..."
-          MAX_LOGIN_RETRIES=5
-          for i in $(seq 1 $MAX_LOGIN_RETRIES); do
-              if echo "$ECR_TOKEN" | podman login --username AWS --password-stdin "$ECR_REG"; then
-                  echo "✅ ECR Login Succeeded!"
-                  break
-              fi
-              if [ $i -eq $MAX_LOGIN_RETRIES ]; then exit 1; fi
-              sleep 5
-          done
-          
-          # FIX: Pre-create all required subdirectories on the Host side to prevent PermissionError when mounting into the container
-          mkdir -p ~/leadflow-ai/storage/audio ~/leadflow-ai/storage/kyc ~/leadflow-ai/data "$SYSTEMD_DIR"
-          
-          echo "🔄 Pulling Required Images from ECR..."
-          podman pull "$BACKEND_IMG"
-          podman pull "$FRONTEND_IMG"
-          echo "✅ Pull successful!"
-
-          echo "🚀 Recreating and Starting all services (Safeguard)..."
-          
-          # Redis
-          systemctl --user stop container-leadflow-redis 2>/dev/null || true
-          podman rm -f leadflow-redis 2>/dev/null || true
-          podman run -d --name leadflow-redis --network host --replace docker.io/library/redis:7-alpine
-          
-          # Backend
-          podman run -d --name leadflow-backend --network host --replace --env APP_ENV=production --env AWS_REGION=$AWS_REGION --env DATABASE_URL=sqlite:////app/data/leads.db --env REDIS_URL=redis://127.0.0.1:6379/0 -v ~/leadflow-ai/storage:/app/storage:Z -v ~/leadflow-ai/data:/app/data:Z "$BACKEND_IMG" gunicorn src.main:app --workers 1 --worker-class uvicorn.workers.UvicornWorker --bind 0.0.0.0:8000
-          
-          # Worker
-          podman run -d --name leadflow-worker --network host --replace --memory="400m" --memory-swap="2.4g" --env APP_ENV=production --env AWS_REGION=$AWS_REGION --env DATABASE_URL=sqlite:////app/data/leads.db --env REDIS_URL=redis://127.0.0.1:6379/0 -v ~/leadflow-ai/storage:/app/storage:Z -v ~/leadflow-ai/data:/app/data:Z "$BACKEND_IMG" celery -A src.worker.celery_app worker --loglevel=info --concurrency=2
-          
-          # Frontend
-          podman run -d --name leadflow-frontend --network host --replace --env NEXT_PUBLIC_API_URL=https://my-leads.app "$FRONTEND_IMG"
-          
-          echo "⚙️ Generating SystemD units..."
-          podman stop leadflow-redis leadflow-backend leadflow-worker leadflow-frontend || true
-          
-          podman generate systemd --new --name leadflow-redis -f
-          podman generate systemd --new --name leadflow-backend -f
-          podman generate systemd --new --name leadflow-worker -f
-          podman generate systemd --new --name leadflow-frontend -f
-          
-          rm -f "$SYSTEMD_DIR"/container-leadflow-*.service
-          mv container-leadflow-*.service "$SYSTEMD_DIR/"
-          
-          systemctl --user daemon-reload
-          systemctl --user enable --now container-leadflow-redis.service
-          systemctl --user enable --now container-leadflow-backend.service
-          systemctl --user enable --now container-leadflow-worker.service
-          systemctl --user enable --now container-leadflow-frontend.service
-          
-          echo "✅ Deployment Process Finished!"
-          EOF
-          
-          MAX_SSH_RETRIES=3
-          for attempt in $(seq 1 $MAX_SSH_RETRIES); do
-              echo "🚀 Connecting via SSH to production (Attempt $attempt of $MAX_SSH_RETRIES)..."
-              if ssh production "ECR_TOKEN=\"$ECR_TEMP_TOKEN\" ECR_REG=\"${{ secrets.AWS_ACCOUNT_ID }}.dkr.ecr.eu-north-1.amazonaws.com\" AWS_REGION=\"${{ env.AWS_REGION }}\" BACKEND_IMG=\"${{ secrets.AWS_ACCOUNT_ID }}.dkr.ecr.eu-north-1.amazonaws.com/${{ env.IMAGE_BACKEND }}:latest\" FRONTEND_IMG=\"${{ secrets.AWS_ACCOUNT_ID }}.dkr.ecr.eu-north-1.amazonaws.com/${{ env.IMAGE_FRONTEND }}:latest\" UPDATE_BACKEND=\"$UPDATE_BACKEND\" UPDATE_FRONTEND=\"$UPDATE_FRONTEND\" bash -s" < deploy_script.sh; then
-                  echo "✅ SSH script executed successfully!"
-                  exit 0
-              fi
-              echo "⚠️ SSH connection dropped. Retrying in 15 seconds..."
-              sleep 15
-          done
-          
-          echo "❌ Deployment failed after $MAX_SSH_RETRIES SSH attempts."
-          exit 1
+          host: ${{ secrets.HETZNER_HOST }}
+          username: deployer
+          key: ${{ secrets.HETZNER_DEPLOY_KEY }}
+          script: |
+            cd ~/app
+            git pull origin main
+            podman compose pull
+            podman compose up -d --remove-orphans
+            podman image prune -a -f
+            echo "✅ Deployment completed successfully!"
