@@ -1,3 +1,4 @@
+# compose.yaml
 services:
   redis:
     image: docker.io/library/redis:7-alpine
@@ -35,3 +36,9 @@ services:
     restart: unless-stopped
     environment:
       - NEXT_PUBLIC_API_URL=https://my-leads.app
+
+  data-gate:
+    image: ghcr.io/shay-mordechai/leadflow-data-gate:latest
+    container_name: leadflow-data-gate
+    network_mode: host
+    restart: unless-stopped

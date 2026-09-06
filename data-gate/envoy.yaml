@@ -1,4 +1,4 @@
-# envoy.yaml
+# data-gate/envoy.yaml
 static_resources:
   listeners:
     - name: listener_0
@@ -48,5 +48,5 @@ static_resources:
               - endpoint:
                   address:
                     socket_address:
-                      address: 172.31.29.49
+                      address: 127.0.0.1
                       port_value: 8000
