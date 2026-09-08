@@ -1,6 +1,7 @@
 name: LeadFlow Production Deploy (GHCR & Hetzner)
 
 on:
+  workflow_dispatch:
   push:
     branches: [ main ]
     paths:
