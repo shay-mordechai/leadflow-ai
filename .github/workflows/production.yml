@@ -56,6 +56,10 @@ jobs:
 
       - name: Build WASM Filter
         working-directory: ./data-gate
+        # We explicitly tell the linker to allow undefined symbols
+        # because Envoy will provide these proxy functions at runtime.
+        env:
+          RUSTFLAGS: "-C link-arg=--allow-undefined"
         run: cargo build --target wasm32-unknown-unknown --release
 
       - name: Log in to GHCR
