@@ -107,7 +107,7 @@ async def add_security_headers(request: Request, call_next):
 async def dlp_trigger_middleware(request: Request, call_next):
     response = await call_next(request)
     path = request.url.path
-    if path.startswith("/api/v1") or path.startswith("/webhooks") or path == "/test-leak":
+    if (path.startswith("/api/v1") and not path.startswith("/api/v1/auth")) or path.startswith("/webhooks") or path == "/test-leak":
         response.headers["X-Data-TTL"] = "1"
     return response
     
