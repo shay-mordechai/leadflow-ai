@@ -18,8 +18,16 @@ static_resources:
                     - name: local_service
                       domains: ["*"]
                       routes:
-                        - match: { prefix: "/" }
+                        - match: { prefix: "/api/" }
                           route: { cluster: leadflow_backend }
+                        - match: { prefix: "/health" }
+                          route: { cluster: leadflow_backend }
+                        - match: { prefix: "/docs" }
+                          route: { cluster: leadflow_backend }
+                        - match: { prefix: "/openapi.json" }
+                          route: { cluster: leadflow_backend }
+                        - match: { prefix: "/" }
+                          route: { cluster: leadflow_frontend }
                 http_filters:
                   - name: envoy.filters.http.wasm
                     typed_config:
@@ -50,3 +58,17 @@ static_resources:
                     socket_address:
                       address: 127.0.0.1
                       port_value: 8000
+
+    - name: leadflow_frontend
+      connect_timeout: 0.25s
+      type: STRICT_DNS
+      lb_policy: ROUND_ROBIN
+      load_assignment:
+        cluster_name: leadflow_frontend
+        endpoints:
+          - lb_endpoints:
+              - endpoint:
+                  address:
+                    socket_address:
+                      address: 127.0.0.1
+                      port_value: 3000
