@@ -18,6 +18,12 @@ static_resources:
                     - name: local_service
                       domains: ["*"]
                       routes:
+                        - match: { prefix: "/api/v1/auth/" }
+                          route: { cluster: leadflow_backend }
+                          typed_per_filter_config:
+                            envoy.filters.http.wasm:
+                              "@type": type.googleapis.com/envoy.extensions.filters.http.wasm.v3.WasmPerRoute
+                              disabled: true
                         - match: { prefix: "/api/" }
                           route: { cluster: leadflow_backend }
                         - match: { prefix: "/health" }
