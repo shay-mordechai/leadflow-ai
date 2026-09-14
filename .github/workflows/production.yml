@@ -100,6 +100,7 @@ jobs:
           username: deployer
           key: ${{ secrets.HETZNER_DEPLOY_KEY }}
           script: |
+            set -e
             mkdir -p ~/app/data ~/app/storage
             
             cat << 'EOF' > ~/app/.env.production

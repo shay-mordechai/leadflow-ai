@@ -182,6 +182,11 @@ class Settings(BaseSettings):
     # [12-Factor] Removed hardcoded production domain
     ADMIN_EMAIL: str = ""
 
+    # --- Billing (Meshulam / Grow) ---
+    MESHULAM_USER_ID: str = "MOCK_USER"
+    MESHULAM_API_KEY: str = "MOCK_API_KEY"
+    MESHULAM_PAGE_CODE: str = "MOCK_PAGE_CODE"
+
 def validate_config(s: Settings):
     if not (s.GOOGLE_API_KEY or s.OPENAI_API_KEY):
         logger.warning("❌ CRITICAL: No AI Engines configured.")
