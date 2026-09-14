@@ -1,0 +1,9 @@
+# Local state files (רגיש - מכיל מזהים ומשתנים)
+*.tfstate
+*.tfstate.*
+*.tfstate.backup
+
+# Provider plugins and crash logs
+.terraform/
+.terraform.lock.hcl
+crash.log
