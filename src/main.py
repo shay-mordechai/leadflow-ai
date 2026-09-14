@@ -80,7 +80,7 @@ async def lifespan(app: FastAPI):
         scheduler.shutdown()
     engine.dispose()
 
-if settings.SENTRY_DSN:
+if getattr(settings, "SENTRY_DSN", None):
     sentry_sdk.init(
         dsn=settings.SENTRY_DSN,
         traces_sample_rate=1.0,
@@ -125,7 +125,7 @@ async def global_exception_handler(request: Request, exc: Exception):
     2. Sends a detailed HTML email to the system administrator.
     3. Returns a clean, generic Hebrew error to the user.
     """
-    if settings.SENTRY_DSN:
+    if getattr(settings, "SENTRY_DSN", None):
         sentry_sdk.capture_exception(exc)
         
     error_summary = str(exc)

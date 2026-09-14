@@ -150,6 +150,7 @@ class Settings(BaseSettings):
     # [12-Factor] Removed hardcoded environment suffix
     S3_BUCKET_NAME: str = ""
     ENCRYPTION_KEY: str = "" 
+    SENTRY_DSN: str = ""
     
     # --- External AI APIs ---
     OPENAI_API_KEY: str = ""
