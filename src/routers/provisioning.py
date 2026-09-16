@@ -5,7 +5,7 @@ from fastapi import APIRouter, Depends, BackgroundTasks, Request
 from sqlalchemy.orm import Session
 
 from src.database.session import get_db
-from src.database.models import Tenant
+from src.database.models import User as Tenant
 from src.config import settings
 
 router = APIRouter(prefix="/api/v1/provisioning", tags=["Provisioning - B2B"])
