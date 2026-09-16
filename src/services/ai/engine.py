@@ -62,7 +62,7 @@ class AIEngine:
     Includes Redis Semantic Caching to reduce API costs.
     """
     def __init__(self):
-        self.model_name = "gemini-2.0-flash"
+        self.model_name = "gemini-3.6-flash"
         self.model = genai.GenerativeModel(self.model_name)
 
     def _clean_json_text(self, text: str) -> str:
