@@ -33,6 +33,7 @@ from src.routers import auth, leads, phones, sessions, facebook, settings as set
 from src.routers import partners, system
 from src.routers.billing import checkout, invoices
 from src.routers.webhooks import twilio, meshulam, whatsapp
+from src.routers import provisioning
 
 # --- Logging Setup (Global JSON Structured Logging) ---
 from pythonjsonlogger import jsonlogger
@@ -178,6 +179,7 @@ app.include_router(partners.router)
 app.include_router(checkout.router, prefix="/api/v1/billing", tags=["Billing"])
 app.include_router(invoices.router, prefix="/api/v1/billing", tags=["Billing"])
 
+app.include_router(provisioning.router)
 app.include_router(twilio.router, prefix="/webhooks/twilio", tags=["Webhooks - Twilio"])
 app.include_router(whatsapp.router, prefix="/webhooks/whatsapp", tags=["Webhooks - WhatsApp"])
 app.include_router(meshulam.router, prefix="/webhooks/meshulam", tags=["Webhooks - Meshulam"])

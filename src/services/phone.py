@@ -186,7 +186,7 @@ class TelephonyService:
             incoming_phone.update(
                 voice_url=f"{settings.BASE_URL}/webhooks/voice/incoming",
                 voice_method="POST",
-                sms_url=f"{settings.BASE_URL}/webhooks/sms/incoming",
+                sms_url=f"{settings.BASE_URL}/api/v1/provisioning/webhook/twilio/sms",
                 sms_method="POST"
             )
             return {"status": "success", "sid": incoming_phone.sid, "provider": "twilio"}
@@ -229,7 +229,7 @@ class TelephonyService:
                     f"{self.sw_base}/IncomingPhoneNumbers/{sid}.json",
                     data={
                         "VoiceUrl": f"{settings.BASE_URL}/webhooks/voice/incoming",
-                        "SmsUrl": f"{settings.BASE_URL}/webhooks/sms/incoming"
+                        "SmsUrl": f"{settings.BASE_URL}/api/v1/provisioning/webhook/twilio/sms"
                     },
                     auth=(self.sw_project, self.sw_token)
                 )
