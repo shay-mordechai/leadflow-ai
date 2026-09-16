@@ -116,6 +116,7 @@ async def whatsapp_event_listener(request: Request):
                 logger.info(f"💤 AI Agent is disabled or missing for {bot_phone_number}")
                 return {"status": "agent_disabled"}
             base_system_prompt = agent.system_prompt
+            base_system_prompt = agent.system_prompt
             
             # ------------------------------------------------------------------
             # 1. Lead Resolution (Robust)
