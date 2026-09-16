@@ -145,6 +145,8 @@ class Settings(BaseSettings):
     # --- Database & Queues ---
     DATABASE_URL: str = "sqlite:////app/data/leads.db"
     REDIS_URL: str = "redis://127.0.0.1:6379/0"
+    # Privacy: raw media + transcriptions are expunged after this window.
+    RETENTION_TTL_HOURS: int = 24
     
     # --- Infrastructure ---
     # [12-Factor] Removed hardcoded environment suffix
@@ -173,6 +175,8 @@ class Settings(BaseSettings):
     META_ACCESS_TOKEN: str = ""
     WHATSAPP_PHONE_ID: str = ""
     WHATSAPP_VERIFY_TOKEN: str = "my_secure_token"
+    WHATSAPP_APP_SECRET: str = ""
+    GRAPH_API_VERSION: str = "v21.0"
     
     # --- Email (SMTP) & Alerts ---
     MAIL_USERNAME: str = ""
@@ -191,6 +195,10 @@ class Settings(BaseSettings):
 def validate_config(s: Settings):
     if not (s.GOOGLE_API_KEY or s.OPENAI_API_KEY):
         logger.warning("❌ CRITICAL: No AI Engines configured.")
+    if not s.WHATSAPP_APP_SECRET:
+        logger.warning("WHATSAPP_APP_SECRET is empty; Meta POST signature verification will reject traffic.")
+    if not (s.META_ACCESS_TOKEN and s.WHATSAPP_PHONE_ID):
+        logger.warning("META_ACCESS_TOKEN or WHATSAPP_PHONE_ID missing; Graph API sends will fail.")
 
 try:
     settings = Settings()

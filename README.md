@@ -164,3 +164,22 @@ python3 tests/qa_micro.py --prod
 
 # 4. AI Agent Function Calling (Direct Engine QA): 
 python3 tests/qa_agents.py --api-key="[INJECTED_AT_RUNTIME]"
+
+
+last update:
+Here is a summary of what we have accomplished so far and what remains on our roadmap:
+
+### 1. What We Have Done (מה שעשינו עד כה)
+
+* **Infrastructure & Security (תשתית ואבטחה):** Configured the production Hetzner server (`2.28.42.52`), managed containers via Podman/Docker Compose, set up Envoy as an API gateway, and secured Redis locally (`127.0.0.1:6379`) to resolve external vulnerability scans (סריקות אבטחה).
+* **Multi-Tenant Data Architecture (ארכיטקטורת נתונים מרובת משתמשים):** Created structured JSON business profiles (stored under `/app/data/profiles/` like `sample_tenant.json`) linked through the `User` model, including Meta WhatsApp configuration fields (`whatsapp_business_account_id`, etc.).
+* **Dynamic RAG & Profile Loader (טעינת פרופילים דינמית):** Implemented an asynchronous profile loader (`src/services/profile_loader.py`) with silent fallback (ברירת מחדל שקטה) handling for missing configuration files.
+* **WhatsApp Webhook & AI Integration (אינטגרציית וואטסאפ ו-AI):** Upgraded the WhatsApp webhook router (`src/routers/webhooks/whatsapp.py`) to inject dynamic RAG context, catalogs, and privacy guardrails (הגנות פרטיות) directly into Gemini Flash. Fixed a SQLAlchemy instance detachment bug (ניתוק אובייקט מהזיכרון) by caching the system prompt before committing database transactions.
+* **End-to-End Testing (בדיקות אינטגרציה):** Successfully tested simulated inbound customer messages via Envoy, verifying that the AI replies correctly using tenant-specific pricing, services, and location data.
+
+### 2. What Remains (מה שנשאר לנו)
+
+* **Frontend Tenant Settings UI (ממשק ניהול פרופילים בדשבורד):** Polishing the Next.js frontend dashboard, settings forms, and chat simulator so tenants can easily manage and update their business parameters.
+* **Production Messaging & Channels (מעבר לוואטסאפ אמיתי):** Transitioning out of mock mode by configuring live Meta WhatsApp Business API tokens and webhook verification.
+* **Billing & Subscriptions (מערכת חיוב ומכסות):** Integrating payment gateways (such as Meshulam) and enforcing automated message limits for Starter versus Pro plan tiers.
+* **Automated Data Retention Tasks (אוטומציית ניקוי מידע):** Expanding Celery background workers to strictly enforce the 24-hour data deletion guardrail (מחיקת מידע אוטומטית אחרי 24 שעות).
