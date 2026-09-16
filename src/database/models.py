@@ -118,6 +118,7 @@ class User(Base):
     business_name = Column(String, nullable=True)
     business_type = Column(String, nullable=True) 
     assigned_phone_number = Column(String, unique=True, index=True, nullable=True)
+    business_profile_path = Column(String, nullable=True)  # Path to local JSON profile
     personal_whatsapp = Column(String, nullable=True) 
     
     # NEW: Partner/Agency specific fields
