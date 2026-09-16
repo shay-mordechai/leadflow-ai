@@ -115,6 +115,7 @@ async def whatsapp_event_listener(request: Request):
             if not agent or not agent.is_active or not user:
                 logger.info(f"💤 AI Agent is disabled or missing for {bot_phone_number}")
                 return {"status": "agent_disabled"}
+            base_system_prompt = agent.system_prompt
             
             # ------------------------------------------------------------------
             # 1. Lead Resolution (Robust)
@@ -184,7 +185,7 @@ async def whatsapp_event_listener(request: Request):
 
                 israel_tz = ZoneInfo("Asia/Jerusalem")
                 current_time_il = datetime.now(israel_tz).strftime("%A, %Y-%m-%d %H:%M:%S")
-                time_aware_system_prompt = f"{agent.system_prompt}{business_rag_context}\n\n[SYSTEM CLOCK]\nThe current Date and Time in Israel is: {current_time_il}"
+                time_aware_system_prompt = f"{base_system_prompt}{business_rag_context}\n\n[SYSTEM CLOCK]\nThe current Date and Time in Israel is: {current_time_il}"
                 
                 ai_response = await ai_engine.analyze_interaction(
                     system_prompt=time_aware_system_prompt,
