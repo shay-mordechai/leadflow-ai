@@ -75,7 +75,7 @@ async def verify_webhook(
     raise HTTPException(status_code=403, detail="Verification failed")
 
 
-@router.post("/")
+@router.post("")
 async def whatsapp_event_listener(request: Request):
     """
     Receives incoming Meta WhatsApp messages.
@@ -169,10 +169,10 @@ async def whatsapp_event_listener(request: Request):
 
                 business_rag_context = (
                     f"\n\n[BUSINESS IDENTITY & CATALOG]\n"
-                    f"Business Name: {profile_data.get("business_name", "Business")}\n"
-                    f"Business Type: {profile_data.get("business_type", "Service")}\n"
-                    f"Brand Tone: {profile_data.get("tone", "polite, helpful and concise")}\n"
-                    f"Currency: {profile_data.get("currency", "ILS")}\n"
+                    f"Business Name: {profile_data.get('business_name', 'Business')}\n"
+                    f"Business Type: {profile_data.get('business_type', 'Service')}\n"
+                    f"Brand Tone: {profile_data.get('tone', 'polite, helpful and concise')}\n"
+                    f"Currency: {profile_data.get('currency', 'ILS')}\n"
                     f"Available Services: {services_str}\n"
                     f"FAQs & Policies: {faqs_str}\n"
                     f"Qualification Funnel Strategy: {funnel_str}\n\n"
