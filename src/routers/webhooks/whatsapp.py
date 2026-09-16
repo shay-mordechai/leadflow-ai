@@ -12,6 +12,8 @@ from sqlalchemy.orm import Session
 from src.config import settings
 from src.database.session import SessionLocal
 from src.database.models import PhoneNumber, AIAgent, User, PlanTier, Lead, LeadStatus, Message, LeadSource
+import json
+from src.services.profile_loader import load_tenant_profile
 from src.services.ai.engine import ai_engine
 from src.services.communication.whatsapp import whatsapp_adapter 
 
@@ -159,10 +161,30 @@ async def whatsapp_event_listener(request: Request):
                     whatsapp_adapter.send_message(to_phone=clean_sender_id, text=limit_reply)
                     return {"status": "limit_exceeded"}
 
-                # --- AI Processing ---
+                # --- AI Processing (Dynamic RAG & Multi-Tenant Persona) ---
+                profile_data = await load_tenant_profile(user.business_profile_path)
+                services_str = json.dumps(profile_data.get("services", []), ensure_ascii=False)
+                faqs_str = json.dumps(profile_data.get("faqs", []), ensure_ascii=False)
+                funnel_str = json.dumps(profile_data.get("qualification_funnel", {}), ensure_ascii=False)
+
+                business_rag_context = (
+                    f"\n\n[BUSINESS IDENTITY & CATALOG]\n"
+                    f"Business Name: {profile_data.get("business_name", "Business")}\n"
+                    f"Business Type: {profile_data.get("business_type", "Service")}\n"
+                    f"Brand Tone: {profile_data.get("tone", "polite, helpful and concise")}\n"
+                    f"Currency: {profile_data.get("currency", "ILS")}\n"
+                    f"Available Services: {services_str}\n"
+                    f"FAQs & Policies: {faqs_str}\n"
+                    f"Qualification Funnel Strategy: {funnel_str}\n\n"
+                    f"[CORE GUARDRAILS & PRIVACY]\n"
+                    f"1. Strict Identity: Represent ONLY this business. Do not hallucinate external services or invent unlisted prices.\n"
+                    f"2. Human Escalation: If the lead requests human support or an inquiry falls outside the catalog, state politely that a representative will follow up.\n"
+                    f"3. Privacy & Compliance: Data is subject to a strict 24-hour retention cycle. Never ask for passwords, credit card numbers, or government IDs."
+                )
+
                 israel_tz = ZoneInfo("Asia/Jerusalem")
                 current_time_il = datetime.now(israel_tz).strftime("%A, %Y-%m-%d %H:%M:%S")
-                time_aware_system_prompt = f"{agent.system_prompt}\n\n[SYSTEM CLOCK]\nThe current Date and Time in Israel is: {current_time_il}"
+                time_aware_system_prompt = f"{agent.system_prompt}{business_rag_context}\n\n[SYSTEM CLOCK]\nThe current Date and Time in Israel is: {current_time_il}"
                 
                 ai_response = await ai_engine.analyze_interaction(
                     system_prompt=time_aware_system_prompt,
