@@ -25,7 +25,7 @@ async def twilio_sms_webhook(request: Request, db: Session = Depends(get_db)):
     verification_code = match.group(1)
 
     # Locate tenant by their assigned WhatsApp number
-    tenant = db.query(Tenant).filter(Tenant.whatsapp_number == to_number).first()
+    tenant = db.query(Tenant).filter(Tenant.assigned_phone_number == to_number).first()
     if not tenant or not tenant.whatsapp_access_token:
         logger.warning(f"Webhook received SMS for unknown or unconfigured number {to_number}")
         return {"error": "Unknown destination or missing Meta credentials"}
