@@ -11,23 +11,35 @@ services:
     container_name: leadflow-backend
     network_mode: host
     restart: unless-stopped
+    mem_limit: 1.5g
+    mem_reservation: 512m
     env_file:
       - .env.production
+    environment:
+      - WHISPER_USE_MMAP=1
+      - OMP_NUM_THREADS=2
     volumes:
       - ./storage:/app/storage:Z
       - ./data:/app/data:Z
+      - ./models:/app/models:ro,Z
 
   worker:
     image: ghcr.io/shay-mordechai/leadflow-backend:latest
     container_name: leadflow-worker
     network_mode: host
     restart: unless-stopped
+    mem_limit: 1.5g
+    mem_reservation: 512m
     command: ["celery", "-A", "src.worker.celery_app", "worker", "--loglevel=info", "--concurrency=2"]
     env_file:
       - .env.production
+    environment:
+      - WHISPER_USE_MMAP=1
+      - OMP_NUM_THREADS=2
     volumes:
       - ./storage:/app/storage:Z
       - ./data:/app/data:Z
+      - ./models:/app/models:ro,Z
 
   beat:
     image: ghcr.io/shay-mordechai/leadflow-backend:latest

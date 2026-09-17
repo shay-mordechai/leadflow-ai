@@ -43,7 +43,7 @@ RUN pip install --no-cache-dir -r requirements.txt
 COPY . .
 
 # FIX: Pre-create ALL required storage directories (including kyc) to prevent PermissionError
-RUN mkdir -p storage/audio storage/kyc data/huggingface_cache
+RUN mkdir -p storage/audio storage/kyc data/huggingface_cache models
 
 # SECURITY: Run as a non-privileged user. 
 # Prevents container breakout attacks and follows the Principle of Least Privilege.
