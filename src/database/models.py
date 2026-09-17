@@ -40,6 +40,7 @@ class LeadSource(str, enum.Enum):
     GOOGLE_ADS = "GOOGLE_ADS"     
     MANUAL = "MANUAL"
     LANDING_PAGE = "LANDING_PAGE"
+    SOCIAL_CAMPAIGN = "SOCIAL_CAMPAIGN"
 
 class LeadStatus(str, enum.Enum):
     NEW = "NEW"
@@ -127,6 +128,9 @@ class User(Base):
     # NEW: Self-referential relationship (Map Clients to their Partner)
     partner_id = Column(GUID(), ForeignKey("users.id", ondelete="SET NULL"), nullable=True, index=True)
     partner = relationship("User", remote_side=[id], backref="managed_clients")
+    
+    # NEW: Marketing Integration API Key
+    marketing_api_key = Column(String, unique=True, index=True, nullable=True)
     
     openai_api_key = Column(String, nullable=True)
 

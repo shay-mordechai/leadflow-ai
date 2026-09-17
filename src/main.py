@@ -32,7 +32,7 @@ from src.services.communication.email import email_service # NEW: For error aler
 from src.routers import auth, leads, phones, sessions, facebook, settings as settings_router
 from src.routers import partners, system
 from src.routers.billing import checkout, invoices
-from src.routers.webhooks import twilio, meshulam, whatsapp
+from src.routers.webhooks import twilio, meshulam, whatsapp, marketing
 from src.routers import provisioning
 
 # --- Logging Setup (Global JSON Structured Logging) ---
@@ -183,6 +183,7 @@ app.include_router(provisioning.router)
 app.include_router(twilio.router, prefix="/webhooks/twilio", tags=["Webhooks - Twilio"])
 app.include_router(whatsapp.router, prefix="/webhooks/whatsapp", tags=["Webhooks - WhatsApp"])
 app.include_router(meshulam.router, prefix="/webhooks/meshulam", tags=["Webhooks - Meshulam"])
+app.include_router(marketing.router)
 
 app.include_router(system.router)
 
