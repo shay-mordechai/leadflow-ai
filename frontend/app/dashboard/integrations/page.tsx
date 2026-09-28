@@ -1,7 +1,6 @@
-// frontend/app/dashboard/integrations/page.tsx
 import { cookies } from "next/headers";
 import { redirect } from "next/navigation";
-import { Link2 } from "lucide-react";
+import { Link2, Share2, Globe } from "lucide-react";
 import IntegrationsClient from "./integrations-client";
 
 async function getUserData() {
@@ -20,7 +19,7 @@ async function getUserData() {
 
         if (!res.ok) return null;
         return await res.json();
-    } catch (error) {
+    } catch {
         return null;
     }
 }
@@ -33,20 +32,38 @@ export default async function IntegrationsPage() {
     }
 
     const webhookUrl = `https://my-leads.app/api/v1/leads/webhook/${userData.id}`;
+    const isCampaigner = userData.role === "PARTNER" || userData.role === "ADMIN";
 
     return (
-        <div className="p-8 max-w-5xl mx-auto space-y-6 font-sans" dir="rtl">
-            <header className="mb-8">
-                <h1 className="text-3xl font-black text-slate-800 flex items-center gap-3">
-                    <Link2 className="w-8 h-8 text-blue-600" />
-                    מרכז אינטגרציות
-                </h1>
-                <p className="text-slate-500 mt-2 text-lg">
-                    חבר את קמפייני הפרסום ודפי הנחיתה שלך למערכת, והבוט יתחיל לטפל בלידים באופן אוטומטי.
-                </p>
-            </header>
 
-            <IntegrationsClient webhookUrl={webhookUrl} />
-        </div>
-    );
+```
+
+# {isCampaigner ? "מרכז אינטגרציות למשווקים" : "חיבור מקורות פרסום ודפי נחיתה"}
+
+{isCampaigner
+? "ניהול חיבורי Meta Ads, מערכות אוטומציה ו-Webhooks עבור הלקוחות שלך."
+: "הגדר מאיפה הלידים מגיעים כדי שהבוט יתחיל לענות להם תוך 5 שניות בוואטסאפ."}
+
+{isCampaigner ? (
+
+) : (
+
+## יש לך קמפיינר, משווק או בונה אתרים?
+
+אין צורך שתסתבך עם הגדרות טכניות. פשוט העתק את הקישור הסודי למטה ושלח אותו לאיש השיווק שלך.
+הוא יזין אותו בטפסי הפייסבוק או בדף הנחיתה, וכל הלידים יזרמו ישירות לבוט.
+
+`{webhookUrl}`
+
+משווק בעצמך? חיבור פשוט לדפי נחיתה
+
+אם בנית בעצמך אתר בוורדפרס (Elementor) או דף נחיתה, פשוט הדבק את הכתובת למעלה בשדה ה-Webhook של הטופס.
+
+)}
+
+```
+);
+
+```
+
 }
