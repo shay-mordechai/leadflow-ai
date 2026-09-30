@@ -1,3 +1,4 @@
+// frontend/app/dashboard/integrations/page.tsx
 import { cookies } from "next/headers";
 import { redirect } from "next/navigation";
 import IntegrationsClient from "./integrations-client";
@@ -34,5 +35,9 @@ export default async function IntegrationsPage() {
     const isCampaigner = userData.role === "PARTNER" || userData.role === "ADMIN";
 
     return (
-);
+        <IntegrationsClient
+            webhookUrl={webhookUrl}
+            isCampaigner={isCampaigner}
+        />
+    );
 }
