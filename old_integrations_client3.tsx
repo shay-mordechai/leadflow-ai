@@ -16,16 +16,9 @@ interface Integration {
     instructions: string;
 }
 
-export default function IntegrationsClient({
-    webhookUrl,
-    isCampaigner
-}: {
-    webhookUrl: string;
-    isCampaigner: boolean;
-}) {
+export default function IntegrationsClient({ webhookUrl }: { webhookUrl: string }) {
     const [selectedInt, setSelectedInt] = useState<Integration | null>(null);
     const [copied, setCopied] = useState(false);
-    const [showAdvanced, setShowAdvanced] = useState(false);
 
     const integrations: Integration[] = [
         {
@@ -94,60 +87,12 @@ export default function IntegrationsClient({
     };
 
     return (
-        <div className="space-y-8">
-            {/* Header Section */}
-            <div className="mb-8">
-                <h1 className="text-3xl font-black text-slate-800 mb-2">
-                    {isCampaigner ? "מרכז אינטגרציות למשווקים" : "חיבור מקורות פרסום ודפי נחיתה"}
-                </h1>
-                <p className="text-slate-600 text-lg">
-                    {isCampaigner
-                        ? "ניהול חיבורי קמפיינים, Webhooks וכלים מקצועיים עבור הלקוחות שלך."
-                        : "הגדר את מקורות הלידים כדי שהבוט יוכל להתחיל לפעול באופן אוטומטי."}
-                </p>
-            </div>
-
-            {/* Simplified layout for standard clients (business owners) */}
-            {!isCampaigner && (
-                <div className="bg-white p-6 rounded-2xl border border-slate-200 shadow-sm mb-8">
-                    <h2 className="text-xl font-bold text-slate-800 mb-4">יש לך קמפיינר או בונה אתרים?</h2>
-                    <p className="text-slate-600 mb-4">העתק את כתובת הקליטה (Webhook) והעבר אותה לאיש המקצוע שלך להגדרה בטפסים:</p>
-                    
-                    <div className="flex items-center gap-2 mb-6">
-                        <div className="flex-grow bg-slate-50 border border-slate-200 rounded-xl px-4 py-3 overflow-hidden">
-                            <code className="text-blue-600 font-mono text-sm whitespace-nowrap overflow-hidden text-ellipsis block w-full" dir="ltr">
-                                {webhookUrl}
-                            </code>
-                        </div>
-                        <button 
-                            onClick={handleCopy}
-                            className={`flex items-center gap-2 px-4 py-3 rounded-xl font-bold transition-colors ${copied ? 'bg-emerald-500 text-white' : 'bg-blue-600 hover:bg-blue-700 text-white shadow-md active:scale-95'}`}
-                        >
-                            {copied ? <CheckCircle2 className="w-5 h-5" /> : <Copy className="w-5 h-5" />}
-                            {copied ? 'הועתק!' : 'העתק'}
-                        </button>
-                    </div>
-
-                    <div className="border-t border-slate-100 pt-6">
-                        <h3 className="font-bold text-slate-800 mb-2">חיבור עצמאי לדפי נחיתה</h3>
-                        <p className="text-slate-600 text-sm mb-4">אם בנית דף נחיתה (למשל באלמנטור), הדבק את הכתובת למעלה בפעולת הטופס (Webhook).</p>
-                        
-                        <button 
-                            onClick={() => setShowAdvanced(!showAdvanced)}
-                            className="text-sm font-semibold text-indigo-600 hover:text-indigo-700 underline"
-                        >
-                            {showAdvanced ? "הסתר כלים מתקדמים" : "הצג אינטגרציות נוספות (Meta / APIs)"}
-                        </button>
-                    </div>
-                </div>
-            )}
-
+        <>
             {/* The Grid of Integration Cards */}
-            {(isCampaigner || showAdvanced) && (
-                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-                    {integrations.map((int) => {
-                        const Icon = int.icon;
-                        return (
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+                {integrations.map((int) => {
+                    const Icon = int.icon;
+                    return (
                         <div 
                             key={int.id}
                             onClick={() => setSelectedInt(int)}
@@ -169,8 +114,7 @@ export default function IntegrationsClient({
                         </div>
                     );
                 })}
-                </div>
-            )}
+            </div>
 
             {/* The Modal (Popup) */}
             {selectedInt && (
@@ -238,6 +182,6 @@ export default function IntegrationsClient({
                     </div>
                 </div>
             )}
-        </div>
+        </>
     );
 }

@@ -1,36 +1,122 @@
 # MyLeads AI — Secure AI Platform Architecture
 
 **Engineering case study covering:**
+- Product engineering & workflow design
 - Secure distributed systems
 - Linux-based deployment
 - AI workflows
 - Runtime isolation
 - Production reliability
 
-*Last Engineering Review: March 13, 2026*
+*Last Engineering Review: September 2026*
 
 ---
 
-## 1. System Engineering Overview
+## 1. Project Overview & Product Thesis
 
-MyLeads AI was designed as a production-grade AI platform, with an emphasis on secure architecture, reliability, and runtime behavior. 
+MyLeads AI is a production-oriented AI platform designed with a strict emphasis on secure architecture, reliability, and runtime behavior. However, the system did not begin as an exploration of LLMs or AI technology for its own sake. It originated from a concrete business problem.
 
-The system combines:
-- Backend API services
-- AI inference workflows
-- Event-driven processing
-- Linux container runtime
-- Secure networking boundaries
-- Automated deployment pipelines
+**The Product Thesis:**
+> A small business owner (such as a coach, trainer, or therapist) should not have to manually coordinate repetitive lead-management and administrative workflows that do not require their professional expertise. Furthermore, they should not need to become an automation engineer to run an efficient business.
 
-The architecture follows a **bottom-up engineering approach**: from operating system resources, memory, and processes, up through application services, to cloud infrastructure.
+The project development followed a distinct product-engineering loop:
+**Customer observation → Pain point → Business requirement → Technical requirement → System design → Implementation → Testing → Production operation → Feedback → Iteration**
 
 ---
 
-## 2. High-Level Architecture
+## 2. Customer Discovery & Workflow Analysis
+
+Initial design phases involved hands-on discussions and workflow analysis with a real coach/business owner. The goal was to understand how the business currently operates, identify repetitive manual tasks, map points where information is lost, and translate those operational pain points into strict system requirements.
+
+By analyzing the daily work, it became clear that the business owner was acting as a manual router for data. Automation was introduced to act as an operational layer between customer communication and the business workflow.
+
+---
+
+## 3. Concrete Workflow Case Studies
+
+### 3.1 Case Study 1: Lead Handoff & Conversion Tracking 
+*Status: Partially Implemented / Core Routing Active, Follow-up logic in Roadmap*
+
+This workflow represents the core lead-management flow. It is not simply "WhatsApp automation." It requires persistent lead state, routing logic, asynchronous waiting, and human escalation.
+
+**The Operational Workflow:**
+```text
+Incoming WhatsApp inquiry
+   ↓
+Collect name & city
+   ↓
+Identify appropriate coach based on location
+   ↓
+Notify customer and coach
+   ↓
+Track handoff status
+   ↓
+Follow up after a defined period (e.g., 3 days)
+   ↓
+Collect customer feedback & collect coach feedback
+   ↓
+Compare both states
+   ↓
+Resolve: Closed successfully / Not closed / Contradictory reports → Manual investigation
+
+```
+
+**State Machine Thinking:**
+To engineer this, the workflow was modeled as a persistent business process rather than a sequence of independent, stateless API calls. It naturally behaves as a state machine:
+`New Lead` → `Details Collected` → `Coach Assigned` → `Waiting for Contact` → `Feedback Pending` → `Closed / Manual Review`.
+
+### 3.2 Case Study 2: Post-Session Transcription
+
+*Status: Designed / Historical Prototype*
+
+A secondary workflow was analyzed regarding post-session administrative work. The operational problem: The professional should spend time coaching rather than manually processing recordings, transcripts, summaries, and documents.
+
+**The Operational Workflow:**
 
 ```text
-User / Web Client
+Audio recording from phone
+   ↓
+Upload to cloud storage
+   ↓
+Trigger scheduled processing pipeline
+   ↓
+Transcription (Whisper)
+   ↓
+Structured LLM summarization
+   ↓
+PDF generation
+   ↓
+Delivery to client/coach
+   ↓
+Archive original recording
+   ↓
+Prevent duplicate processing
+
+```
+
+This demonstrated another applied engineering chain: **Operational task → Automation requirement → Processing pipeline → Reliable delivery → Archival & Idempotency**.
+
+---
+
+## 4. Engineering From Business Requirements
+
+The platform's technical architecture is directly derived from the operational requirements discovered during workflow analysis. Technology is applied to resolve mapped friction, not to search for a use case.
+
+| Operational Requirement | Engineering Constraint | Architecture Decision |
+| --- | --- | --- |
+| **External webhook retries** | Protection against duplicate processing | **Idempotency keys** |
+| **Processing can fail after ingestion** | Minimize lead loss under processing failures | **Dead Letter Queue (DLQ) + retry architecture** |
+| **Workflow spans several days** | Long-lived business processes | **Persistent PostgreSQL state + scheduled workers** |
+| **Conflicting reports / unhandled cases** | Human intervention may be required | **Explicit exception states & alerts** |
+| **Sensitive customer data crosses services** | Strict access controls | **Security boundaries / Envoy DLP / Secrets Management** |
+| **Business owner shouldn't manage infra** | Managed, predictable deployment | **Linux + Rootless Podman + CI/CD** |
+
+---
+
+## 5. High-Level System Architecture
+
+```text
+User / WhatsApp Client (Meta API)
  |
 Cloudflare Zero Trust (Network Boundary)
  |
@@ -42,115 +128,60 @@ FastAPI Backend (API Gateway & Core Logic)
 | Asynchronous Workers (Redis/DLQ)  |
 +-----------------------------------+
  |
-Database (PostgreSQL / SQLite)
+Database (PostgreSQL / SQLite) & JSON Profiles
  |
-Future C++ Engine (High-Performance Audio/AI)
+Future C++ Engine (High-Performance Audio/AI) [In Development]
  |
-Linux Runtime (Rootless Podman / Cgroups)
-
-```
-
-### 2.1 Project Repository Structure
-
-The repository is structured as a distributed micro-ecosystem rather than a single monolith:
-
-```text
-MyLeads-AI/
-├── backend/                     # FastAPI core, API routing, Business logic
-├── frontend/                    # Next.js UI, SSR, React
-├── infrastructure/              # CI/CD, Container definitions, Cloudflare routing
-├── security/
-│   └── envoy-wasm-rust/         # Real-time DLP Proxy written in Rust
-└── systems/
-    └── cpp-transcription-engine/# (In-Progress) C++ High-Performance node
-        ├── shared-memory/
-        ├── ipc/
-        ├── benchmarks/
-        └── profiling/
+Linux Runtime (Rootless Podman / Hetzner Bare Metal)
 
 ```
 
 ---
 
-## 3. Production Configuration
+## 6. Security & Runtime Architecture
 
-Secrets and environment variables are strictly decoupled from source control.
-Credentials are managed using:
+Because customer conversations contain sensitive information, security boundaries are treated as a primary product requirement rather than an infrastructure afterthought.
 
-* **AWS Systems Manager (SSM) Parameter Store**
-* **AWS KMS** encryption for runtime decryption
-* **GitHub Actions Secrets** (for CI/CD pipelines)
-
-*No credentials, internal IPs, or environment structures are stored in public repositories. (For full variable mapping, authorized personnel refer to `docs/internal/production-config.md`).*
-
----
-
-## 4. Security & Runtime Architecture
-
-* **WASM DLP Firewall:** A custom Rust-compiled WebAssembly filter runs directly inside the Envoy proxy to redact sensitive credentials in real-time.
-* **Global Exception Handler (The "Airbag"):** Intercepts `500 Internal Server Errors`, prevents Stack Trace leakage to the client, and instantly fires a detailed HTML crash report out-of-band to the `ADMIN_EMAIL`.
-* **Rate Limiting & Anti-Spam:** Cloudflare-aware Rate Limiting (`CF-Connecting-IP`) deployed on Auth endpoints to prevent Global DoS loops on the reverse proxy.
-* **Audit Logging:** Database-backed tracking of sensitive user actions via `audit_service` for non-repudiation.
+* **Cloudflare Zero Trust & Tunnels:** Eliminates direct public SSH exposure (closing inbound port 22 on bare metal) and mandates hardware security keys (FIDO2/WebAuthn) for administrative SSH access.
+* **WASM DLP Filter:** A custom Rust-compiled WebAssembly filter runs directly inside the Envoy proxy to execute high-performance, inline data loss prevention (redacting credentials) without rewriting core application code.
+* **Local Network Binding:** Redis and internal services bind exclusively to local interfaces (`127.0.0.1:6379`) to resolve external vulnerability scans.
+* **Global Exception Handler:** Intercepts `500 Internal Server Errors`, preventing Stack Trace leakage and dispatching HTML crash reports out-of-band.
+* **Audit Logging:** Database-backed tracking providing traceability and accountability for sensitive actions.
 
 ---
 
-## 5. Systems Engineering Roadmap (Performance & Low-Level)
+## 7. Multi-Tenant Architecture & State Management
 
-Future optimization layers target system-level bottlenecks. As AI workloads (like Whisper audio transcription) become heavier, high-level Python processes face memory and CPU limitations.
-
-### High-Performance Processing Engine (In Development)
-
-A planned **C++ processing layer** designed to take over compute-intensive workloads:
-
-* **Linux System Programming:** Direct interaction with kernel primitives.
-* **`mmap` Based Shared Memory:** Preventing redundant memory copies between API gateways and workers.
-* **IPC Communication:** Fast message passing between distributed system components.
-* **Worker Pool Architecture:** Multithreading with Thread Affinity / CPU Pinning.
-* **Memory Optimization:** Custom memory allocators to prevent OS heap fragmentation.
-* **Zero-Copy Data Pipelines:** For real-time audio streaming.
-
-*The goal is to move compute-intensive workloads out of high-level Python services into optimized native components.*
+* **Dynamic RAG & Profile Loader:** An asynchronous profile loader injects tenant-specific business context, catalogs, and privacy guardrails into Gemini Flash. It features a silent fallback mechanism for missing files.
+* **Database Migrations:** Managed via **Alembic**. `alembic check` is enforced in CI/CD gating to prevent production `CrashLoopBackOff` due to schema mismatches.
+* **Transaction Safety:** Application-level state handling mitigates SQLAlchemy object-detachment issues by caching system prompts before transaction commits, ensuring stable state transitions for webhooks.
 
 ---
 
-## 6. Database Schema & State Management
+## 8. Deployment, CI/CD & Reliability
 
-Database changes are strictly managed via **Alembic Migrations**. In the CI/CD pipeline, `alembic check` is executed as a strict gating mechanism to prevent `CrashLoopBackOff` in production caused by unsynced database schemas.
+The platform was initially developed and deployed on AWS before evolving toward a more cost-efficient bare-metal deployment model on Hetzner.
 
-**Key Architectural State Tables:**
+Current production-oriented deployment uses **GitHub Actions → AWS ECR → SSH Tunnel → Podman Systemd** on a Hetzner bare-metal server.
 
-* **`leads`:** Inbound targets. Protected by `idempotency_key` to silently absorb duplicate requests and prevent Retry Storms.
-* **`webhook_dlq` (Dead Letter Queue):** Stores failed incoming webhooks to ensure 0% data loss during internal API outages or transient network failures.
-* **`sessions`:** Stores metadata for uploaded audio files transcribed via local models.
-
----
-
-## 7. Deployment, CI/CD & Reliability
-
-The system uses a Zero-Downtime update mechanism via **GitHub Actions -> SSH Tunnel -> AWS ECR -> Podman Systemd**.
-
-### Out-of-Band Management (Unified CLI)
-
-For maximum security, administrative mutations (e.g., approving agency partners) are strictly disabled in the web UI. They are executed via a unified CLI script (`manage_cli.py`) inside the isolated Linux container runtime.
-
-```bash
-# View system stats and memory usage
-podman exec -it leadflow-backend python manage_cli.py stats
-
-# Agency / Platform Management
-podman exec -it leadflow-backend python manage_cli.py assign-client --client "coach@gym.com"
-
-```
-
-### Graceful Shutdown
-
-The application lifecycle binds to `SIGTERM` signals, ensuring active database transactions and AI inferences finish cleanly before the Linux container scheduler drops the process.
+* **Out-of-Band Management (`manage_cli.py`):** Administrative mutations are restricted from the web UI and executed through an isolated container CLI script.
+* **Graceful Shutdown:** Services handle `SIGTERM` signals to allow active database transactions and in-flight processing to complete safely before container termination.
 
 ---
 
-## 8. QA Testing Architecture
+## 9. Systems Engineering Roadmap (Performance & Low-Level)
 
-The testing suite has been modularized for faster execution and better CI/CD integration, ensuring resilience before deployment.
+### High-Performance Processing Engine [In Development]
+
+For selected CPU- and memory-intensive processing paths, a native C++ layer is being investigated to offload tasks:
+
+* Linux systems programming using primitives such as `mmap`, IPC, process/thread management, and CPU affinity.
+* Memory-allocation strategies for sustained high-throughput workloads.
+* Zero-copy audio streaming pipelines to eliminate memory copy overhead between the API gateway and workers.
+
+---
+
+## 10. QA Testing Architecture
 
 ```bash
 # 1. Internal Logic & Security Tests: 
@@ -165,21 +196,53 @@ python3 tests/qa_micro.py --prod
 # 4. AI Agent Function Calling (Direct Engine QA): 
 python3 tests/qa_agents.py --api-key="[INJECTED_AT_RUNTIME]"
 
+```
 
-last update:
-Here is a summary of what we have accomplished so far and what remains on our roadmap:
+* **E2E Webhook Integration:** Simulated inbound customer messages validate proper tenant-specific RAG replies, routing logic, and state transitions via Envoy.
 
-### 1. What We Have Done (מה שעשינו עד כה)
+---
 
-* **Infrastructure & Security (תשתית ואבטחה):** Configured the production Hetzner server (`2.28.42.52`), managed containers via Podman/Docker Compose, set up Envoy as an API gateway, and secured Redis locally (`127.0.0.1:6379`) to resolve external vulnerability scans (סריקות אבטחה).
-* **Multi-Tenant Data Architecture (ארכיטקטורת נתונים מרובת משתמשים):** Created structured JSON business profiles (stored under `/app/data/profiles/` like `sample_tenant.json`) linked through the `User` model, including Meta WhatsApp configuration fields (`whatsapp_business_account_id`, etc.).
-* **Dynamic RAG & Profile Loader (טעינת פרופילים דינמית):** Implemented an asynchronous profile loader (`src/services/profile_loader.py`) with silent fallback (ברירת מחדל שקטה) handling for missing configuration files.
-* **WhatsApp Webhook & AI Integration (אינטגרציית וואטסאפ ו-AI):** Upgraded the WhatsApp webhook router (`src/routers/webhooks/whatsapp.py`) to inject dynamic RAG context, catalogs, and privacy guardrails (הגנות פרטיות) directly into Gemini Flash. Fixed a SQLAlchemy instance detachment bug (ניתוק אובייקט מהזיכרון) by caching the system prompt before committing database transactions.
-* **End-to-End Testing (בדיקות אינטגרציה):** Successfully tested simulated inbound customer messages via Envoy, verifying that the AI replies correctly using tenant-specific pricing, services, and location data.
+## 11. Engineering Mindset
 
-### 2. What Remains (מה שנשאר לנו)
+The recurring design principle governing this repository is:
+**Observe → Model → Specify → Build → Validate → Operate → Iterate**
 
-* **Frontend Tenant Settings UI (ממשק ניהול פרופילים בדשבורד):** Polishing the Next.js frontend dashboard, settings forms, and chat simulator so tenants can easily manage and update their business parameters.
-* **Production Messaging & Channels (מעבר לוואטסאפ אמיתי):** Transitioning out of mock mode by configuring live Meta WhatsApp Business API tokens and webhook verification.
-* **Billing & Subscriptions (מערכת חיוב ומכסות):** Integrating payment gateways (such as Meshulam) and enforcing automated message limits for Starter versus Pro plan tiers.
-* **Automated Data Retention Tasks (אוטומציית ניקוי מידע):** Expanding Celery background workers to strictly enforce the 24-hour data deletion guardrail (מחיקת מידע אוטומטית אחרי 24 שעות).
+Start with the operational problem, model the workflow, identify failure modes, derive technical requirements, and *then* select the implementation.
+
+---
+
+## 12. Applied Engineering Perspective
+
+This project demonstrates the ability to move fluidly between business context and technical implementation. Core engineering behaviors exhibited in this architecture include:
+
+* **Workflow analysis & Requirements translation:** Mapping human workflows to technical state machines.
+* **System decomposition & Event-driven integration:** Connecting external APIs (WhatsApp) to resilient internal backends.
+* **Stateful business processes:** Handling exceptions, asynchronous delays, and human escalation paths.
+* **Production & Reliability engineering:** Building for idempotency, utilizing DLQs, and ensuring graceful degradation.
+* **Security engineering:** Designing robust data boundaries, encryption, and operational access controls.
+
+---
+
+## 13. Current Status
+
+### Implemented
+
+* FastAPI core backend, routing, structured database models, and Alembic migrations.
+* Dynamic RAG profile loader and Gemini Flash WhatsApp webhook integration.
+* Secure infrastructure deployment on Hetzner with rootless Podman and Envoy proxy.
+* Cloudflare Zero Trust networking, Tunnels, and FIDO2-authenticated SSH access.
+* Rust/WASM DLP filtering and global exception handling.
+* Modularized QA testing suites.
+
+### In Progress [In Development]
+
+* Native C++ high-performance processing engine (`cpp-transcription-engine`), shared-memory structures, and IPC mechanisms.
+
+### Designed / Roadmap
+
+* Formal state-machine engine for automated multi-day lead follow-up and verification.
+* Frontend tenant settings UI dashboard and chat simulator.
+* Production Meta WhatsApp Business API token integration (currently utilizing mock/sandbox testing).
+* Billing and subscription plan enforcement.
+* Production audio transcription pipeline.
+* Automated Celery background workers for 24-hour privacy compliance data deletion.
