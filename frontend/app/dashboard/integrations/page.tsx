@@ -1,4 +1,3 @@
-// frontend/app/dashboard/integrations/page.tsx
 import { cookies } from "next/headers";
 import { redirect } from "next/navigation";
 import IntegrationsClient from "./integrations-client";
@@ -34,8 +33,6 @@ export default async function IntegrationsPage() {
     const webhookUrl = `https://my-leads.app/api/v1/leads/webhook/${userData.id}`;
     const isCampaigner = userData.role === "PARTNER" || userData.role === "ADMIN";
 
-    // Pass the user context down to the client component
     return (
-
-    );
+);
 }

@@ -1,4 +1,3 @@
-// frontend/app/dashboard/integrations/integrations-client.tsx
 "use client";
 
 import toast from 'react-hot-toast';
@@ -7,7 +6,6 @@ import {
 LayoutTemplate, Megaphone, Camera, Zap, Settings, X, Copy, CheckCircle2, Share2, Globe, Link2
 } from "lucide-react";
 
-// Define the structure for each integration provider
 interface Integration {
 id: string;
 name: string;
@@ -19,11 +17,15 @@ description: string;
 instructions: string;
 }
 
-export default function IntegrationsClient({ webhookUrl, isCampaigner }: { webhookUrl: string, isCampaigner: boolean }) {
+export default function IntegrationsClient({
+webhookUrl,
+isCampaigner
+}: {
+webhookUrl: string;
+isCampaigner: boolean;
+}) {
 const [selectedInt, setSelectedInt] = useState(null);
 const [copied, setCopied] = useState(false);
-
-// Toggle for business owners to reveal advanced features (כלים מתקדמים)
 const [showAdvanced, setShowAdvanced] = useState(false);
 
 const integrations: Integration[] = [
@@ -79,7 +81,6 @@ const integrations: Integration[] = [
     }
 ];
 
-// Handle copying the webhook to the clipboard (לוח העתקה)
 const handleCopy = () => {
     navigator.clipboard.writeText(webhookUrl);
     setCopied(true);
@@ -95,13 +96,11 @@ const handleCopy = () => {
 
 return (
     <>
-        {/* Header Section */}
 {isCampaigner ? "מרכז אינטגרציות למשווקים" : "חיבור מקורות פרסום ודפי נחיתה"}
 {isCampaigner
 ? "ניהול חיבורי קמפיינים, Webhooks וכלים מקצועיים עבור הלקוחות שלך."
 : "הגדר את מקורות הלידים כדי שהבוט יוכל להתחיל לפעול באופן אוטומטי."}
 
-{/* Simplified layout for standard clients (business owners) */}
 {!isCampaigner && (
 
 יש לך קמפיינר או בונה אתרים?
@@ -121,7 +120,6 @@ className="text-sm font-semibold text-indigo-600 hover:text-indigo-700 underline
 {showAdvanced ? "הסתר כלים מתקדמים" : "הצג אינטגרציות נוספות (Meta / APIs)"}
 )}
 
-{/* The Grid of Integration Cards - Rendered for campaigners or if client opts in */}
 {(isCampaigner || showAdvanced) && (
 
 {integrations.map((int) => {
@@ -145,16 +143,11 @@ className="bg-white p-6 rounded-2xl border border-slate-200 hover:border-blue-40
 
 )}
 
-{/* The Modal (Popup) */}
 {selectedInt && (
-
-{/* Modal Header */}
 
 חיבור {selectedInt.name}
 setSelectedInt(null)}
 className="text-slate-400 hover:text-slate-700 bg-slate-100 hover:bg-slate-200 p-2 rounded-full transition-colors"
-
-{/* Modal Body */}
 
 איך מבצעים את החיבור?
 {selectedInt.instructions}
@@ -167,8 +160,6 @@ className="text-slate-400 hover:text-slate-700 bg-slate-100 hover:bg-slate-200 p
 {copied ? 'הועתק!' : 'העתק'}
 
 אל תשתף את הכתובת הזו עם מי שאינו מורשה.
-
-{/* Modal Footer */}
 
 setSelectedInt(null)}
 className="bg-slate-800 text-white font-bold px-6 py-2.5 rounded-xl hover:bg-slate-700 transition-colors"
