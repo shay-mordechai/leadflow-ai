@@ -69,20 +69,20 @@ jobs:
 
       - name: Build and Push Backend Image
         run: |
-          docker build -t \({{ env.REGISTRY }}/\){{ env.IMAGE_NAME }}/leadflow-backend:latest .
-          docker push \({{ env.REGISTRY }}/\){{ env.IMAGE_NAME }}/leadflow-backend:latest
+            docker build -t ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}/leadflow-backend:latest .
+            docker push ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}/leadflow-backend:latest
 
       - name: Build and Push Frontend Image
         working-directory: ./frontend
         run: |
-          docker build -t \({{ env.REGISTRY }}/\){{ env.IMAGE_NAME }}/leadflow-frontend:latest .
-          docker push \({{ env.REGISTRY }}/\){{ env.IMAGE_NAME }}/leadflow-frontend:latest
+            docker build -t ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}/leadflow-frontend:latest .
+            docker push ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}/leadflow-frontend:latest
 
       - name: Build and Push Data Gate Image
         working-directory: ./data-gate
         run: |
-          docker build -t \({{ env.REGISTRY }}/\){{ env.IMAGE_NAME }}/leadflow-data-gate:latest .
-          docker push \({{ env.REGISTRY }}/\){{ env.IMAGE_NAME }}/leadflow-data-gate:latest
+            docker build -t ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}/leadflow-data-gate:latest .
+            docker push ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}/leadflow-data-gate:latest
 
   deploy:
     needs: build-and-push
