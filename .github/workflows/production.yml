@@ -56,8 +56,6 @@ jobs:
 
       - name: Build WASM Filter
         working-directory: ./data-gate
-        # We explicitly tell the linker to allow undefined symbols
-        # because Envoy will provide these proxy functions at runtime.
         env:
           RUSTFLAGS: "-C link-arg=--allow-undefined"
         run: cargo build --target wasm32-unknown-unknown --release
@@ -71,23 +69,20 @@ jobs:
 
       - name: Build and Push Backend Image
         run: |
-          IMAGE_URL="\({{ env.REGISTRY }}/\){{ env.IMAGE_NAME }}/leadflow-backend:latest"
-          docker build -t "$IMAGE_URL" .
-          docker push "$IMAGE_URL"
+          docker build -t \({{ env.REGISTRY }}/\){{ env.IMAGE_NAME }}/leadflow-backend:latest .
+          docker push \({{ env.REGISTRY }}/\){{ env.IMAGE_NAME }}/leadflow-backend:latest
 
       - name: Build and Push Frontend Image
         working-directory: ./frontend
         run: |
-          IMAGE_URL="\({{ env.REGISTRY }}/\){{ env.IMAGE_NAME }}/leadflow-frontend:latest"
-          docker build -t "$IMAGE_URL" .
-          docker push "$IMAGE_URL"
+          docker build -t \({{ env.REGISTRY }}/\){{ env.IMAGE_NAME }}/leadflow-frontend:latest .
+          docker push \({{ env.REGISTRY }}/\){{ env.IMAGE_NAME }}/leadflow-frontend:latest
 
       - name: Build and Push Data Gate Image
         working-directory: ./data-gate
         run: |
-          IMAGE_URL="\({{ env.REGISTRY }}/\){{ env.IMAGE_NAME }}/leadflow-data-gate:latest"
-          docker build -t "$IMAGE_URL" .
-          docker push "$IMAGE_URL"
+          docker build -t \({{ env.REGISTRY }}/\){{ env.IMAGE_NAME }}/leadflow-data-gate:latest .
+          docker push \({{ env.REGISTRY }}/\){{ env.IMAGE_NAME }}/leadflow-data-gate:latest
 
   deploy:
     needs: build-and-push
@@ -95,8 +90,6 @@ jobs:
     steps:
       - name: Trigger Webhook Deployment
         run: |
-          # Sending a POST request to the Cloudflare Tunnel endpoint
           curl -f -X POST "https://deploy.my-leads.app/hooks/deploy-leadflow" \
                -H "X-Deploy-Token: ${{ secrets.WEBHOOK_DEPLOY_TOKEN }}"
-
-          echo "✅ Webhook trigger sent successfully! The server is now pulling the latest images."
+          echo "✅ Webhook trigger sent successfully!"
