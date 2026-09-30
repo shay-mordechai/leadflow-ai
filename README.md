@@ -162,8 +162,9 @@ Because customer conversations contain sensitive information, security boundarie
 
 The platform was initially developed and deployed on AWS before evolving toward a more cost-efficient bare-metal deployment model on Hetzner.
 
-Current production-oriented deployment uses **GitHub Actions → AWS ECR → SSH Tunnel → Podman Systemd** on a Hetzner bare-metal server.
+Current production-oriented deployment utilizes a **Zero-Trust Pull-Based CD** architecture: **GitHub Actions (CI/Build) → GHCR → Secure Local Webhook (CD Pull) → Podman Systemd** on a Hetzner bare-metal server.
 
+* **RCE Prevention & Zero-Trust Deployments:** To completely eliminate Remote Code Execution (RCE) risks associated with Self-Hosted Runners or exposed SSH ports, the production server accepts no direct pipeline commands. Deployments are triggered via a lightweight, cryptographically signed webhook (HMAC). Upon validation, the server executes a strictly hardcoded local script (`podman compose pull && podman compose up -d`), effectively air-gapping the runtime from remote CI/CD vulnerabilities.
 * **Out-of-Band Management (`manage_cli.py`):** Administrative mutations are restricted from the web UI and executed through an isolated container CLI script.
 * **Graceful Shutdown:** Services handle `SIGTERM` signals to allow active database transactions and in-flight processing to complete safely before container termination.
 

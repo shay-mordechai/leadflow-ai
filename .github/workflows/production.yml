@@ -71,21 +71,21 @@ jobs:
 
       - name: Build and Push Backend Image
         run: |
-          IMAGE_URL="${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}/leadflow-backend:latest"
+          IMAGE_URL="\({{ env.REGISTRY }}/\){{ env.IMAGE_NAME }}/leadflow-backend:latest"
           docker build -t "$IMAGE_URL" .
           docker push "$IMAGE_URL"
 
       - name: Build and Push Frontend Image
         working-directory: ./frontend
         run: |
-          IMAGE_URL="${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}/leadflow-frontend:latest"
+          IMAGE_URL="\({{ env.REGISTRY }}/\){{ env.IMAGE_NAME }}/leadflow-frontend:latest"
           docker build -t "$IMAGE_URL" .
           docker push "$IMAGE_URL"
 
       - name: Build and Push Data Gate Image
         working-directory: ./data-gate
         run: |
-          IMAGE_URL="${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}/leadflow-data-gate:latest"
+          IMAGE_URL="\({{ env.REGISTRY }}/\){{ env.IMAGE_NAME }}/leadflow-data-gate:latest"
           docker build -t "$IMAGE_URL" .
           docker push "$IMAGE_URL"
 
@@ -93,31 +93,10 @@ jobs:
     needs: build-and-push
     runs-on: ubuntu-latest
     steps:
-      - name: Deploy to Hetzner CX23 via SSH
-        uses: appleboy/ssh-action@v1.0.3
-        with:
-          host: ${{ secrets.HETZNER_HOST }}
-          username: deployer
-          key: ${{ secrets.HETZNER_DEPLOY_KEY }}
-          script: |
-            set -e
-            mkdir -p ~/app/data ~/app/storage
-            
-            cat << 'EOF' > ~/app/.env.production
-            APP_ENV=production
-            DATABASE_URL=sqlite:////app/data/leads.db
-            REDIS_URL=redis://127.0.0.1:6379/0
-            SECRET_KEY=${{ secrets.PRODUCTION_SECRET_KEY }}
-            ENABLE_AWS_SSM=false
-            BASE_URL=${{ secrets.PRODUCTION_BASE_URL }}
-            ADMIN_EMAIL=${{ secrets.PRODUCTION_ADMIN_EMAIL }}
-            EOF
+      - name: Trigger Webhook Deployment
+        run: |
+          # Sending a POST request to the Cloudflare Tunnel endpoint
+          curl -f -X POST "https://deploy.my-leads.app/hooks/deploy-leadflow" \
+               -H "X-Deploy-Token: ${{ secrets.WEBHOOK_DEPLOY_TOKEN }}"
 
-            chmod 600 ~/app/.env.production
-
-            cd ~/app
-            git pull origin main
-            podman compose pull
-            podman compose up -d --remove-orphans
-            podman image prune -a -f
-            echo "✅ Deployment completed successfully!"
+          echo "✅ Webhook trigger sent successfully! The server is now pulling the latest images."
