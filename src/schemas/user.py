@@ -110,3 +110,20 @@ class AISettingsSchema(BaseModel):
     ai_agent: Optional[AIAgentSchema] = None
 
     model_config = ConfigDict(from_attributes=True)
+
+class ForgotPasswordRequest(BaseModel):
+    email: EmailStr
+
+class ResetPasswordRequest(BaseModel):
+    email: EmailStr
+    otp_code: str = Field(..., min_length=6, max_length=6)
+    new_password: str = Field(..., min_length=12, description="New strong password required")
+
+    @field_validator("new_password")
+    @classmethod
+    def validate_password_strength(cls, v):
+        if len(v) < 12: raise ValueError("Password must be at least 12 characters long")
+        if not re.search(r"[A-Z]", v): raise ValueError("Password must contain at least one uppercase letter")
+        if not re.search(r"[a-z]", v): raise ValueError("Password must contain at least one lowercase letter")
+        if not re.search(r"\d", v): raise ValueError("Password must contain at least one digit")
+        return v

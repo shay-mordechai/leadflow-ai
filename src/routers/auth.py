@@ -161,3 +161,60 @@ async def verify_otp(request: Request, data: VerifyOTP, db: Session = Depends(ge
     token = create_access_token({"sub": str(user.id), "email": user.email})
     
     return {"access_token": token, "token_type": "bearer"}
+
+@router.post("/forgot-password")
+@limiter.limit("3/minute") # SECURITY: Prevent spamming reset emails
+async def forgot_password(request: Request, data: ForgotPasswordRequest, bg_tasks: BackgroundTasks, db: Session = Depends(get_db)):
+    """
+    Initiates password reset flow. Generates a secure OTP and emails it.
+    Prevents user enumeration by returning a generic success message.
+    """
+    email = data.email.lower()
+    user = db.query(User).filter(User.email == email).first()
+
+    # SECURITY: Even if the user doesn't exist, return a generic message to prevent account enumeration (מניעת גילוי משתמשים)
+    if not user:
+        return {"message": "If an account with that email exists, a password reset code has been sent."}
+
+    # Generate 6-digit secure OTP
+    otp = ''.join(secrets.choice("0123456789") for _ in range(6))
+    otp_expires = datetime.now(timezone.utc) + timedelta(minutes=OTP_EXPIRATION_MINUTES)
+
+    user.otp_code = otp  # Automatically encrypted via model property setter
+    user.otp_expires_at = otp_expires
+    db.commit()
+
+    logger.info(f"Password reset requested for user: {email}")
+    bg_tasks.add_task(send_password_reset_email, email, otp)
+
+    return {"message": "If an account with that email exists, a password reset code has been sent."}
+
+@router.post("/reset-password")
+@limiter.limit("5/minute") # SECURITY: Prevent brute-forcing the 6-digit reset code
+async def reset_password(request: Request, data: ResetPasswordRequest, db: Session = Depends(get_db)):
+    """
+    Verifies the reset OTP and updates the user's password securely.
+    """
+    email = data.email.lower()
+    user = db.query(User).filter(User.email == email).first()
+
+    if not user or not user.otp_code or user.otp_code != data.otp_code:
+        raise HTTPException(status_code=400, detail="Invalid or expired reset code")
+
+    # Check Expiration
+    now_utc = datetime.now(timezone.utc)
+    if user.otp_expires_at and user.otp_expires_at.replace(tzinfo=timezone.utc) < now_utc:
+        user.otp_code = None
+        db.commit()
+        raise HTTPException(status_code=400, detail="Reset code has expired")
+
+    # Update password with secure hashing (BCrypt + SHA-256 pre-hash)
+    user.hashed_password = get_hash(data.new_password)
+
+    # Clear OTP to prevent replay attacks
+    user.otp_code = None
+    user.otp_expires_at = None
+    db.commit()
+
+    logger.info(f"Password successfully reset for user: {email}")
+    return {"message": "Password updated successfully. You can now log in."}

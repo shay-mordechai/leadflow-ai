@@ -44,6 +44,35 @@ class EmailService:
             logger.error(f"❌ Failed to configure SMTP: {e}")
             return None
 
+    async def send_password_reset_email(self, to_email: EmailStr, otp_code: str):
+        if not self.conf:
+            logger.info(f"🛑 [MOCK RESET EMAIL] To: {to_email} | Code: {otp_code}")
+            return
+
+        html_content = f"""
+        LeadFlow AI Password Reset
+        Hello,
+
+        We received a request to reset your password. Use the following code to proceed:
+
+        {otp_code}
+
+        This code is valid for 5 minutes. If you didn't request this, please ignore this email.
+
+            """
+
+            try:
+                message = MessageSchema(
+                    subject="Password Reset Code",
+                    recipients=[to_email],
+                    body=html_content,
+                    subtype=MessageType.html
+                )
+                fm = FastMail(self.conf)
+                await fm.send_message(message)
+            except Exception as e:
+                logger.error(f"❌ Failed to send password reset email: {e}")
+
     async def send_error_alert_email(self, error_summary: str, stack_trace: str, request_info: Dict):
         """
         NEW: Sends an emergency crash report to the System Administrator.
@@ -185,3 +214,6 @@ email_service = EmailService()
 
 async def send_otp_email(to_email: str, otp_code: str):
     await email_service.send_otp_email(to_email, otp_code)
+
+async def send_password_reset_email(to_email: str, otp_code: str):
+    await email_service.send_password_reset_email(to_email, otp_code)
