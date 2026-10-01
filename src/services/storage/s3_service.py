@@ -1,53 +1,49 @@
-# src/services/storage/s3_service.py
-import boto3
+import os
+import shutil
 import logging
-from botocore.exceptions import ClientError
-from src.config import settings
 from typing import Optional
+from src.config import settings
 
-logger = logging.getLogger("S3Service")
+logger = logging.getLogger("LocalStorageService")
 
-class S3Service:
+class LocalStorageService:
     """
-    Handles secure file operations with Amazon S3.
-    Uses IAM Roles in production or environment keys in dev.
+    Handles local file storage on bare-metal Hetzner server.
+    Replaces AWS S3 to eliminate cloud infrastructure costs.
     """
     def __init__(self):
-        self.bucket_name = getattr(settings, 'S3_BUCKET_NAME', 'myleads-kyc-storage')
-        self.s3_client = boto3.client('s3', region_name=getattr(settings, 'AWS_REGION', 'eu-north-1'))
+        # Base directory inside container
+        self.base_dir = getattr(settings, 'STORAGE_BASE_PATH', '/app/storage')
+        self.base_url = getattr(settings, 'BASE_URL', 'https://my-leads.app').rstrip('/')
+        os.makedirs(self.base_dir, exist_ok=True)
 
-    def upload_fileobj(self, file_obj, object_name: str, content_type: str) -> bool:
+    def upload_fileobj(self, file_obj, object_name: str, content_type: Optional[str] = None) -> bool:
         """
-        Uploads a file object (from FastAPI) directly to S3.
+        Saves an uploaded file object directly to the local filesystem.
         """
         try:
-            logger.info(f"📤 Uploading to S3: {object_name} in bucket {self.bucket_name}")
-            self.s3_client.upload_fileobj(
-                file_obj,
-                self.bucket_name,
-                object_name,
-                ExtraArgs={'ContentType': content_type}
-            )
+            target_path = os.path.join(self.base_dir, object_name)
+            os.makedirs(os.path.dirname(target_path), exist_ok=True)
+            
+            # Ensure read pointer is at start
+            if hasattr(file_obj, 'seek'):
+                file_obj.seek(0)
+
+            with open(target_path, "wb") as destination:
+                shutil.copyfileobj(file_obj, destination)
+
+            logger.info(f"💾 File stored locally: {target_path}")
             return True
-        except ClientError as e:
-            logger.error(f"❌ S3 Upload Error: {e}")
+        except Exception as e:
+            logger.error(f"❌ Local Storage Upload Error: {e}")
             return False
 
     def generate_presigned_url(self, object_name: str, expiration: int = 3600) -> Optional[str]:
         """
-        Generates a temporary, secure URL for viewing a private file.
-        Default expiration: 1 hour.
+        Returns the public URL for the stored file via our protected gateway.
         """
-        try:
-            response = self.s3_client.generate_presigned_url(
-                'get_object',
-                Params={'Bucket': self.bucket_name, 'Key': object_name},
-                ExpiresIn=expiration
-            )
-            return response
-        except ClientError as e:
-            logger.error(f"❌ Failed to generate presigned URL: {e}")
-            return None
+        clean_object_name = object_name.lstrip('/')
+        return f"{self.base_url}/api/v1/storage/{clean_object_name}"
 
-# Singleton instance
-s3_service = S3Service()
+# Drop-in singleton replacement (backward compatible with existing imports)
+s3_service = LocalStorageService()

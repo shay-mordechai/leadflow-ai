@@ -34,6 +34,7 @@ from src.routers import partners, system
 from src.routers.billing import checkout, invoices
 from src.routers.webhooks import twilio, meshulam, whatsapp, marketing
 from src.routers import provisioning
+from src.routers import storage
 
 # --- Logging Setup (Global JSON Structured Logging) ---
 from pythonjsonlogger import jsonlogger
@@ -186,6 +187,7 @@ app.include_router(meshulam.router, prefix="/webhooks/meshulam", tags=["Webhooks
 app.include_router(marketing.router)
 
 app.include_router(system.router)
+app.include_router(storage.router)
 
 # ==============================================================================
 # 🏥 SYSTEM HEALTH CHECK
