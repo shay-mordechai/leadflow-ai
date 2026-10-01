@@ -2,6 +2,7 @@
 import { cookies } from "next/headers";
 import { redirect } from "next/navigation";
 import { Users, Phone, Calendar, CheckCircle2, Clock, AlertCircle, MessageSquare } from "lucide-react";
+import LeadsTable from "./leads-table";
 
 async function getLeads() {
     const cookieStore = await cookies();
@@ -123,4 +124,3 @@ export default async function LeadsPage() {
             </div>
         </div>
     );
-}
