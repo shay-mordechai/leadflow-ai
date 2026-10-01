@@ -50,7 +50,7 @@ export async function loginStepOneAction(prevState: ActionState, formData: FormD
   const password = formData.get('password') as string;
 
   const params = new URLSearchParams();
-  params.append('username', email); 
+  params.append('username', email);
   params.append('password', password);
 
   try {
@@ -117,7 +117,7 @@ export async function verifyOtpAction(prevState: ActionState, formData: FormData
     (await cookies()).set('access_token', tokenData.access_token, {
       httpOnly: true, // SECURE: Prevents JavaScript XSS token theft!
       secure: process.env.NODE_ENV === 'production',
-      maxAge: maxAge, 
+      maxAge: maxAge,
       path: '/',
       sameSite: 'lax',
     });
@@ -126,5 +126,57 @@ export async function verifyOtpAction(prevState: ActionState, formData: FormData
   } catch (error) {
     console.error("Auth Action Error (OTP):", error);
     return { error: 'אימות נכשל בשל שגיאת רשת. אנא נסה שוב.' };
+  }
+}
+
+export async function forgotPasswordAction(prevState: ActionState, formData: FormData): Promise {
+  const email = formData.get('email') as string;
+
+  try {
+    const res = await fetch(`${INTERNAL_API_URL}/api/v1/auth/forgot-password`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ email }),
+    });
+
+    const data = await res.json();
+
+    if (!res.ok) {
+      return { error: data.detail || 'Failed to send password reset request (שגיאה בשליחת בקשת איפוס).' };
+    }
+
+    return { success: true, data };
+  } catch (error) {
+    console.error("Auth Action Error (Forgot Password):", error);
+    return { error: 'Network communication error (שגיאת תקשורת עם השרת).' };
+  }
+}
+
+export async function resetPasswordAction(prevState: ActionState, formData: FormData): Promise {
+  const email = formData.get('email') as string;
+  const otp_code = formData.get('otp_code') as string;
+  const new_password = formData.get('new_password') as string;
+
+  try {
+    const res = await fetch(`${INTERNAL_API_URL}/api/v1/auth/reset-password`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ email, otp_code, new_password }),
+    });
+
+    const data = await res.json();
+
+    if (!res.ok) {
+      let errorMessage = data.detail;
+      if (Array.isArray(errorMessage)) {
+        errorMessage = errorMessage.map((err: any) => err.msg).join(', ');
+      }
+      return { error: errorMessage || 'Password reset failed (איפוס הסיסמה נכשל).' };
+    }
+
+    return { success: true, data };
+  } catch (error) {
+    console.error("Auth Action Error (Reset Password):", error);
+    return { error: 'Network communication error (שגיאת תקשורת עם השרת).' };
   }
 }
