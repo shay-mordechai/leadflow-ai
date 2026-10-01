@@ -6,7 +6,7 @@ import { Search, Phone, Mail, FileText, ChevronDown, Copy } from "lucide-react";
 import toast from "react-hot-toast"; // Added toast import for UX improvements
 
 interface Lead {
-    id: string;
+    id: number; // Backend returns numeric ID
     name: string;
     phone_number: string;
     email?: string;
@@ -18,7 +18,7 @@ interface Lead {
 
 export default function LeadsTable({ initialLeads }: { initialLeads: Lead[] }) {
     const [searchTerm, setSearchTerm] = useState("");
-    const [expandedLeadId, setExpandedLeadId] = useState<string | null>(null);
+    const [expandedLeadId, setExpandedLeadId] = useState<number | null>(null); // Match ID type (התאמת סוג המזהה)
 
     // Simple client-side search filtering
     const filteredLeads = initialLeads.filter((lead) =>
@@ -26,7 +26,7 @@ export default function LeadsTable({ initialLeads }: { initialLeads: Lead[] }) {
         lead.phone_number.includes(searchTerm)
     );
 
-    const toggleExpand = (id: string) => {
+    const toggleExpand = (id: number) => {
         setExpandedLeadId(expandedLeadId === id ? null : id);
     };
 
