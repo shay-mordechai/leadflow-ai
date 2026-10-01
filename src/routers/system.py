@@ -1,27 +1,57 @@
 # src/routers/system.py
-from fastapi import APIRouter, HTTPException, Header, BackgroundTasks
-from src.tasks.backup_tasks import backup_database_to_s3
 import logging
+from fastapi import APIRouter, Depends, status
+from sqlalchemy.orm import Session
+from sqlalchemy import text
+from src.database.session import get_db
+from src.config import settings
+import redis
 
-router = APIRouter(prefix="/api/v1/system", tags=["System"])
-logger = logging.getLogger("SystemRouter")
+router = APIRouter(prefix="/api/v1/system", tags=["System & Health"])
+logger = logging.getLogger("SystemHealth")
 
-# Security Secret (Make sure this matches what you put in the AWS EventBridge headers!)
-CRON_SECRET = "my_super_secret_cron_key_2026" 
-
-@router.post("/backup")
-async def trigger_s3_backup(
-    background_tasks: BackgroundTasks,
-    x_cron_secret: str = Header(None)
-):
+@router.get("/health")
+async def health_check(db: Session = Depends(get_db)):
     """
-    Secure Webhook triggered by AWS EventBridge every night.
+    Comprehensive system health check.
+    Verifies Database (PostgreSQL/SQLite), Redis broker, and storage mount.
     """
-    if x_cron_secret != CRON_SECRET:
-        logger.warning("Unauthorized backup attempt detected.")
-        raise HTTPException(status_code=401, detail="Unauthorized")
-
-    # Send the backup task to the background so AWS gets an immediate 200 OK response
-    background_tasks.add_task(backup_database_to_s3)
+    health_status = {
+        "status": "healthy",
+        "database": "unhealthy",
+        "redis": "unhealthy",
+        "storage": "unhealthy"
+    }
     
-    return {"status": "success", "message": "Backup task triggered in background."}
+    # 1. Check Database connection
+    try:
+        db.execute(text("SELECT 1"))
+        health_status["database"] = "healthy"
+    except Exception as e:
+        logger.error(f"Health check failed [Database]: {e}")
+        health_status["status"] = "degraded"
+
+    # 2. Check Redis connection
+    try:
+        r = redis.from_url(settings.REDIS_URL)
+        r.ping()
+        health_status["redis"] = "healthy"
+    except Exception as e:
+        logger.error(f"Health check failed [Redis]: {e}")
+        health_status["status"] = "degraded"
+
+    # 3. Check Local Storage path writability
+    try:
+        storage_path = getattr(settings, 'STORAGE_BASE_PATH', '/app/storage')
+        if os.access(storage_path, os.W_OK):
+            health_status["storage"] = "healthy"
+        else:
+            health_status["status"] = "degraded"
+    except Exception as e:
+        logger.error(f"Health check failed [Storage]: {e}")
+        health_status["status"] = "degraded"
+
+    if health_status["status"] != "healthy":
+        return status.HTTP_503_SERVICE_UNAVAILABLE, health_status
+
+    return health_status

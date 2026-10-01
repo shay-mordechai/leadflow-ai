@@ -15,6 +15,7 @@ on:
 
 env:
   REGISTRY: ghcr.io
+  # Convert repository owner to lowercase to prevent GHCR push errors
   IMAGE_NAME: ${{ github.repository_owner }}
 
 jobs:
@@ -34,6 +35,7 @@ jobs:
               - 'src/**'
               - 'Dockerfile'
               - 'requirements.txt'
+              - 'compose.yaml'
             frontend:
               - 'frontend/**'
             datagate:
@@ -48,6 +50,12 @@ jobs:
     steps:
       - name: Checkout Code
         uses: actions/checkout@v4
+
+      - name: Lowercase Repository Owner
+        id: string_transform
+        uses: ASzc/change-string-case-action@v6
+        with:
+          string: ${{ env.IMAGE_NAME }}
 
       - name: Install Rust Toolchain (WASM)
         uses: dtolnay/rust-toolchain@stable
@@ -68,21 +76,27 @@ jobs:
           password: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Build and Push Backend Image
+        if: needs.detect-changes.outputs.backend == 'true' || github.event_name == 'workflow_dispatch'
         run: |
-            docker build -t ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}/leadflow-backend:latest .
-            docker push ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}/leadflow-backend:latest
+          LOWER_REPO=${{ steps.string_transform.outputs.lowercase }}
+          docker build -t \({{ env.REGISTRY }}/\){LOWER_REPO}/leadflow-backend:latest .
+          docker push \({{ env.REGISTRY }}/\){LOWER_REPO}/leadflow-backend:latest
 
       - name: Build and Push Frontend Image
+        if: needs.detect-changes.outputs.frontend == 'true' || github.event_name == 'workflow_dispatch'
         working-directory: ./frontend
         run: |
-            docker build -t ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}/leadflow-frontend:latest .
-            docker push ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}/leadflow-frontend:latest
+          LOWER_REPO=${{ steps.string_transform.outputs.lowercase }}
+          docker build -t \({{ env.REGISTRY }}/\){LOWER_REPO}/leadflow-frontend:latest .
+          docker push \({{ env.REGISTRY }}/\){LOWER_REPO}/leadflow-frontend:latest
 
       - name: Build and Push Data Gate Image
+        if: needs.detect-changes.outputs.datagate == 'true' || github.event_name == 'workflow_dispatch'
         working-directory: ./data-gate
         run: |
-            docker build -t ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}/leadflow-data-gate:latest .
-            docker push ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}/leadflow-data-gate:latest
+          LOWER_REPO=${{ steps.string_transform.outputs.lowercase }}
+          docker build -t \({{ env.REGISTRY }}/\){LOWER_REPO}/leadflow-data-gate:latest .
+          docker push \({{ env.REGISTRY }}/\){LOWER_REPO}/leadflow-data-gate:latest
 
   deploy:
     needs: build-and-push
@@ -92,4 +106,4 @@ jobs:
         run: |
           curl -f -X POST "https://deploy.my-leads.app/hooks/deploy-leadflow" \
                -H "X-Deploy-Token: ${{ secrets.WEBHOOK_DEPLOY_TOKEN }}"
-          echo "✅ Webhook trigger sent successfully!"
+          echo "✅ Webhook trigger sent successfully to Hetzner!"
