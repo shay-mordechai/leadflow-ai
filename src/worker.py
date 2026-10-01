@@ -4,27 +4,41 @@ from celery import Celery
 from celery.schedules import crontab
 from src.config import settings
 
-# Initialize Celery Application
+# Initialize Celery Application and include all task modules
 celery_app = Celery(
     "leadflow_tasks",
     broker=settings.REDIS_URL,
     backend=settings.REDIS_URL,
-    include=["src.tasks.audio_tasks", "src.tasks.retention_tasks"],
+    include=[
+        "src.tasks.audio_tasks",
+        "src.tasks.backup_tasks",
+        "src.tasks.billing_tasks",
+        "src.tasks.followup_tasks",
+        "src.tasks.retention_tasks",
+    ],
 )
 
-# Configure Celery serialization to standard JSON
+# Configure Celery serialization and periodic schedules (Beat)
 celery_app.conf.update(
     task_serializer="json",
     accept_content=["json"],
     result_serializer="json",
     timezone="UTC",
     enable_utc=True,
-    # This prevents Celery from consuming too much memory
+    # Prevent memory leaks (memory optimization per child process)
     worker_max_tasks_per_child=50,
     beat_schedule={
         "purge-expired-tenant-data": {
             "task": "purge_expired_tenant_data",
-            "schedule": crontab(minute=0),  # hourly; records expire at TTL, not on a daily dump
+            "schedule": crontab(minute=0),  # Hourly cleanup
+        },
+        "run-smart-followups": {
+            "task": "src.tasks.followup_tasks.process_smart_followups",
+            "schedule": crontab(minute=0),  # Hourly check for stale leads
+        },
+        "run-daily-backup": {
+            "task": "src.tasks.backup_tasks.run_backup",
+            "schedule": crontab(hour=2, minute=0),  # Daily at 02:00 AM
         },
     },
 )
