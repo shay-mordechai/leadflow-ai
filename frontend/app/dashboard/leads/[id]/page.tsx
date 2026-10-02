@@ -102,24 +102,23 @@ const handleSendReply = async (e: React.FormEvent) => {
 
 if (loading) {
     return (
-
-
-);
-
-
+        <div className="flex items-center justify-center min-h-screen">
+            <div className="text-center">Loading...</div>
+        </div>
+    );
 }
 
 if (!lead) {
-return (
-
-);
-
-
+    return (
+        <div className="p-8 text-center">
+            <p className="text-slate-500">הליד לא נמצא</p>
+        </div>
+    );
 }
 
 return (
-
+    <div className="p-8 max-w-4xl mx-auto">
+        {/* Your chat UI here */}
+    </div>
 );
-
-
 }
