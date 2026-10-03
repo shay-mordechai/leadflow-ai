@@ -1,4 +1,5 @@
 # --- Secrets & Identity ---
+
 .env
 .env.*
 !.env.example
@@ -10,11 +11,14 @@ target/
 secrets.json
 
 # --- Logs ---
+
 # Keep local runtime logs out of version control
+
 *.log
 celery_dev.log
 
 # --- Database (SQLite Specific) ---
+
 *.db
 *.db-journal
 *.db-shm
@@ -23,7 +27,9 @@ celery_dev.log
 /data/
 
 # --- Local AI & Storage ---
+
 # Crucial: Audio uploads and AI models stay on the server/local only
+
 storage/
 audio_uploads/
 models/
@@ -32,6 +38,7 @@ huggingface/
 downloads/
 
 # --- Python & Backend ---
+
 pycache/
 *.py[cod]
 *$py.class
@@ -47,6 +54,7 @@ htmlcov/
 .mypy_cache/
 
 # --- Frontend (Next.js) ---
+
 node_modules/
 .next/
 out/
@@ -58,12 +66,14 @@ yarn-error.log*
 .pnpm-debug.log*
 
 # --- Testing & QA ---
+
 test-results/
 playwright-report/
 blob-report/
 playwright/.cache/
 
 # --- System & IDE ---
+
 .DS_Store
 Thumbs.db
 .idea/
@@ -72,6 +82,7 @@ Thumbs.db
 *.bak
 
 # --- Legacy/Infra ---
+
 postgres_data/
 caddy_data/
 caddy_config/
