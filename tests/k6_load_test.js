@@ -10,8 +10,8 @@ export const options = {
     ],
 };
 
-// Replace this with the actual secret from your .env for local testing
-const SECRET = 'YOUR_WHATSAPP_APP_SECRET'; 
+// Pulling secret securely from k6 environment variables (__ENV) with a fallback
+const SECRET = __ENV.WHATSAPP_APP_SECRET || 'YOUR_WHATSAPP_APP_SECRET'; 
 
 export default function () {
     const url = 'http://localhost:8000/webhooks/whatsapp';
