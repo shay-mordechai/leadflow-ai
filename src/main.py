@@ -13,20 +13,15 @@ import sentry_sdk
 from slowapi import _rate_limit_exceeded_handler
 from slowapi.errors import RateLimitExceeded
 
-# --- Security: Centralized Rate Limiter ---
+# --- Security: Centralized Redis-Backed Rate Limiter ---
 from src.security.rate_limiter import limiter
-
-# --- Tasks: Background Scheduler ---
-from apscheduler.schedulers.asyncio import AsyncIOScheduler
-from src.tasks.billing_tasks import enforce_trial_expirations
-from src.tasks.followup_tasks import process_smart_followups
 
 # Database & Configuration
 from src.config import settings
 from src.database.session import engine, Base
 
 # --- Services ---
-from src.services.communication.email import email_service # NEW: For error alerting
+from src.services.communication.email import email_service 
 
 # --- Router Imports ---
 from src.routers import auth, leads, phones, sessions, facebook, settings as settings_router
@@ -61,25 +56,16 @@ def setup_json_logging():
 
 setup_json_logging()
 logger = logging.getLogger("LeadFlowSystem")
-scheduler = AsyncIOScheduler()
+
+# 🧹 AGENT FIX: Removed APScheduler completely. Celery Beat handles this now.
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     logger.info("🚀 Starting System...")
     logger.info("🗄️ Ensuring Database Schema is up to date...")
     Base.metadata.create_all(bind=engine)
-    
-    if settings.APP_ENV != "testing":
-        scheduler.add_job(enforce_trial_expirations, 'cron', hour=0, minute=0)
-        scheduler.add_job(process_smart_followups, 'cron', hour=10, minute=0)
-        scheduler.start()
-        logger.info("📅 Background Task Scheduler started.")
-    
     yield
-    
     logger.info("🛑 Shutting down gracefully... Cleaning up resources.")
-    if settings.APP_ENV != "testing":
-        scheduler.shutdown()
     engine.dispose()
 
 if getattr(settings, "SENTRY_DSN", None):
@@ -121,12 +107,6 @@ app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
 # ==============================================================================
 @app.exception_handler(Exception)
 async def global_exception_handler(request: Request, exc: Exception):
-    """
-    Prevents internal stack trace leakage to the client. 
-    1. Sends exact error to Sentry.
-    2. Sends a detailed HTML email to the system administrator.
-    3. Returns a clean, generic Hebrew error to the user.
-    """
     if getattr(settings, "SENTRY_DSN", None):
         sentry_sdk.capture_exception(exc)
         
@@ -134,7 +114,6 @@ async def global_exception_handler(request: Request, exc: Exception):
     stack_trace = traceback.format_exc()
     logger.error(f"Internal Server Error: {error_summary}")
 
-    # Safely extract context for the email report
     client_ip = request.client.host if request.client else "Unknown"
     request_info = {
         "method": request.method,
@@ -142,14 +121,12 @@ async def global_exception_handler(request: Request, exc: Exception):
         "client_ip": client_ip
     }
 
-    # Fire and Forget: Send email in the background so the user doesn't wait
     asyncio.create_task(email_service.send_error_alert_email(
         error_summary=error_summary, 
         stack_trace=stack_trace, 
         request_info=request_info
     ))
 
-    # Return a friendly, localized message to the user
     return JSONResponse(
         status_code=500,
         content={"success": False, "error": "אופס! משהו השתבש בצד שלנו. הצוות הטכני קיבל דיווח ויטפל בזה בהקדם."}
@@ -189,24 +166,7 @@ app.include_router(marketing.router)
 app.include_router(system.router)
 app.include_router(storage.router)
 
-# ==============================================================================
-# 🏥 SYSTEM HEALTH CHECK
-# ==============================================================================
 @app.get("/health", tags=["System"])
 @limiter.limit("5/minute")
 async def health_check(request: Request):
     return {"status": "online", "version": "3.0.0", "mode": settings.APP_ENV}
-
-@app.get("/test-leak", tags=["Security Testing"])
-def test_leak(response: Response):
-    response.headers["X-Data-TTL"] = "1"
-    data = {
-        "status": "success",
-        "user": {
-            "username": "shay0129",
-            "email": "shay@leadflow.app",
-            "password": "my_super_secret_password",
-            "internal_token": "aws_token_xyz123" 
-        }
-    }
-    return data

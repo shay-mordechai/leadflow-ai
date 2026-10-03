@@ -1,14 +1,20 @@
 # src/security/rate_limiter.py
-from fastapi import Request
 from slowapi import Limiter
 from slowapi.util import get_remote_address
+from src.config import settings
+import logging
 
-def get_real_ip(request: Request):
-    """
-    Security: Retrieves the actual client IP behind Cloudflare.
-    If 'CF-Connecting-IP' is missing, falls back to direct connection IP.
-    """
-    return request.headers.get("CF-Connecting-IP", get_remote_address(request))
+logger = logging.getLogger("SecurityLimiter")
 
-# Global Limiter Instance
-limiter = Limiter(key_func=get_real_ip)
+# AGENT FIX: Using Redis storage for the Rate Limiter instead of In-Memory.
+# This ensures that when running multiple Gunicorn workers, the limits are shared globally.
+try:
+    limiter = Limiter(
+        key_func=get_remote_address,
+        storage_uri=settings.REDIS_URL, # Connects SlowAPI directly to Redis
+        storage_fallback="memory"       # Fallback gracefully if Redis is temporarily down
+    )
+    logger.info("🛡️ Redis Rate Limiter initialized successfully.")
+except Exception as e:
+    logger.warning(f"⚠️ Could not connect Rate Limiter to Redis, falling back to memory. Error: {e}")
+    limiter = Limiter(key_func=get_remote_address)

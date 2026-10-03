@@ -1,4 +1,3 @@
-# src/config.py
 import os
 import stat
 import boto3
@@ -10,6 +9,12 @@ from pydantic_settings import BaseSettings, SettingsConfigDict
 from botocore.exceptions import ClientError
 from typing import List, Dict, Optional
 from cryptography.fernet import Fernet
+from dotenv import load_dotenv
+
+# --- טעינת קובץ ה-.env המקומי ---
+# פעולה זו קוראת את הנתונים מקובץ ה-.env ומכניסה אותם לתוך os.environ
+# כך שגם מנגנון ה-AWS וגם Pydantic יכירו אותם מיד.
+load_dotenv()
 
 logger = logging.getLogger("Configuration")
 
@@ -39,7 +44,7 @@ def _get_or_create_cache_key() -> bytes:
 def load_aws_configurations():
     # [12-Factor] Bypass AWS SSM unless explicitly enabled via environment variable
     if os.getenv("ENABLE_AWS_SSM", "false").lower() != "true":
-        logger.info("Cloud-agnostic mode: skipping AWS SSM and using local environment variables.")
+        logger.info("Cloud-agnostic mode: skipping AWS SSM and using local .env variables.")
         return
 
     if os.getenv("APP_ENV") == "development":
@@ -132,24 +137,24 @@ def load_aws_configurations():
 load_aws_configurations()
 
 class Settings(BaseSettings):
+    # חיבור הקובץ .env בצורה טבעית למנגנון של Pydantic
+    model_config = SettingsConfigDict(env_file=".env", env_file_encoding="utf-8", extra="ignore")
+
     # --- Core Configuration ---
     APP_NAME: str = "LeadFlow AI"
     APP_ENV: str = "development"
     SECRET_KEY: str = "temporary_dev_key" 
     ALGORITHM: str = "HS256"
     ACCESS_TOKEN_EXPIRE_MINUTES: int = 1440
-    # [12-Factor] Removed hardcoded production domain. Default to localhost.
     BASE_URL: str = "http://localhost:8000"
     ALLOWED_HOSTS: str = "*"
     
     # --- Database & Queues ---
     DATABASE_URL: str = "sqlite:////app/data/leads.db"
     REDIS_URL: str = "redis://127.0.0.1:6379/0"
-    # Privacy: raw media + transcriptions are expunged after this window.
     RETENTION_TTL_HOURS: int = 24
     
     # --- Infrastructure ---
-    # [12-Factor] Removed hardcoded environment suffix
     S3_BUCKET_NAME: str = ""
     ENCRYPTION_KEY: str = "" 
     SENTRY_DSN: str = ""
@@ -184,7 +189,6 @@ class Settings(BaseSettings):
     MAIL_FROM: str = "noreply@localhost"
     MAIL_PORT: int = 587
     MAIL_SERVER: str = "smtp-relay.brevo.com"
-    # [12-Factor] Removed hardcoded production domain
     ADMIN_EMAIL: str = ""
 
     # --- Billing (Meshulam / Grow) ---

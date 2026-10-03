@@ -58,7 +58,6 @@ Collect customer feedback & collect coach feedback
 Compare both states
    ↓
 Resolve: Closed successfully / Not closed / Contradictory reports → Manual investigation
-
 ```
 
 **State Machine Thinking:**
@@ -72,7 +71,6 @@ To engineer this, the workflow was modeled as a persistent business process rath
 A secondary workflow was analyzed regarding post-session administrative work. The operational problem: The professional should spend time coaching rather than manually processing recordings, transcripts, summaries, and documents.
 
 **The Operational Workflow:**
-
 ```text
 Audio recording from phone
    ↓
@@ -91,7 +89,6 @@ Delivery to client/coach
 Archive original recording
    ↓
 Prevent duplicate processing
-
 ```
 
 This demonstrated another applied engineering chain: **Operational task → Automation requirement → Processing pipeline → Reliable delivery → Archival & Idempotency**.
@@ -133,7 +130,6 @@ Database (PostgreSQL / SQLite) & JSON Profiles
 Future C++ Engine (High-Performance Audio/AI) [In Development]
  |
 Linux Runtime (Rootless Podman / Hetzner Bare Metal)
-
 ```
 
 ---
@@ -196,7 +192,6 @@ python3 tests/qa_micro.py --prod
 
 # 4. AI Agent Function Calling (Direct Engine QA): 
 python3 tests/qa_agents.py --api-key="[INJECTED_AT_RUNTIME]"
-
 ```
 
 * **E2E Webhook Integration:** Simulated inbound customer messages validate proper tenant-specific RAG replies, routing logic, and state transitions via Envoy.
