@@ -11,8 +11,8 @@ from sqlalchemy.orm import Session
 from src.database.session import get_db
 from src.database.models import User, PhoneNumber, PlanTier
 from src.config import settings
-from src.services.communication.email import send_otp_email 
-from src.schemas.user import UserCreate, UserResponse, VerifyOTP
+from src.services.communication.email import send_otp_email, send_password_reset_email 
+from src.schemas.user import UserCreate, UserResponse, VerifyOTP, ForgotPasswordRequest, ResetPasswordRequest
 from src.security.dependencies import get_current_user
 from src.security.hashing import get_hash, verify_hash
 
