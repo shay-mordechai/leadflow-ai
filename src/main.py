@@ -2,37 +2,46 @@
 import logging
 import traceback
 import asyncio
+import uuid
+from contextvars import ContextVar
 from contextlib import asynccontextmanager
-from fastapi import FastAPI, Request, Response
+
+from fastapi import FastAPI, Request, Response, Depends
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.middleware.trustedhost import TrustedHostMiddleware
 from fastapi.middleware.gzip import GZipMiddleware
 from fastapi.responses import JSONResponse
+from sqlalchemy import text
+from sqlalchemy.orm import Session
 import sentry_sdk
 
 from slowapi import _rate_limit_exceeded_handler
 from slowapi.errors import RateLimitExceeded
 
-# --- Security: Centralized Redis-Backed Rate Limiter ---
+# --- Security & Tracing ---
 from src.security.rate_limiter import limiter
+request_id_ctx_var: ContextVar[str] = ContextVar("request_id", default="")
 
 # Database & Configuration
 from src.config import settings
-from src.database.session import engine, Base
+from src.database.session import engine, Base, get_db
 
 # --- Services ---
 from src.services.communication.email import email_service 
 
 # --- Router Imports ---
 from src.routers import auth, leads, phones, sessions, facebook, settings as settings_router
-from src.routers import partners, system
+from src.routers import partners, system, provisioning, storage
 from src.routers.billing import checkout, invoices
 from src.routers.webhooks import twilio, meshulam, whatsapp, marketing
-from src.routers import provisioning
-from src.routers import storage
 
 # --- Logging Setup (Global JSON Structured Logging) ---
 from pythonjsonlogger import jsonlogger
+
+class RequestIdFilter(logging.Filter):
+    def filter(self, record):
+        record.request_id = request_id_ctx_var.get()
+        return True
 
 def setup_json_logging():
     root_logger = logging.getLogger()
@@ -43,10 +52,11 @@ def setup_json_logging():
 
     log_handler = logging.StreamHandler()
     formatter = jsonlogger.JsonFormatter(
-        fmt='%(asctime)s %(levelname)s %(name)s %(message)s',
+        fmt='%(asctime)s %(levelname)s %(request_id)s %(name)s %(message)s',
         rename_fields={"levelname": "level", "asctime": "timestamp"}
     )
     log_handler.setFormatter(formatter)
+    log_handler.addFilter(RequestIdFilter())
     root_logger.addHandler(log_handler)
 
     for logger_name in ("uvicorn", "uvicorn.access", "uvicorn.error", "fastapi"):
@@ -56,8 +66,6 @@ def setup_json_logging():
 
 setup_json_logging()
 logger = logging.getLogger("LeadFlowSystem")
-
-# 🧹 AGENT FIX: Removed APScheduler completely. Celery Beat handles this now.
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
@@ -78,8 +86,17 @@ if getattr(settings, "SENTRY_DSN", None):
 app = FastAPI(title=settings.APP_NAME, version="3.0.0", lifespan=lifespan)
 
 # ==============================================================================
-# 🛡️ SECURITY MIDDLEWARE
+# 🛡️ SECURITY & TRACING MIDDLEWARE
 # ==============================================================================
+
+@app.middleware("http")
+async def request_id_middleware(request: Request, call_next):
+    """Injects a unique Request ID into every request for distributed tracing."""
+    req_id = request.headers.get("X-Request-ID", str(uuid.uuid4()))
+    request_id_ctx_var.set(req_id)
+    response = await call_next(request)
+    response.headers["X-Request-ID"] = req_id
+    return response
 
 @app.middleware("http")
 async def add_security_headers(request: Request, call_next):
@@ -88,7 +105,8 @@ async def add_security_headers(request: Request, call_next):
     response.headers["X-Content-Type-Options"] = "nosniff"
     response.headers["X-Frame-Options"] = "DENY"
     response.headers["X-XSS-Protection"] = "1; mode=block"
-    response.headers["Content-Security-Policy"] = "default-src 'self' https: data: 'unsafe-inline' 'unsafe-eval';"
+    # HARDENED CSP: API should only return JSON, never execute inline scripts or frames.
+    response.headers["Content-Security-Policy"] = "default-src 'none'; frame-ancestors 'none';"
     return response
 
 @app.middleware("http")
@@ -103,7 +121,7 @@ app.state.limiter = limiter
 app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
 
 # ==============================================================================
-# 🚨 GLOBAL EXCEPTION HANDLER (THE AIRBAG)
+# 🚨 GLOBAL EXCEPTION HANDLER
 # ==============================================================================
 @app.exception_handler(Exception)
 async def global_exception_handler(request: Request, exc: Exception):
@@ -118,7 +136,8 @@ async def global_exception_handler(request: Request, exc: Exception):
     request_info = {
         "method": request.method,
         "url": str(request.url),
-        "client_ip": client_ip
+        "client_ip": client_ip,
+        "request_id": request_id_ctx_var.get()
     }
 
     asyncio.create_task(email_service.send_error_alert_email(
@@ -129,7 +148,7 @@ async def global_exception_handler(request: Request, exc: Exception):
 
     return JSONResponse(
         status_code=500,
-        content={"success": False, "error": "אופס! משהו השתבש בצד שלנו. הצוות הטכני קיבל דיווח ויטפל בזה בהקדם."}
+        content={"success": False, "error": "אופס! משהו השתבש בצד שלנו. הצוות הטכני קיבל דיווח ויטפל בזה בהקדם.", "request_id": request_info["request_id"]}
     )
 
 # --- General Middleware Stack ---
@@ -140,7 +159,7 @@ app.add_middleware(
     allow_origins=["https://my-leads.app", "https://www.my-leads.app", "http://localhost:3000"], 
     allow_credentials=True,
     allow_methods=["GET", "POST", "PUT", "DELETE", "OPTIONS"],
-    allow_headers=["Authorization", "Content-Type"],
+    allow_headers=["Authorization", "Content-Type", "X-Request-ID"],
 )
 
 # ==============================================================================
@@ -166,7 +185,23 @@ app.include_router(marketing.router)
 app.include_router(system.router)
 app.include_router(storage.router)
 
-@app.get("/health", tags=["System"])
+# ==============================================================================
+# 🏥 HEALTH PROBES
+# ==============================================================================
+@app.get("/health/live", tags=["System"])
 @limiter.limit("5/minute")
-async def health_check(request: Request):
+async def liveness_probe(request: Request):
+    """Basic check to ensure the API process is running."""
     return {"status": "online", "version": "3.0.0", "mode": settings.APP_ENV}
+
+@app.get("/health/ready", tags=["System"])
+@limiter.limit("5/minute")
+def readiness_probe(request: Request, db: Session = Depends(get_db)):
+    """Deep check to ensure the API can connect to the Database and Redis."""
+    try:
+        # Verify DB connection
+        db.execute(text("SELECT 1"))
+        return {"status": "ready"}
+    except Exception as e:
+        logger.error(f"Readiness check failed: {e}")
+        return JSONResponse(status_code=503, content={"status": "unavailable", "reason": "database_error"})

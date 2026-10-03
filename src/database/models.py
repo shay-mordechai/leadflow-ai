@@ -3,15 +3,12 @@ import uuid
 import enum
 from datetime import datetime
 from sqlalchemy import (
-    Column, String, DateTime, Boolean, Text, ForeignKey, Enum, Integer, func, Table, JSON
+    Column, String, DateTime, Boolean, Text, ForeignKey, Enum, Integer, func, Table, JSON, Index
 )
 from sqlalchemy.orm import relationship
 
 # --- IMPORT BASE & GUID FROM SESSION ---
 from src.database.session import Base, GUID
-
-# FIXED: Exposing AuditLog through the central models file to prevent ImportErrors
-from .audit_model import AuditLog
 
 # Security: Encryption wrapper for OTPs (Kept for security)
 from src.security.encryption import protector 
@@ -71,7 +68,6 @@ class WebhookProvider(str, enum.Enum):
     VONAGE = "VONAGE"
     META = "META"
     CUSTOM = "CUSTOM"
-
 
 # --- ASSOCIATION TABLES ---
 # Many-to-Many relationship between Leads and Tags
@@ -141,7 +137,7 @@ class User(Base):
     business_profile = relationship("BusinessProfile", uselist=False, back_populates="user", cascade="all, delete-orphan")
     ai_agent = relationship("AIAgent", uselist=False, back_populates="user", cascade="all, delete-orphan")
     phone_numbers = relationship("PhoneNumber", back_populates="owner", cascade="all, delete-orphan")
-    coaching_sessions = relationship("CoachingSession", back_populates="user", cascade="all, delete-orphan")
+    meeting_sessions = relationship("MeetingSession", back_populates="user", cascade="all, delete-orphan")
     tags = relationship("Tag", back_populates="user", cascade="all, delete-orphan")
 
     @property
@@ -151,8 +147,6 @@ class User(Base):
     @otp_code.setter
     def otp_code(self, value):
         self._otp_encrypted = protector.encrypt(value) if value else None
-
-# ... (rest of the file remains exactly the same: Tag, PhoneNumber, BusinessProfile, AIAgent, Lead, Message, WebhookDLQ, MediaInteraction, Integration, CoachingSession) ...
 
 class Tag(Base):
     __tablename__ = "tags"
@@ -179,7 +173,6 @@ class PhoneNumber(Base):
     owner_id = Column(GUID(), ForeignKey("users.id", ondelete="CASCADE"), index=True)
     
     owner = relationship("User", back_populates="phone_numbers")
-
 
 class BusinessProfile(Base):
     __tablename__ = "business_profiles"
@@ -216,7 +209,6 @@ class AIAgent(Base):
     user = relationship("User", back_populates="ai_agent")
     phone_number = relationship("PhoneNumber")
 
-
 class Lead(Base):
     __tablename__ = "leads"
     
@@ -252,10 +244,9 @@ class Lead(Base):
 
     user = relationship("User", back_populates="leads")
     media_files = relationship("MediaInteraction", back_populates="lead")
-    sessions = relationship("CoachingSession", back_populates="lead")
+    sessions = relationship("MeetingSession", back_populates="lead")
     messages = relationship("Message", back_populates="lead", cascade="all, delete-orphan", order_by="Message.created_at")
     tags = relationship("Tag", secondary=lead_tag_association, back_populates="leads")
-
 
 class Message(Base):
     __tablename__ = "messages"
@@ -268,9 +259,13 @@ class Message(Base):
 
     lead = relationship("Lead", back_populates="messages")
 
-
 class WebhookDLQ(Base):
     __tablename__ = "webhook_dlq"
+    
+    # NEW: Composite Index to prevent Sequential Scans during background Celery tasks
+    __table_args__ = (
+        Index('idx_dlq_pending', 'is_resolved', 'created_at'),
+    )
     
     id = Column(GUID(), primary_key=True, default=uuid.uuid4)
     provider = Column(Enum(WebhookProvider), nullable=False, index=True)
@@ -282,7 +277,6 @@ class WebhookDLQ(Base):
     
     created_at = Column(DateTime(timezone=True), server_default=func.now(), index=True)
     updated_at = Column(DateTime(timezone=True), onupdate=func.now())
-
 
 class MediaInteraction(Base):
     __tablename__ = "media_interactions"
@@ -320,9 +314,8 @@ class Integration(Base):
     
     user = relationship("User", back_populates="integrations")
 
-
-class CoachingSession(Base):
-    __tablename__ = "coaching_sessions"
+class MeetingSession(Base):
+    __tablename__ = "meeting_sessions"
 
     id = Column(GUID(), primary_key=True, default=uuid.uuid4)
     user_id = Column(GUID(), ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True)
@@ -335,5 +328,38 @@ class CoachingSession(Base):
     
     created_at = Column(DateTime(timezone=True), server_default=func.now(), index=True)
     
-    user = relationship("User", back_populates="coaching_sessions")
+    user = relationship("User", back_populates="meeting_sessions")
     lead = relationship("Lead", back_populates="sessions")
+
+class PaymentTransaction(Base):
+    """
+    Records successful payments from Meshulam to prevent duplicate upgrades (Idempotency).
+    """
+    __tablename__ = "payment_transactions"
+    
+    id = Column(GUID(), primary_key=True, default=uuid.uuid4)
+    user_id = Column(GUID(), ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True)
+    
+    # Meshulam specific transaction ID
+    transaction_id = Column(String, unique=True, index=True, nullable=False)
+    
+    amount = Column(Integer, nullable=False) # Stored in whole numbers (NIS)
+    status = Column(String, default="SUCCESS")
+    
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
+    
+    user = relationship("User")
+
+
+class AuditLog(Base):
+    """
+    Centralized logging for critical actions (payments, data deletions, security events).
+    """
+    __tablename__ = "audit_logs"
+
+    id = Column(GUID(), primary_key=True, default=uuid.uuid4)
+    user_id = Column(String, index=True, nullable=False) # Kept as String to accept unmapped/deleted UUIDs
+    action = Column(String, index=True, nullable=False)
+    details = Column(JSON, nullable=True)
+    
+    created_at = Column(DateTime(timezone=True), server_default=func.now(), index=True)

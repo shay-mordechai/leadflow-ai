@@ -2,7 +2,7 @@
 import logging
 import secrets  # CRITICAL: Use secrets, not random, for cryptography
 from datetime import timedelta, datetime, timezone
-from fastapi import APIRouter, Depends, HTTPException, status, BackgroundTasks, Request
+from fastapi import APIRouter, Depends, HTTPException, status, BackgroundTasks, Request, Response
 from fastapi.security import OAuth2PasswordRequestForm
 from jose import jwt, JWTError
 from sqlalchemy.orm import Session
@@ -131,10 +131,10 @@ async def login(request: Request, bg_tasks: BackgroundTasks, form: OAuth2Passwor
     return {"message": "OTP sent to email", "mfa_required": True}
 
 @router.post("/verify-otp")
-@limiter.limit("5/minute") # SECURITY: Prevent OTP brute forcing (guessing the 6 digits)
-async def verify_otp(request: Request, data: VerifyOTP, db: Session = Depends(get_db)):
+@limiter.limit("5/minute") # SECURITY: Prevent OTP brute forcing
+async def verify_otp(request: Request, response: Response, data: VerifyOTP, db: Session = Depends(get_db)):
     """
-    Verifies OTP and issues JWT. OTP is cleared immediately after use.
+    Verifies OTP, issues JWT, and securely sets it as an HttpOnly Cookie to prevent XSS.
     """
     user = db.query(User).filter(User.email == data.email.lower()).first()
     
@@ -143,11 +143,13 @@ async def verify_otp(request: Request, data: VerifyOTP, db: Session = Depends(ge
 
     # 1. Validate OTP presence and match
     if not user.otp_code or user.otp_code != data.otp_code:
+        print(f"OTP mismatch. Expected {user.otp_code}, got {data.otp_code}")
         raise HTTPException(status_code=401, detail="Invalid or expired OTP")
     
     # 2. Check Expiration
     now_utc = datetime.now(timezone.utc)
     if user.otp_expires_at and user.otp_expires_at.replace(tzinfo=timezone.utc) < now_utc:
+        print(f"OTP EXPIRED: expires at {user.otp_expires_at}, now {now_utc}")
         user.otp_code = None 
         db.commit()
         raise HTTPException(status_code=401, detail="OTP has expired")
@@ -160,7 +162,25 @@ async def verify_otp(request: Request, data: VerifyOTP, db: Session = Depends(ge
     # 4. Issue Access Token
     token = create_access_token({"sub": str(user.id), "email": user.email})
     
-    return {"access_token": token, "token_type": "bearer"}
+    # 5. SECURITY: Set HttpOnly Cookie
+    response.set_cookie(
+        key="access_token",
+        value=f"Bearer {token}",
+        httponly=True,   # JS cannot read it (XSS Protection)
+        secure=True,     # Only HTTPS
+        samesite="lax",  # CSRF Protection
+        max_age=settings.ACCESS_TOKEN_EXPIRE_MINUTES * 60
+    )
+    
+    return {"message": "Authentication successful. Token set in secure cookie."}
+
+@router.post("/logout")
+async def logout(response: Response):
+    """
+    Logs out the user securely by clearing the HttpOnly cookie.
+    """
+    response.delete_cookie("access_token", httponly=True, secure=True, samesite="lax")
+    return {"message": "Logged out successfully"}
 
 @router.post("/forgot-password")
 @limiter.limit("3/minute") # SECURITY: Prevent spamming reset emails
@@ -172,7 +192,7 @@ async def forgot_password(request: Request, data: ForgotPasswordRequest, bg_task
     email = data.email.lower()
     user = db.query(User).filter(User.email == email).first()
 
-    # SECURITY: Even if the user doesn't exist, return a generic message to prevent account enumeration (מניעת גילוי משתמשים)
+    # SECURITY: Even if the user doesn't exist, return a generic message to prevent account enumeration
     if not user:
         return {"message": "If an account with that email exists, a password reset code has been sent."}
 

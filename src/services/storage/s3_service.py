@@ -7,14 +7,13 @@ from src.config import settings
 logger = logging.getLogger("LocalStorageService")
 
 class LocalStorageService:
-    """
-    Handles local file storage on bare-metal Hetzner server.
-    Replaces AWS S3 to eliminate cloud infrastructure costs.
-    """
     def __init__(self):
-        # Base directory inside container
-        self.base_dir = getattr(settings, 'STORAGE_BASE_PATH', '/app/storage')
-        self.base_url = getattr(settings, 'BASE_URL', 'https://my-leads.app').rstrip('/')
+        self.base_dir = os.environ.get("STORAGE_DIR", "/app/storage")
+        
+        # אם אנחנו מריצים טסטים או רצים מקומית ואין לנו גישה לתיקיית /app
+        if self.base_dir.startswith("/app") and not os.path.exists("/app"):
+            self.base_dir = os.path.join(os.getcwd(), "storage")
+            
         os.makedirs(self.base_dir, exist_ok=True)
 
     def upload_fileobj(self, file_obj, object_name: str, content_type: Optional[str] = None) -> bool:

@@ -5,7 +5,7 @@ from uuid import UUID
 import hashlib
 from datetime import datetime, timezone
 from fastapi import APIRouter, HTTPException, status, Depends, Query, Request
-from sqlalchemy.orm import Session
+from sqlalchemy.orm import Session, selectinload
 from pydantic import BaseModel, Field, EmailStr
 from typing import List, Optional
 
@@ -75,9 +75,18 @@ async def get_my_leads(
 ):
     """
     SECURE ENDPOINT: Returns leads ONLY for the logged-in user.
+    Uses Eager Loading to prevent N+1 Database query loops.
     """
-    query = db.query(Lead).filter(Lead.user_id == current_user.id)
-    leads = query.order_by(Lead.created_at.desc()).offset(offset).limit(limit).all()
+    leads = (
+        db.query(Lead)
+        .filter(Lead.user_id == current_user.id)
+        .options(selectinload(Lead.tags))      # Eager load tags
+        .options(selectinload(Lead.messages))  # Eager load messages
+        .order_by(Lead.created_at.desc())
+        .offset(offset)
+        .limit(limit)
+        .all()
+    )
     return leads
 
 # --- HUMAN TAKEOVER ENDPOINTS ---
