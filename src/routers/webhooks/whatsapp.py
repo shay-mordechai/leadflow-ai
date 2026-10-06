@@ -1,4 +1,5 @@
 # src/routers/webhooks/whatsapp.py
+import asyncio
 import hashlib
 import hmac
 import json
@@ -7,14 +8,16 @@ from datetime import datetime
 from typing import Optional
 from zoneinfo import ZoneInfo
 
-from fastapi import APIRouter, Depends, HTTPException, Query, Request, status
+from fastapi import APIRouter, BackgroundTasks, HTTPException, Query, Request, status
 from fastapi.responses import PlainTextResponse, JSONResponse
+from google import genai
 from sqlalchemy.orm import Session
 from sqlalchemy.exc import IntegrityError
 
 from src.config import settings
 from src.database.models import (
     AIAgent,
+    BusinessProfile,
     Lead,
     LeadSource,
     LeadStatus,
@@ -32,13 +35,6 @@ logger = logging.getLogger("WhatsAppWebhook")
 
 STARTER_MESSAGE_LIMIT = 10
 PRO_MESSAGE_LIMIT = 2000
-
-def get_db():
-    db = SessionLocal()
-    try:
-        yield db
-    finally:
-        db.close()
 
 def _is_production() -> bool:
     return (settings.APP_ENV or "").lower() == "production"
@@ -153,6 +149,7 @@ async def _handle_inbound_message(
     metadata: dict,
     contacts: list,
     message: dict,
+    client: genai.Client,
 ) -> str:
     sender_id = _digits_only(message.get("from"))
     if not sender_id:
@@ -221,7 +218,8 @@ async def _handle_inbound_message(
         logger.info("Ignoring unsupported or empty Meta message type=%s id=%s", msg_type, message.get("id"))
         return "ignored_unsupported_type"
 
-    db.add(Message(lead_id=lead_record.id, sender_type="user", content=text_body))
+    inbound_message = Message(lead_id=lead_record.id, sender_type="user", content=text_body)
+    db.add(inbound_message)
     db.flush()
 
     if not lead_record.bot_active:
@@ -240,19 +238,81 @@ async def _handle_inbound_message(
         return "limit_exceeded"
 
     try:
-        from src.services.ai.engine import ai_engine
+        from google.genai import types
+
+        from src.schemas.ai_response import WhatsAppAgentResponse
+        from src.services.ai.prompt_builder import PromptBuilder
         from src.services.profile_loader import load_tenant_profile
 
         profile_data = await load_tenant_profile(tenant_context["business_profile_path"]) if tenant_context["business_profile_path"] else {}
-        
-        # התאמה למבנה הקיים של ai_engine
-        ai_response = await ai_engine.analyze_interaction(
-            system_prompt=tenant_context["system_prompt"],
-            text_input=text_body,
-            sender_name=sender_name
+        business_profile = db.query(BusinessProfile).filter(BusinessProfile.user_id == user.id).first()
+        profile_services = profile_data.get("services", [])
+        profile_faqs = profile_data.get("faqs", [])
+        products_services = (
+            business_profile.products_services if business_profile and business_profile.products_services
+            else json.dumps({"services": profile_services, "faqs": profile_faqs}, ensure_ascii=False)
         )
-        
-        reply_text = ai_response.get("reply_text") or "שלום, רשמתי את פנייתך ונחזור אליך בהקדם."
+        business_type = (
+            business_profile.business_type if business_profile and business_profile.business_type
+            else user.business_type or profile_data.get("business_type", "General")
+        )
+        business_name = (
+            business_profile.business_name if business_profile
+            else user.business_name or profile_data.get("business_name", "העסק שלנו")
+        )
+        custom_instructions = (
+            business_profile.custom_instructions if business_profile and business_profile.custom_instructions
+            else tenant_context["system_prompt"]
+        )
+        system_instruction = PromptBuilder.build_system_instruction(
+            business_type=business_type,
+            business_name=business_name,
+            products_services=products_services,
+            custom_instructions=custom_instructions,
+        )
+
+        previous_messages = (
+            db.query(Message)
+            .filter(Message.lead_id == lead_record.id, Message.id != inbound_message.id)
+            .order_by(Message.created_at.desc())
+            .limit(6)
+            .all()
+        )
+        turn_prompt = PromptBuilder.build_lead_turn_prompt(
+            lead_name=sender_name,
+            lead_source=str(lead_record.source.value if hasattr(lead_record.source, "value") else lead_record.source),
+            conversation_history=[
+                {
+                    "sender": message.sender_type,
+                    "text": message.content,
+                }
+                for message in reversed(previous_messages)
+            ],
+            latest_message=text_body,
+        )
+
+        generation_config = types.GenerateContentConfig(
+            system_instruction=system_instruction,
+            response_mime_type="application/json",
+            response_schema=WhatsAppAgentResponse,
+        )
+        ai_response = await asyncio.to_thread(
+            client.models.generate_content,
+            model="gemini-2.5-flash",
+            contents=turn_prompt,
+            config=generation_config,
+        )
+        structured_response = ai_response.parsed
+        if not isinstance(structured_response, WhatsAppAgentResponse):
+            if not ai_response.text:
+                raise ValueError("Gemini returned no structured response")
+            structured_response = WhatsAppAgentResponse.model_validate_json(ai_response.text)
+
+        if structured_response.needs_human_escalation:
+            logger.warning("WhatsApp escalation requested for lead %s", sender_id)
+        else:
+            logger.info("WhatsApp AI reply for lead %s: %s", sender_id, structured_response.reply_text)
+        reply_text = structured_response.reply_text
 
         if reply_text:
             success = _send_tenant_message(user, phone_record, sender_id, reply_text)
@@ -271,64 +331,79 @@ async def _handle_inbound_message(
         
     return "no_action"
 
+def process_whatsapp_message(payload: dict[str, Any]) -> None:
+    """Run payload processing in FastAPI's background worker thread."""
+    if payload.get("object") != "whatsapp_business_account":
+        logger.info("Ignoring Meta webhook object type: %s", payload.get("object"))
+        return
+    try:
+        client = genai.Client(api_key=settings.GOOGLE_API_KEY)
+        asyncio.run(_process_whatsapp_message(payload, client))
+    except Exception:
+        logger.exception("Failed to initialize or run WhatsApp background processing.")
+
+
+async def _process_whatsapp_message(payload: dict[str, Any], client: genai.Client) -> None:
+    """Process a Meta payload after acknowledging the webhook request."""
+    db = SessionLocal()
+    try:
+        for entry in payload.get("entry", []):
+            try:
+                changes = entry.get("changes", [])
+            except (AttributeError, KeyError, TypeError) as payload_err:
+                logger.warning("Skipping malformed Meta entry: %s", payload_err)
+                continue
+            for change in changes:
+                try:
+                    value = change["value"]
+                    metadata = value.get("metadata", {})
+                    messages = value.get("messages", [])
+                    contacts = value.get("contacts", [])
+                except (AttributeError, KeyError, TypeError) as payload_err:
+                    logger.warning("Skipping malformed Meta change: %s", payload_err)
+                    continue
+                for message in messages:
+                    try:
+                        with db.begin_nested():
+                            await _handle_inbound_message(db, metadata, contacts, message, client)
+                    except Exception as message_error:
+                        logger.exception("Failed processing WhatsApp message; recording it in the DLQ.")
+                        try:
+                            db.add(WebhookDLQ(
+                                provider=WebhookProvider.META,
+                                payload=payload,
+                                error_reason=str(message_error),
+                                retry_count=0,
+                                is_resolved=False,
+                            ))
+                            db.commit()
+                        except Exception:
+                            logger.exception("Could not record WhatsApp event in the DLQ.")
+                            db.rollback()
+        db.commit()
+    except Exception:
+        db.rollback()
+        logger.exception("Background WhatsApp payload processing failed.")
+    finally:
+        db.close()
+
+
 @router.post("")
 @router.post("/")
 async def handle_whatsapp_webhook(
+    background_tasks: BackgroundTasks,
     request: Request,
-    db: Session = Depends(get_db)
 ):
-    """The main Webhook receiver endpoint for Meta Cloud API POST requests."""
+    """Validate and acknowledge Meta webhook requests without waiting on AI."""
     await verify_whatsapp_signature(request)
     
     try:
-        raw_body = await request.body()
-        payload = json.loads(raw_body.decode("utf-8"))
-    except Exception as parse_err:
-        logger.error("Failed to parse incoming Webhook JSON body: %s", parse_err)
+        payload = await request.json()
+    except (json.JSONDecodeError, UnicodeDecodeError) as parse_err:
+        logger.warning("Failed to parse incoming WhatsApp webhook JSON: %s", parse_err)
         raise HTTPException(status_code=400, detail="Invalid JSON body")
-        
-    if payload.get("object") != "whatsapp_business_account":
-        return JSONResponse(status_code=200, content={"status": "ignored_object_type"})
-        
-    entries = payload.get("entry") or []
-    if not entries:
-        return JSONResponse(status_code=200, content={"status": "empty_entries"})
-        
-    processing_results = []
-    
-    for entry in entries:
-        changes = entry.get("changes") or []
-        for change in changes:
-            value = change.get("value") or {}
-            metadata = value.get("metadata") or {}
-            messages = value.get("messages") or []
-            contacts = value.get("contacts") or []
-            
-            if not messages:
-                continue
-                
-            for message in messages:
-                try:
-                    with db.begin_nested():
-                        result = await _handle_inbound_message(db, metadata, contacts, message)
-                        processing_results.append(result)
-                except Exception as msg_err:
-                    logger.error("Failed processing message. Stashing event to WebhookDLQ: %s", msg_err)
-                    
-                    try:
-                        # תיקון: שימוש בשדה הנכון 'error_reason' במקום 'error_message'
-                        dlq_fallback = WebhookDLQ(
-                            provider=WebhookProvider.META,
-                            payload=payload,
-                            error_reason=str(msg_err),
-                            retry_count=0,
-                            is_resolved=False
-                        )
-                        db.add(dlq_fallback)
-                        processing_results.append("failed_logged_to_dlq")
-                    except Exception as dlq_err:
-                        logger.critical("DLQ Table write fatal error: %s", dlq_err)
-                        processing_results.append("failed_dlq_write_error")
-                    
-    db.commit()
-    return JSONResponse(status_code=200, content={"status": "processed", "results": processing_results})
+    if not isinstance(payload, dict):
+        raise HTTPException(status_code=400, detail="Webhook payload must be a JSON object")
+
+    background_tasks.add_task(process_whatsapp_message, payload)
+    return JSONResponse(status_code=200, content={"status": "ok"})
