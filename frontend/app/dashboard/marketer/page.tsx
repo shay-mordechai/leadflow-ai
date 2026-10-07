@@ -16,14 +16,14 @@ const assignedClients = [
   {
     id: "1",
     clientName: "Acme Dental Clinic",
-    apiKey: "ml_live_8f7d9a2b4c6e1r3t",
+    apiKey: "YOUR_CAMPAIGN_API_KEY_1",
     leadsThisWeek: 62,
     weeklyGoal: 50,
   },
   {
     id: "2",
     clientName: "Elite Fitness Studio",
-    apiKey: "ml_live_3b5h8k9m2n4p7x1q",
+    apiKey: "YOUR_CAMPAIGN_API_KEY_2",
     leadsThisWeek: 95,
     weeklyGoal: 100,
   },

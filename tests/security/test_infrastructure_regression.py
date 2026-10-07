@@ -278,3 +278,51 @@ def test_ci_workflow_runs_trivy_and_gitleaks() -> None:
     workflow = Path(".github/workflows/production.yml").read_text(encoding="utf-8").lower()
     assert "trivy" in workflow
     assert "gitleaks" in workflow
+
+
+def test_backend_deployment_filters_include_migration_and_backup_changes() -> None:
+    """CI deployment coverage: migration and backup changes must trigger backend rebuilds."""
+    from pathlib import Path
+
+    workflow = Path(".github/workflows/production.yml").read_text(encoding="utf-8")
+    for path in ("alembic/**", "alembic.ini", "scripts/**", ".gitleaks.toml"):
+        assert f"'{path}'" in workflow
+
+
+def test_wasm_toolchain_and_build_are_conditional_on_data_gate_changes() -> None:
+    """CI efficiency: Rust setup and WASM compilation run only for relevant deployment events."""
+    from pathlib import Path
+
+    workflow = Path(".github/workflows/production.yml").read_text(encoding="utf-8")
+    condition = "if: needs.detect-changes.outputs.datagate == 'true' || github.event_name == 'workflow_dispatch'"
+    steps = workflow.split("- name:")
+    rust_steps = [step for step in steps if "Install Rust Toolchain (WASM)" in step or "Build WASM Filter" in step]
+    assert len(rust_steps) == 2
+    assert all(condition in step for step in rust_steps)
+
+
+def test_backend_image_receives_current_commit_sha() -> None:
+    """Immutable deployments: runtime compatibility checks need the build's source SHA."""
+    from pathlib import Path
+
+    workflow = Path(".github/workflows/production.yml").read_text(encoding="utf-8")
+    dockerfile = Path("Dockerfile").read_text(encoding="utf-8")
+    assert "--build-arg CURRENT_IMAGE_SHA=${{ github.sha }}" in workflow
+    assert "ARG CURRENT_IMAGE_SHA" in dockerfile
+    assert "ENV CURRENT_IMAGE_SHA=${CURRENT_IMAGE_SHA}" in dockerfile
+
+
+def test_gitleaks_allowlists_are_limited_to_known_false_positives() -> None:
+    """Secret scanning: only the historical commit and explicit UI placeholders are allowlisted."""
+    from pathlib import Path
+
+    config = Path(".gitleaks.toml").read_text(encoding="utf-8")
+    dashboard = Path("frontend/app/dashboard/marketer/page.tsx").read_text(encoding="utf-8")
+    assert "[extend]\nuseDefault = true" in config
+    assert "5be64ff630c16b659b6e82fafd24e9d59986e175" in config
+    assert "frontend/app/dashboard/marketer/page\\.tsx" in config
+    assert "YOUR_CAMPAIGN_API_KEY_[12]" in config
+    assert "Legacy mock API key literals" in config
+    assert "YOUR_CAMPAIGN_API_KEY_1" in dashboard
+    assert "YOUR_CAMPAIGN_API_KEY_2" in dashboard
+    assert "ml_live_" not in dashboard

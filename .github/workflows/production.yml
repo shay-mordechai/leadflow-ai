@@ -6,11 +6,15 @@ on:
     branches: [ main ]
     paths:
       - 'src/**'
+      - 'alembic/**'
+      - 'alembic.ini'
+      - 'scripts/**'
       - 'frontend/**'
       - 'data-gate/**'
       - 'compose.yaml'
       - 'Dockerfile'
       - 'requirements.txt'
+      - '.gitleaks.toml'
       - '.github/workflows/production.yml'
 
 env:
@@ -55,9 +59,13 @@ jobs:
           filters: |
             backend:
               - 'src/**'
+              - 'alembic/**'
+              - 'alembic.ini'
+              - 'scripts/**'
               - 'Dockerfile'
               - 'requirements.txt'
               - 'compose.yaml'
+              - '.gitleaks.toml'
             frontend:
               - 'frontend/**'
             datagate:
@@ -80,11 +88,13 @@ jobs:
           string: ${{ env.IMAGE_NAME }}
 
       - name: Install Rust Toolchain (WASM)
+        if: needs.detect-changes.outputs.datagate == 'true' || github.event_name == 'workflow_dispatch'
         uses: dtolnay/rust-toolchain@stable
         with:
           targets: wasm32-unknown-unknown
 
       - name: Build WASM Filter
+        if: needs.detect-changes.outputs.datagate == 'true' || github.event_name == 'workflow_dispatch'
         working-directory: ./data-gate
         env:
           RUSTFLAGS: "-C link-arg=--allow-undefined"
@@ -101,7 +111,7 @@ jobs:
         if: needs.detect-changes.outputs.backend == 'true' || github.event_name == 'workflow_dispatch'
         run: |
           LOWER_REPO=${{ steps.string_transform.outputs.lowercase }}
-          docker build -t ${{ env.REGISTRY }}/${LOWER_REPO}/leadflow-backend:latest .
+          docker build --build-arg CURRENT_IMAGE_SHA=${{ github.sha }} -t ${{ env.REGISTRY }}/${LOWER_REPO}/leadflow-backend:latest .
           docker push ${{ env.REGISTRY }}/${LOWER_REPO}/leadflow-backend:latest
 
       - name: Build and Push Frontend Image

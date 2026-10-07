@@ -1,0 +1,23 @@
+[extend]
+useDefault = true
+
+[[allowlists]]
+description = "Known false-positive in the pre-placeholder marketer dashboard commit"
+commits = ["5be64ff630c16b659b6e82fafd24e9d59986e175"]
+
+[[allowlists]]
+description = "Documented non-secret marketer dashboard placeholders"
+condition = "AND"
+paths = ['''^frontend/app/dashboard/marketer/page\.tsx$''']
+regexTarget = "secret"
+regexes = ['''^YOUR_CAMPAIGN_API_KEY_[12]$''']
+
+[[allowlists]]
+description = "Legacy mock API key literals in marketer dashboard history"
+condition = "AND"
+paths = ['''^frontend/app/dashboard/marketer/page\.tsx$''']
+regexTarget = "secret"
+regexes = [
+  '''^ml_live_8f7d9a2b4c6e1r3t$''',
+  '''^ml_live_3b5h8k9m2n4p7x1q$''',
+]

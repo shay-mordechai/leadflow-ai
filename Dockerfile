@@ -4,6 +4,9 @@
 
 FROM python:3.11-slim
 
+ARG CURRENT_IMAGE_SHA=unknown
+ENV CURRENT_IMAGE_SHA=${CURRENT_IMAGE_SHA}
+
 # Prevent Python from writing .pyc files and enable unbuffered logging
 ENV PYTHONDONTWRITEBYTECODE=1
 ENV PYTHONUNBUFFERED=1
