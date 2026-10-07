@@ -93,7 +93,4 @@ def test_health_route_is_registered_on_main_application() -> None:
     """Deployment health: the compatibility probe must be available on the application entry point."""
     from src.main import app
 
-    assert any(
-        getattr(route, "path", None) == "/health/db-sync-status"
-        for route in app.routes
-    )
+    assert "/health/db-sync-status" in app.openapi()["paths"]
