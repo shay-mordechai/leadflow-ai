@@ -1,6 +1,8 @@
 # src/database/session.py
 import uuid
 from sqlalchemy import create_engine, event, Column, ForeignKey
+from sqlalchemy.engine import make_url
+from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
 from sqlalchemy.orm import sessionmaker, declarative_base, declared_attr, Session
 from sqlalchemy.types import TypeDecorator, CHAR
 from src.config import settings
@@ -74,6 +76,30 @@ if is_sqlite:
         cursor.close()
 
 SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
+
+async_database_url = make_url(settings.DATABASE_URL)
+if async_database_url.drivername in {"sqlite", "sqlite+pysqlite"}:
+    async_database_url = async_database_url.set(drivername="sqlite+aiosqlite")
+elif async_database_url.drivername in {
+    "postgres",
+    "postgresql",
+    "postgresql+psycopg2",
+}:
+    async_database_url = async_database_url.set(drivername="postgresql+asyncpg")
+else:
+    raise ValueError(f"Unsupported async database driver: {async_database_url.drivername}")
+
+async_engine_kwargs = {"pool_pre_ping": True, "pool_recycle": 1800}
+if not async_database_url.drivername.startswith("sqlite+"):
+    async_engine_kwargs.update({"pool_size": 20, "max_overflow": 10, "pool_timeout": 30})
+
+async_engine = create_async_engine(async_database_url, **async_engine_kwargs)
+AsyncSessionLocal = async_sessionmaker(
+    bind=async_engine,
+    autocommit=False,
+    autoflush=False,
+    expire_on_commit=False,
+)
 
 def get_db():
     db = SessionLocal()

@@ -1,7 +1,7 @@
 # SECURITY.md — MyLeads AI
 
-**Classification:** Public (Post-Remediation)  
-**Last Audit:** June 2026  
+**Classification:** Public (Post-Remediation)
+**Last Audit:** June 2026
 **Architecture:** Zero Trust · Defense in Depth · OWASP Top 10
 
 ---
@@ -187,22 +187,67 @@ def log(db: Session, user_id: str, action: str, details: dict = None):
 
 **Why this is documented as an open finding:** Full transparency about the current security posture is part of the Secure-by-Design philosophy. Early identification is preferable to concealment.
 
+## 12. CI/CD Pipeline RCE Prevention (Zero-Trust Pull CD)
+
+**Threat:** A compromised GitHub Actions workflow or compromised dependency executes arbitrary bash commands on the production server (Remote Code Execution - הרצת קוד מרחוק) via exposed SSH keys.
+
+**Implementation:**
+
+* **Pull-Based CD:** The production server does not accept direct deployment commands (No Push).
+* **HMAC-Signed Trigger:** GitHub sends a lightweight Webhook signed with HMAC-SHA256. The server validates the signature before independently pulling (`podman pull`) the latest image from GHCR (GitHub Container Registry).
+* **Air-Gapped Runtime:** The server's runtime environment remains completely isolated from the CI/CD pipeline's execution context.
+
 ---
 
-## Defense-in-Depth Summary
+## 13. Meta WhatsApp Webhook Security (HMAC Validation)
+
+**Threat:** An attacker discovers the webhook endpoint and injects fake messages to manipulate the AI, spam the system, or cause Application DoS (Denial of Service - מניעת שירות).
+
+**Implementation:**
+
+* All incoming payloads from Meta are validated against the `X-Hub-Signature-256` header.
+* The server calculates the HMAC-SHA256 hash using the `WHATSAPP_APP_SECRET` and the raw request body, instantly dropping any request that lacks cryptographic proof of origin.
+
+---
+
+## 14. AI Prompt Injection & Jailbreak Defense (Hierarchical Context Injection)
+
+**Threat:** A user sends a malicious WhatsApp message (e.g., "Ignore previous instructions") to bypass system guardrails, extract system prompts, or force unauthorized actions (Prompt Injection - הזרקת פקודות).
+
+**Implementation (`src/services/ai/prompt_builder.py`):**
+
+* **XML Delimiters:** System rules and business context are isolated from untrusted user inputs using strict XML tags (e.g., `<system>`, `<latest_user_message>`).
+* **Volatility Ordering (Caching):** Static guardrails and tenant business rules are placed at the top layer (100% Cached), while dynamic user input is strictly placed at the bottom layer.
+* **Structured Outputs:** The LLM is restricted by the `google-genai` API to only return valid JSON matching the `WhatsAppAgentResponse` Pydantic schema, neutralizing free-text manipulation.
+
+---
+
+## 15. Campaign Lead API Security (Sanitization & Idempotency)
+
+**Threat:** External marketing automations (Zapier/Make) sending unvalidated payloads, leading to Meta WABA bans (due to spam) or billing exhaustion from duplicate/malicious leads.
+
+**Implementation (`src/routers/webhooks/campaign.py`):**
+
+* **Authentication:** Enforced `X-Tenant-Key` header validation for all inbound campaign requests.
+* **Strict Sanitization (ניקוי קלט):** Phone numbers are strictly validated against E.164 regex formatting. Text fields (names, notes) are strictly truncated to short limits to prevent injection payloads.
+* **Idempotency (מניעת כפילויות):** Prevents duplicate outbound WhatsApp initialization for the same lead within a 24-hour window, protecting the Meta Quality Rating.
+
+## 16. Immutable Deployments & Off-Site State Correlation (Disaster Recovery)
+
+**Threat:** Silent data corruption, server physical failure, or schema-mismatch crashing the application after a code deployment.
+
+**Implementation:**
+- **Off-Site Backups (Zero Egress):** `scripts/backup_to_r2.sh` runs `pg_dump` inside the running Podman backend, compresses the SQL stream, and uploads it to **Cloudflare R2** using the AWS CLI S3-compatible endpoint. Configure `R2_BUCKET`, `R2_ENDPOINT_URL`, and AWS CLI credentials; optionally set `DB_CONTAINER_NAME` and `R2_PREFIX`.
+- **State-Correlation (Image ID Tracking):** The script records the running container's exact Podman image ID in names of the form `db_backup_<UTC timestamp>_image_<sha256 digest>.sql.gz`.
+- **24/7 Compatibility Monitoring:** `/health/db-sync-status` compares `EXPECTED_DB_REVISION` and `CURRENT_IMAGE_SHA` from the container environment with the live `alembic_version` revision. It returns HTTP 503 unless all deployment metadata is present and the database revision matches. Set both values during immutable-image deployment.
+
+---
+
+### *Updated Defense-in-Depth Summary Table (Append to existing table):*
 
 | Security Layer | Mitigation Strategy |
 | --- | --- |
-| Network | Ghost Server + Cloudflare Tunnel |
-| Secrets | AWS SSM In-Memory bootstrapping, zero `.env` on disk |
-| Authentication | Single-Use OTP, CSPRNG, Atomic Delete-Before-Issue |
-| API Layer | Rust/WASM DLP Firewall, Fail-Closed |
-| Authorization | JWT Claims resolution, IDOR Prevention |
-| Data at Rest | Fernet AES-128, Lazy Init, Fail-Safe Decrypt |
-| Monitoring | Structured Audit Logs, CloudWatch/SIEM-Ready |
-| Administration | CLI-Only, Out-of-Band Exception Handler |
-| Rate Limiting | Proxy-Aware, CF-Connecting-IP extraction |
-
----
-
-*Last updated: June 2026. All open findings are tracked internally.*
+| CI/CD Pipeline | Pull-Based Deployments, HMAC-SHA256 Webhook triggers (Zero RCE) |
+| WhatsApp Integration | Meta `X-Hub-Signature-256` Cryptographic Validation |
+| AI / LLM Engine | Hierarchical Context Injection, XML Delimiters, Pydantic Structured Outputs |
+| Inbound Campaigns | `X-Tenant-Key` Auth, Regex Sanitization, Idempotency Checks |

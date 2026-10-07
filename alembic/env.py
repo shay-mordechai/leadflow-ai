@@ -15,7 +15,7 @@ from src.database.session import Base
 # IMPORTANT: Import ALL models here so they are registered with Base.metadata before migration
 from src.database.models import (
     User, Lead, BusinessProfile, PhoneNumber, 
-    AIAgent, MediaInteraction, Integration, CoachingSession
+    AIAgent, MediaInteraction, Integration, MeetingSession
 )
 
 config = context.config

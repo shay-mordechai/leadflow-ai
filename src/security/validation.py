@@ -1,5 +1,6 @@
 # src/security/validation.py
 import re
+import uuid
 import bleach
 from typing import Tuple, Optional
 from datetime import datetime, timedelta
@@ -13,6 +14,8 @@ def create_access_token(data: dict, expires_delta: Optional[timedelta] = None) -
     Used for user authentication after OTP verification.
     """
     to_encode = data.copy()
+    to_encode.setdefault("jti", str(uuid.uuid4()))
+    to_encode.setdefault("token_version", 0)
     
     if expires_delta:
         expire = datetime.utcnow() + expires_delta
@@ -26,7 +29,7 @@ def create_access_token(data: dict, expires_delta: Optional[timedelta] = None) -
     encoded_jwt = jwt.encode(
         to_encode, 
         settings.SECRET_KEY, 
-        algorithm=settings.ALGORITHM
+        algorithm="HS256"
     )
     
     return encoded_jwt

@@ -7,6 +7,7 @@ from sqlalchemy.orm import Session
 from src.database.session import get_db
 from src.database.models import User
 from src.config import settings
+from src.security.token_revocation import ensure_token_not_revoked
 
 oauth2_scheme = OAuth2PasswordBearer(tokenUrl="/api/v1/auth/login", auto_error=False)
 
@@ -35,7 +36,16 @@ async def get_current_user(token: str = Depends(get_token), db: Session = Depend
         headers={"WWW-Authenticate": "Bearer"},
     )
     try:
-        payload = jwt.decode(token, settings.SECRET_KEY, algorithms=[settings.ALGORITHM])
+        payload = jwt.decode(token, settings.SECRET_KEY, algorithms=["HS256"])
+        if (
+            not isinstance(payload.get("jti"), str)
+            or not payload["jti"]
+            or not isinstance(payload.get("token_version"), int)
+            or payload["token_version"] < 0
+            or not isinstance(payload.get("exp"), int)
+        ):
+            raise credentials_exception
+        await ensure_token_not_revoked(token)
         # Support both 'email' and 'sub' claims for flexibility
         email: str = payload.get("email") or payload.get("sub")
         if email is None:
@@ -44,6 +54,6 @@ async def get_current_user(token: str = Depends(get_token), db: Session = Depend
         raise credentials_exception
     
     user = db.query(User).filter(User.email == email).first()
-    if user is None:
+    if user is None or payload["token_version"] != (user.token_version or 0):
         raise credentials_exception
     return user

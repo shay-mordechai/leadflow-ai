@@ -1,6 +1,8 @@
 from typing import Literal
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, field_validator
+
+from src.services.ai.output_sanitizer import sanitize_ai_output
 
 
 class LeadExtraction(BaseModel):
@@ -24,3 +26,11 @@ class WhatsAppAgentResponse(BaseModel):
         description="True if the customer is angry, requests a human, or raises an out-of-scope issue.",
     )
     extracted_data: LeadExtraction = Field(default_factory=LeadExtraction)
+
+    @field_validator("reply_text", mode="before")
+    @classmethod
+    def sanitize_reply_text(cls, value: str) -> str:
+        """Treat model output as untrusted plain text before exposing it to clients."""
+        if not isinstance(value, str):
+            return value
+        return sanitize_ai_output(value)

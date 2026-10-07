@@ -1,6 +1,7 @@
 # src/services/communication/email.py
 import os
 import logging
+from html import escape
 from typing import List, Optional, Dict
 from fastapi_mail import FastMail, MessageSchema, ConnectionConfig, MessageType
 from pydantic import EmailStr
@@ -46,7 +47,7 @@ class EmailService:
 
     async def send_password_reset_email(self, to_email: EmailStr, otp_code: str):
         if not self.conf:
-            logger.info(f"🛑 [MOCK RESET EMAIL] To: {to_email} | Code: {otp_code}")
+            logger.info("🛑 [MOCK RESET EMAIL] Credentials are not configured; reset email not sent.")
             return
 
         html_content = f"""
@@ -84,11 +85,11 @@ class EmailService:
 
         html_content = f"""
         <h3>🚨 LeadFlow System Crash Alert</h3>
-        <p><b>Summary:</b> {error_summary}</p>
+        <p><b>Summary:</b> {escape(error_summary)}</p>
         <p><b>Request Info:</b></p>
-        <pre>{request_info}</pre>
+        <pre>{escape(str(request_info))}</pre>
         <p><b>Stack Trace:</b></p>
-        <pre style='background: #f4f4f4; padding: 10px; border: 1px solid #ddd;'>{stack_trace}</pre>
+        <pre style='background: #f4f4f4; padding: 10px; border: 1px solid #ddd;'>{escape(stack_trace)}</pre>
         """
 
         try:  
@@ -107,7 +108,7 @@ class EmailService:
 
     async def send_otp_email(self, to_email: EmailStr, otp_code: str):
         if not self.conf:
-            logger.info(f"🛑 [MOCK EMAIL] To: {to_email} | OTP: {otp_code}")
+            logger.info("🛑 [MOCK EMAIL] Credentials are not configured; login email not sent.")
             return
 
         html_content = f"""

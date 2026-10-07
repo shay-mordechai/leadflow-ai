@@ -9,7 +9,8 @@ PHONE_REGEX = r"^(\+972|05)[0-9\-]{8,15}$"
 SAFE_TEXT_REGEX = r'^[a-zA-Zא-ת0-9\s\-\.\'\"]+$'
 
 class UserBase(BaseModel):
-    plan_tier: Optional[str] = "STARTER" 
+    model_config = ConfigDict(extra="forbid")
+
     email: EmailStr
     full_name: str = Field(..., min_length=2, max_length=50, description="User full name")
     business_name: Optional[str] = Field(None, max_length=100)
@@ -95,12 +96,16 @@ class UserResponse(BaseModel):
 
 
 class AIAgentSchema(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
     system_prompt: Optional[str] = None
     voice_id: str = "default_voice_1"
     language: str = "he-IL"
     is_active: bool = True
 
 class AISettingsSchema(BaseModel):
+    model_config = ConfigDict(extra="forbid", from_attributes=True)
+
     business_name: str = Field(..., description="שם העסק")
     business_type: str = Field(..., description="תחום העיסוק")
     ai_tone: str = Field(default="Professional", description="סגנון דיבור (רשמי/חברי/מכירתי)")
@@ -108,8 +113,6 @@ class AISettingsSchema(BaseModel):
     custom_instructions: Optional[str] = Field(None, description="הנחיות אישיות לבוט")
     summary_template: Optional[str] = Field(None, description="תבנית סיכום פגישות מותאמת אישית")
     ai_agent: Optional[AIAgentSchema] = None
-
-    model_config = ConfigDict(from_attributes=True)
 
 class ForgotPasswordRequest(BaseModel):
     email: EmailStr

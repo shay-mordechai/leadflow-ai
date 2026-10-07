@@ -12,6 +12,8 @@ services:
     networks:
       - leadflow-network
     restart: unless-stopped
+    ulimits:
+      core: 0
     command: redis-server --appendonly yes
 
   backend:
@@ -22,6 +24,8 @@ services:
     ports:
       - "127.0.0.1:8000:8000"
     restart: unless-stopped
+    ulimits:
+      core: 0
     mem_limit: 1.5g
     mem_reservation: 512m
     command: gunicorn src.main:app -w 4 -k uvicorn.workers.UvicornWorker --bind 0.0.0.0:8000 --timeout 120
@@ -31,6 +35,8 @@ services:
       - WHISPER_USE_MMAP=1
       - OMP_NUM_THREADS=2
       - REDIS_URL=redis://redis:6379/0
+      - EXPECTED_DB_REVISION=${EXPECTED_DB_REVISION:-}
+      - CURRENT_IMAGE_SHA=${CURRENT_IMAGE_SHA:-}
     volumes:
       - ./storage:/app/storage:Z
       - ./data:/app/data:Z
@@ -44,6 +50,8 @@ services:
     networks:
       - leadflow-network
     restart: unless-stopped
+    ulimits:
+      core: 0
     mem_limit: 1.5g
     mem_reservation: 512m
     command: ["celery", "-A", "src.worker.celery_app", "worker", "--loglevel=info", "--concurrency=2"]
@@ -66,6 +74,8 @@ services:
     networks:
       - leadflow-network
     restart: unless-stopped
+    ulimits:
+      core: 0
     command:
       - celery
       - -A
@@ -91,6 +101,8 @@ services:
     ports:
       - "0.0.0.0:3000:3000"
     restart: unless-stopped
+    ulimits:
+      core: 0
     environment:
       - NEXT_PUBLIC_API_URL=https://my-leads.app
 
@@ -100,3 +112,5 @@ services:
     networks:
       - leadflow-network
     restart: unless-stopped
+    ulimits:
+      core: 0

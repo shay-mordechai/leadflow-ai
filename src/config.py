@@ -1,4 +1,5 @@
 import os
+from pathlib import Path
 import stat
 import boto3
 import logging
@@ -152,7 +153,8 @@ class Settings(BaseSettings):
     # --- Database & Queues ---
     DATABASE_URL: str = "sqlite:////app/data/leads.db"
     REDIS_URL: str = "redis://127.0.0.1:6379/0"
-    RETENTION_TTL_HOURS: int = 24
+    RETENTION_TTL_HOURS: int = 2160
+    TRUSTED_PROXY_IPS: List[str] = []
     
     # --- Infrastructure ---
     S3_BUCKET_NAME: str = ""
@@ -197,6 +199,11 @@ class Settings(BaseSettings):
     MESHULAM_PAGE_CODE: str = "MOCK_PAGE_CODE"
 
 def validate_config(s: Settings):
+    if s.APP_ENV == "production":
+        if Path(".env").is_file():
+            raise ValueError("Production configuration must not load secrets from a .env file")
+        if s.SECRET_KEY == "temporary_dev_key" or len(s.SECRET_KEY) < 32:
+            raise ValueError("Production SECRET_KEY must be externally supplied and at least 32 characters")
     if not (s.GOOGLE_API_KEY or s.OPENAI_API_KEY):
         logger.warning("❌ CRITICAL: No AI Engines configured.")
     if not s.WHATSAPP_APP_SECRET:

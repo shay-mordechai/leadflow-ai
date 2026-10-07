@@ -19,6 +19,28 @@ env:
   IMAGE_NAME: ${{ github.repository_owner }}
 
 jobs:
+  security-scans:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+
+      - name: Scan repository for leaked secrets
+        uses: gitleaks/gitleaks-action@v2
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Scan repository dependencies and filesystem
+        uses: aquasecurity/trivy-action@0.29.0
+        with:
+          scan-type: fs
+          scan-ref: .
+          ignore-unfixed: true
+          exit-code: "1"
+          severity: CRITICAL,HIGH
+
   detect-changes:
     runs-on: ubuntu-latest
     outputs:
@@ -42,7 +64,7 @@ jobs:
               - 'data-gate/**'
 
   build-and-push:
-    needs: detect-changes
+    needs: [ detect-changes, security-scans ]
     runs-on: ubuntu-latest
     permissions:
       contents: read

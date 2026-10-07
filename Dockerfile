@@ -20,6 +20,7 @@ WORKDIR /app
 RUN apt-get update && apt-get install -y --no-install-recommends \
     ffmpeg \
     libmagic1 \
+    postgresql-client \
     build-essential \
     pkg-config \
     libavformat-dev \

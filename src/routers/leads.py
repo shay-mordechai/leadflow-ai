@@ -60,6 +60,8 @@ class ManualMessageRequest(BaseModel):
     content: str = Field(..., min_length=1, description="Text content of the manual message")
 
 class BotStatusRequest(BaseModel):
+    model_config = {"extra": "forbid"}
+
     bot_active: bool = Field(..., description="True to enable AI, False to mute (Human Takeover)")
 
 # --- Routes ---

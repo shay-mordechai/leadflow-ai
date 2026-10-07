@@ -4,6 +4,7 @@ import hashlib
 import hmac
 import json
 import logging
+import time
 from datetime import datetime
 from typing import Optional
 from zoneinfo import ZoneInfo
@@ -29,6 +30,8 @@ from src.database.models import (
     WebhookProvider,
 )
 from src.database.session import SessionLocal
+from src.services.communication.whatsapp_pipeline import process_whatsapp_message
+from src.services.background_task_capacity import background_task_capacity
 
 router = APIRouter(tags=["Webhooks - WhatsApp"])
 logger = logging.getLogger("WhatsAppWebhook")
@@ -38,6 +41,49 @@ PRO_MESSAGE_LIMIT = 2000
 
 def _is_production() -> bool:
     return (settings.APP_ENV or "").lower() == "production"
+
+
+def _has_fresh_meta_timestamps(payload: dict, now: Optional[float] = None) -> bool:
+    """Reject malformed or replayed Meta message/status events outside the five-minute window."""
+    entries = payload.get("entry", [])
+    if not isinstance(entries, list):
+        return False
+
+    current_time = time.time() if now is None else now
+    for entry in entries:
+        if not isinstance(entry, dict):
+            return False
+        changes = entry.get("changes", [])
+        if not isinstance(changes, list):
+            return False
+        for change in changes:
+            if not isinstance(change, dict):
+                return False
+            value = change.get("value", {})
+            if not isinstance(value, dict):
+                return False
+            for event_type in ("messages", "statuses"):
+                events = value.get(event_type, [])
+                if not isinstance(events, list):
+                    return False
+                for event in events:
+                    if not isinstance(event, dict):
+                        return False
+                    timestamp = event.get("timestamp")
+                    if isinstance(timestamp, bool):
+                        return False
+                    if isinstance(timestamp, int):
+                        event_time = timestamp
+                    elif isinstance(timestamp, str) and timestamp.isdecimal():
+                        event_time = int(timestamp)
+                    else:
+                        return False
+
+                    event_age = current_time - event_time
+                    if event_age > 5 * 60 or event_age < -60:
+                        return False
+    return True
+
 
 def _digits_only(value: Optional[str]) -> str:
     return "".join(ch for ch in (value or "") if ch.isdigit())
@@ -66,7 +112,10 @@ async def verify_whatsapp_signature(request: Request) -> None:
     expected_hash = hmac.new(secret.encode("utf-8"), body, hashlib.sha256).hexdigest()
     received_hash = signature.split("=", 1)[1].strip().lower()
 
-    if len(received_hash) != len(expected_hash) or not hmac.compare_digest(received_hash, expected_hash):
+    if not hmac.compare_digest(
+        received_hash.encode("utf-8"),
+        expected_hash.encode("ascii"),
+    ):
         logger.error("SECURITY ALERT: Invalid WhatsApp signature from %s", client_host)
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid signature")
 
@@ -331,7 +380,7 @@ async def _handle_inbound_message(
         
     return "no_action"
 
-def process_whatsapp_message(payload: dict[str, Any]) -> None:
+def _legacy_process_whatsapp_message(payload: dict[str, Any]) -> None:
     """Run payload processing in FastAPI's background worker thread."""
     if payload.get("object") != "whatsapp_business_account":
         logger.info("Ignoring Meta webhook object type: %s", payload.get("object"))
@@ -405,5 +454,17 @@ async def handle_whatsapp_webhook(
     if not isinstance(payload, dict):
         raise HTTPException(status_code=400, detail="Webhook payload must be a JSON object")
 
-    background_tasks.add_task(process_whatsapp_message, payload)
+    if not _has_fresh_meta_timestamps(payload):
+        logger.warning("Rejected Meta webhook with missing, malformed, or stale event timestamp.")
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Stale webhook event")
+
+    if not background_task_capacity.try_add(
+        background_tasks,
+        process_whatsapp_message,
+        payload,
+    ):
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="Background processing capacity is full",
+        )
     return JSONResponse(status_code=200, content={"status": "ok"})

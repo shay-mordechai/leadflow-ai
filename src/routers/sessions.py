@@ -26,6 +26,14 @@ logger = logging.getLogger("SessionsRouter")
 UPLOAD_DIR = "storage/audio"
 MAX_FILE_SIZE = 25 * 1024 * 1024  # 25MB Limit
 ALLOWED_MIME_TYPES = {"audio/mpeg", "audio/mp4", "audio/ogg", "audio/wav", "audio/webm", "audio/x-m4a"}
+MIME_EXTENSIONS = {
+    "audio/mpeg": ".mp3",
+    "audio/mp4": ".m4a",
+    "audio/ogg": ".ogg",
+    "audio/wav": ".wav",
+    "audio/webm": ".webm",
+    "audio/x-m4a": ".m4a",
+}
 
 @router.post("/upload/{lead_id}")
 async def upload_audio(
@@ -40,15 +48,13 @@ async def upload_audio(
     """
     
     # 1. Validate Lead Existence & Ownership
-    lead = db.query(Lead).filter(Lead.id == lead_id).first()
+    lead = db.query(Lead).filter(
+        Lead.id == lead_id,
+        Lead.user_id == current_user.id,
+    ).first()
     
     if not lead:
         raise HTTPException(status_code=404, detail="Lead not found")
-    
-    # Optional: Verify the lead belongs to the user
-    if lead.user_id != current_user.id:
-        logger.warning(f"Unauthorized access attempt by User {current_user.id} on Lead {lead_id}")
-        raise HTTPException(status_code=403, detail="Not authorized to access this lead")
 
     # 2. Prepare Storage Path (User Isolated)
     # Structure: storage/audio/{user_id}/{filename}
@@ -68,7 +74,7 @@ async def upload_audio(
         raise HTTPException(status_code=415, detail=f"Unsupported or malicious file type: {mime_type}")
 
     # 4. Save File to Disk
-    file_ext = os.path.splitext(file.filename)[1]
+    file_ext = MIME_EXTENSIONS[mime_type]
     safe_filename = f"{uuid.uuid4()}{file_ext}"
     full_path = os.path.join(user_storage_path, safe_filename)
 

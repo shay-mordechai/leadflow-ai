@@ -1,9 +1,11 @@
 # src/routers/auth.py
 import logging
 import secrets  # CRITICAL: Use secrets, not random, for cryptography
+import uuid
 from datetime import timedelta, datetime, timezone
 from fastapi import APIRouter, Depends, HTTPException, status, BackgroundTasks, Request, Response
 from fastapi.security import OAuth2PasswordRequestForm
+from starlette.concurrency import run_in_threadpool
 from jose import jwt, JWTError
 from sqlalchemy.orm import Session
 
@@ -13,8 +15,9 @@ from src.database.models import User, PhoneNumber, PlanTier
 from src.config import settings
 from src.services.communication.email import send_otp_email, send_password_reset_email 
 from src.schemas.user import UserCreate, UserResponse, VerifyOTP, ForgotPasswordRequest, ResetPasswordRequest
-from src.security.dependencies import get_current_user
+from src.security.dependencies import get_current_user, get_token
 from src.security.hashing import get_hash, verify_hash
+from src.security.token_revocation import revoke_token
 
 # SECURITY: Import the centralized rate limiter to prevent Brute Force attacks and Circular Imports
 from src.security.rate_limiter import limiter 
@@ -25,16 +28,46 @@ logger = logging.getLogger("AuthSecurity")
 # --- Constants ---
 OTP_EXPIRATION_MINUTES = 5
 
+
+def consume_otp_once(db: Session, user: User) -> bool:
+    """Atomically remove a valid OTP before allowing an authenticated session."""
+    encrypted_otp = user._otp_encrypted
+    if not encrypted_otp or not user.otp_expires_at:
+        return False
+
+    now = datetime.now(timezone.utc).replace(tzinfo=None)
+    affected_rows = (
+        db.query(User)
+        .filter(
+            User.id == user.id,
+            User._otp_encrypted == encrypted_otp,
+            User.otp_expires_at >= now,
+        )
+        .update(
+            {User._otp_encrypted: None, User.otp_expires_at: None},
+            synchronize_session=False,
+        )
+    )
+    if affected_rows != 1:
+        db.rollback()
+        return False
+
+    db.commit()
+    return True
+
+
 def create_access_token(data: dict):
     """
     Creates a JWT token with a strict expiration time.
     Uses UTC to avoid timezone confusion.
     """
     to_encode = data.copy()
+    to_encode.setdefault("jti", str(uuid.uuid4()))
+    to_encode.setdefault("token_version", 0)
     # SECURITY: Use now(timezone.utc) to ensure consistent expiration across servers
     expire = datetime.now(timezone.utc) + timedelta(minutes=settings.ACCESS_TOKEN_EXPIRE_MINUTES)
     to_encode.update({"exp": expire})
-    return jwt.encode(to_encode, settings.SECRET_KEY, algorithm=settings.ALGORITHM)
+    return jwt.encode(to_encode, settings.SECRET_KEY, algorithm="HS256")
 
 @router.get("/me", response_model=UserResponse)
 async def read_users_me(user: User = Depends(get_current_user), db: Session = Depends(get_db)):
@@ -69,7 +102,7 @@ async def register(request: Request, data: UserCreate, db: Session = Depends(get
         raise HTTPException(status_code=400, detail="Email already registered")
     
     # 2. Hash Password
-    secure_hash = get_hash(data.password)
+    secure_hash = await run_in_threadpool(get_hash, data.password)
     
     # 3. SECURITY: Force default tier regardless of input
     default_tier = PlanTier.STARTER
@@ -103,7 +136,11 @@ async def login(request: Request, bg_tasks: BackgroundTasks, form: OAuth2Passwor
     # SECURITY: Constant-time check simulation to mitigate timing attacks
     valid_password = False
     if user:
-        valid_password = verify_hash(form.password, user.hashed_password)
+        valid_password = await run_in_threadpool(
+            verify_hash,
+            form.password,
+            user.hashed_password,
+        )
     
     if not user or not valid_password:
         # SECURITY: Generic error message to prevent account enumeration
@@ -143,24 +180,27 @@ async def verify_otp(request: Request, response: Response, data: VerifyOTP, db: 
 
     # 1. Validate OTP presence and match
     if not user.otp_code or user.otp_code != data.otp_code:
-        print(f"OTP mismatch. Expected {user.otp_code}, got {data.otp_code}")
+        logger.warning("Rejected invalid MFA verification code.")
         raise HTTPException(status_code=401, detail="Invalid or expired OTP")
     
     # 2. Check Expiration
     now_utc = datetime.now(timezone.utc)
     if user.otp_expires_at and user.otp_expires_at.replace(tzinfo=timezone.utc) < now_utc:
-        print(f"OTP EXPIRED: expires at {user.otp_expires_at}, now {now_utc}")
+        logger.warning("Rejected expired MFA verification code.")
         user.otp_code = None 
         db.commit()
         raise HTTPException(status_code=401, detail="OTP has expired")
     
-    # 3. Success - Clear OTP to prevent Replay Attacks
-    user.otp_code = None
-    user.otp_expires_at = None
-    db.commit()
+    # Consume the OTP atomically before creating a session to prevent parallel replays.
+    if not consume_otp_once(db, user):
+        raise HTTPException(status_code=401, detail="Invalid or expired OTP")
     
     # 4. Issue Access Token
-    token = create_access_token({"sub": str(user.id), "email": user.email})
+    token = create_access_token({
+        "sub": str(user.id),
+        "email": user.email,
+        "token_version": user.token_version,
+    })
     
     # 5. SECURITY: Set HttpOnly Cookie
     response.set_cookie(
@@ -175,10 +215,14 @@ async def verify_otp(request: Request, response: Response, data: VerifyOTP, db: 
     return {"message": "Authentication successful. Token set in secure cookie."}
 
 @router.post("/logout")
-async def logout(response: Response):
+async def logout(
+    response: Response,
+    token: str = Depends(get_token),
+):
     """
     Logs out the user securely by clearing the HttpOnly cookie.
     """
+    await revoke_token(token)
     response.delete_cookie("access_token", httponly=True, secure=True, samesite="lax")
     return {"message": "Logged out successfully"}
 
@@ -229,7 +273,8 @@ async def reset_password(request: Request, data: ResetPasswordRequest, db: Sessi
         raise HTTPException(status_code=400, detail="Reset code has expired")
 
     # Update password with secure hashing (BCrypt + SHA-256 pre-hash)
-    user.hashed_password = get_hash(data.new_password)
+    user.hashed_password = await run_in_threadpool(get_hash, data.new_password)
+    user.token_version = (user.token_version or 0) + 1
 
     # Clear OTP to prevent replay attacks
     user.otp_code = None

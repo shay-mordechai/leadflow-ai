@@ -8,7 +8,13 @@ from celery import shared_task
 from sqlalchemy.orm import Session
 
 from src.config import settings
-from src.database.models import CoachingSession, Lead, MediaInteraction, Message
+from src.database.models import (
+    Lead,
+    MediaInteraction,
+    MeetingSession,
+    Message,
+    lead_tag_association,
+)
 from src.database.session import SessionLocal
 
 logger = logging.getLogger("RetentionTasks")
@@ -21,7 +27,10 @@ _PROTECTED_PATH_MARKERS = (os.sep + "profiles" + os.sep, "/profiles/")
 
 
 def _retention_cutoff() -> datetime:
-    ttl_hours = max(1, int(getattr(settings, "RETENTION_TTL_HOURS", 24) or 24))
+    ttl_hours = max(
+        90 * 24,
+        int(getattr(settings, "RETENTION_TTL_HOURS", 90 * 24) or 90 * 24),
+    )
     cutoff = datetime.now(timezone.utc) - timedelta(hours=ttl_hours)
     if settings.DATABASE_URL.startswith("sqlite"):
         return cutoff.replace(tzinfo=None)
@@ -138,15 +147,15 @@ def _purge_media_interactions(db: Session, cutoff: datetime) -> int:
     return purged
 
 
-def _purge_coaching_sessions(db: Session, cutoff: datetime) -> int:
+def _purge_meeting_sessions(db: Session, cutoff: datetime) -> int:
     purged = 0
     while True:
         try:
             batch = (
-                db.query(CoachingSession)
+                db.query(MeetingSession)
                 .filter(
-                    CoachingSession.created_at < cutoff,
-                    CoachingSession.audio_file_path != "",
+                    MeetingSession.created_at < cutoff,
+                    MeetingSession.audio_file_path != "",
                 )
                 .limit(BATCH_SIZE)
                 .all()
@@ -154,11 +163,11 @@ def _purge_coaching_sessions(db: Session, cutoff: datetime) -> int:
             # Also catch already-unlinked rows that still hold transcript text.
             if not batch:
                 batch = (
-                    db.query(CoachingSession)
+                    db.query(MeetingSession)
                     .filter(
-                        CoachingSession.created_at < cutoff,
-                        (CoachingSession.transcript.isnot(None))
-                        | (CoachingSession.summary.isnot(None)),
+                        MeetingSession.created_at < cutoff,
+                        (MeetingSession.transcript.isnot(None))
+                        | (MeetingSession.summary.isnot(None)),
                     )
                     .limit(BATCH_SIZE)
                     .all()
@@ -167,17 +176,72 @@ def _purge_coaching_sessions(db: Session, cutoff: datetime) -> int:
                 break
             for session in batch:
                 _safe_unlink(session.audio_file_path)
-                # audio_file_path is NOT NULL — keep the row, wipe payload.
-                session.audio_file_path = ""
-                session.transcript = None
-                session.summary = None
+                db.delete(session)
                 purged += 1
             db.commit()
         except Exception:
             db.rollback()
-            logger.exception("Failed to wipe an expired CoachingSession batch")
+            logger.exception("Failed to delete an expired MeetingSession batch")
             break
     return purged
+
+
+def _purge_expired_leads(db: Session, cutoff: datetime) -> int:
+    """Delete CRM leads older than the retention window and remove linked media files."""
+    deleted = 0
+    while True:
+        try:
+            lead_ids = [
+                row[0]
+                for row in (
+                    db.query(Lead.id)
+                    .filter(Lead.created_at < cutoff)
+                    .limit(BATCH_SIZE)
+                    .all()
+                )
+            ]
+            if not lead_ids:
+                break
+
+            linked_media = (
+                db.query(MediaInteraction)
+                .filter(MediaInteraction.lead_id.in_(lead_ids))
+                .all()
+            )
+            for media in linked_media:
+                _safe_unlink(media.file_path)
+                db.delete(media)
+
+            meetings = (
+                db.query(MeetingSession)
+                .filter(MeetingSession.lead_id.in_(lead_ids))
+                .all()
+            )
+            for meeting in meetings:
+                _safe_unlink(meeting.audio_file_path)
+                db.delete(meeting)
+
+            db.query(Message).filter(Message.lead_id.in_(lead_ids)).delete(
+                synchronize_session=False
+            )
+            db.execute(
+                lead_tag_association.delete().where(
+                    lead_tag_association.c.lead_id.in_(lead_ids)
+                )
+            )
+            db.flush()
+            count = (
+                db.query(Lead)
+                .filter(Lead.id.in_(lead_ids), Lead.created_at < cutoff)
+                .delete(synchronize_session=False)
+            )
+            db.commit()
+            deleted += int(count or 0)
+        except Exception:
+            db.rollback()
+            logger.exception("Failed to delete an expired Lead batch")
+            break
+    return deleted
 
 
 def _wipe_lead_transcriptions(db: Session, cutoff: datetime) -> int:
@@ -218,8 +282,7 @@ def _wipe_lead_transcriptions(db: Session, cutoff: datetime) -> int:
 @shared_task(name="purge_expired_tenant_data", bind=True, max_retries=2)
 def purge_expired_tenant_data(self):
     """
-    Enforce the 24-hour privacy window: unlink local media, delete chat
-    transcripts, and wipe processed text that has aged past RETENTION_TTL_HOURS.
+    Enforce at least 90 days of retention, then remove expired CRM and conversation data.
     """
     cutoff = _retention_cutoff()
     logger.info("Starting retention purge for records older than %s", cutoff.isoformat())
@@ -230,12 +293,14 @@ def purge_expired_tenant_data(self):
         "media_interactions": 0,
         "coaching_sessions": 0,
         "leads_wiped": 0,
+        "leads_deleted": 0,
     }
     try:
         stats["messages"] = _purge_messages(db, cutoff)
         stats["media_interactions"] = _purge_media_interactions(db, cutoff)
-        stats["coaching_sessions"] = _purge_coaching_sessions(db, cutoff)
+        stats["coaching_sessions"] = _purge_meeting_sessions(db, cutoff)
         stats["leads_wiped"] = _wipe_lead_transcriptions(db, cutoff)
+        stats["leads_deleted"] = _purge_expired_leads(db, cutoff)
         logger.info("Retention purge complete: %s", stats)
         return stats
     except Exception as exc:

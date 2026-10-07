@@ -24,7 +24,9 @@ request_id_ctx_var: ContextVar[str] = ContextVar("request_id", default="")
 
 # Database & Configuration
 from src.config import settings
-from src.database.session import engine, Base, get_db
+from src.database.session import engine, get_db
+from src.middleware.request_limits import RequestBodyLimitMiddleware
+from src.services.task_registry import retain_task
 
 # --- Services ---
 from src.services.communication.email import email_service 
@@ -32,11 +34,12 @@ from src.services.communication.email import email_service
 # --- Router Imports ---
 from src.routers import auth, leads, phones, sessions, facebook, settings as settings_router
 from src.routers import partners, system, provisioning, storage
+from src.routers import health
 from src.routers.billing import checkout, invoices
-from src.routers.webhooks import twilio, meshulam, whatsapp, marketing
+from src.routers.webhooks import twilio, meshulam, whatsapp, marketing, campaign
 
 # --- Logging Setup (Global JSON Structured Logging) ---
-from pythonjsonlogger import jsonlogger
+from pythonjsonlogger.json import JsonFormatter
 
 class RequestIdFilter(logging.Filter):
     def filter(self, record):
@@ -51,7 +54,7 @@ def setup_json_logging():
         root_logger.removeHandler(handler)
 
     log_handler = logging.StreamHandler()
-    formatter = jsonlogger.JsonFormatter(
+    formatter = JsonFormatter(
         fmt='%(asctime)s %(levelname)s %(request_id)s %(name)s %(message)s',
         rename_fields={"levelname": "level", "asctime": "timestamp"}
     )
@@ -70,8 +73,7 @@ logger = logging.getLogger("LeadFlowSystem")
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     logger.info("🚀 Starting System...")
-    logger.info("🗄️ Ensuring Database Schema is up to date...")
-    Base.metadata.create_all(bind=engine)
+    logger.info("🗄️ Database schema is managed by Alembic migrations.")
     yield
     logger.info("🛑 Shutting down gracefully... Cleaning up resources.")
     engine.dispose()
@@ -140,11 +142,15 @@ async def global_exception_handler(request: Request, exc: Exception):
         "request_id": request_id_ctx_var.get()
     }
 
-    asyncio.create_task(email_service.send_error_alert_email(
-        error_summary=error_summary, 
-        stack_trace=stack_trace, 
-        request_info=request_info
-    ))
+    retain_task(
+        asyncio.create_task(
+            email_service.send_error_alert_email(
+                error_summary=error_summary,
+                stack_trace=stack_trace,
+                request_info=request_info,
+            )
+        )
+    )
 
     return JSONResponse(
         status_code=500,
@@ -161,6 +167,7 @@ app.add_middleware(
     allow_methods=["GET", "POST", "PUT", "DELETE", "OPTIONS"],
     allow_headers=["Authorization", "Content-Type", "X-Request-ID"],
 )
+app.add_middleware(RequestBodyLimitMiddleware)
 
 # ==============================================================================
 # 🔗 ROUTER REGISTRATION
@@ -181,9 +188,10 @@ app.include_router(twilio.router, prefix="/webhooks/twilio", tags=["Webhooks - T
 app.include_router(whatsapp.router, prefix="/webhooks/whatsapp", tags=["Webhooks - WhatsApp"])
 app.include_router(meshulam.router, prefix="/webhooks/meshulam", tags=["Webhooks - Meshulam"])
 app.include_router(marketing.router)
-
+app.include_router(campaign.router)
 app.include_router(system.router)
 app.include_router(storage.router)
+app.include_router(health.router)
 
 # ==============================================================================
 # 🏥 HEALTH PROBES
