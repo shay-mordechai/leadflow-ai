@@ -37,8 +37,8 @@ jobs:
           python-version: '3.x' # Or a specific version like '3.10'
 
       - name: Install dependencies
-        run: pip install -r requirements.txt
-
+        run: pip install -r requirements.txt pip-audit
+        
       - name: Run Bandit SAST
         run: bandit -r src/ -ll -ii
       - name: Run Pip Audit SCA
