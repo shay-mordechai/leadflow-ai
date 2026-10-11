@@ -1,6 +1,6 @@
 # src/routers/billing/checkout.py
 import logging
-from fastapi import APIRouter, Depends, HTTPException, Request, BackgroundTasks
+from fastapi import APIRouter, Depends, HTTPException, Request
 from pydantic import BaseModel, Field
 from sqlalchemy.orm import Session
 
@@ -8,7 +8,6 @@ from src.security.dependencies import get_current_user
 from src.database.session import get_db
 from src.database.models import User, PlanTier, AuditLog, SubscriptionStatus
 from src.services.billing.grow_service import grow_service
-from src.security.audit import audit_service
 from src.config import settings
 
 router = APIRouter(tags=["Billing - Checkout"])

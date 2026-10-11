@@ -3,7 +3,7 @@ import httpx
 import logging
 import vonage
 from twilio.rest import Client as TwilioClient
-from typing import List, Dict, Any, Optional
+from typing import List, Dict, Any
 from src.config import settings
 import os
 import uuid

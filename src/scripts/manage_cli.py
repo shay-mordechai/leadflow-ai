@@ -1,8 +1,6 @@
 # src/scripts/manage_cli.py
-import sys
 import argparse
 from prettytable import PrettyTable
-from sqlalchemy.orm import Session
 from src.database.session import SessionLocal
 from src.database.models import User, PlanTier, SubscriptionStatus, BusinessProfile, AIAgent, UserRole, Lead
 

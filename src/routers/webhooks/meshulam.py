@@ -4,8 +4,7 @@ import logging
 import hmac
 import hashlib
 from datetime import datetime
-from fastapi import APIRouter, Depends, HTTPException, Request, status
-from sqlalchemy.orm import Session
+from fastapi import APIRouter, HTTPException, Request
 from fpdf import FPDF
 
 from src.database.session import SessionLocal

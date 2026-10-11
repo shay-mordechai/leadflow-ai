@@ -2,12 +2,11 @@ from fastapi import APIRouter, Depends, HTTPException, Header, status
 from sqlalchemy.orm import Session
 from sqlalchemy import select
 from typing import Optional, Dict, Any
-from pydantic import BaseModel, Field, constr
+from pydantic import BaseModel, Field
 import logging
 
 from src.database.session import get_db
 from src.database.models import User, Lead, LeadSource, LeadStatus
-from src.services.communication.whatsapp import whatsapp_adapter
 
 # Initialize Router
 router = APIRouter(
@@ -156,10 +155,10 @@ async def receive_incoming_lead(
         # We need to query the tenant's AI Agent or Business Profile to construct a dynamic, personalized message.
         # For now, we send a standard template/greeting message.
         
-        greeting_message = (
-            f"Hi {payload.name}, we received your details regarding our services. "
-            f"How can we help you today?"
-        )
+        # greeting_message = (
+        #     f"Hi {payload.name}, we received your details regarding our services. "
+        #     f"How can we help you today?"
+        # )
         
         # Trigger the WhatsApp adapter to send the message asynchronously
         # (Assuming whatsapp_adapter has an async send_message method)

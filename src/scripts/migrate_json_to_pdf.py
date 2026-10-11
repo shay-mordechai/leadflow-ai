@@ -1,7 +1,6 @@
 # Pseudo-code for migration
 import json
 from src.database.models import Tenant, Lead
-from src.security.encryption import protector
 
 def migrate():
     # 1. Create a Default Tenant for existing data

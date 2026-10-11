@@ -1,7 +1,6 @@
 # src/database/models.py
 import uuid
 import enum
-from datetime import datetime
 from sqlalchemy import (
     Column, String, DateTime, Boolean, Text, ForeignKey, Enum, Integer, func, Table, JSON, Index
 )

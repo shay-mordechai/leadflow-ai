@@ -1,7 +1,8 @@
 # src/security/dependencies.py
 from fastapi import Depends, HTTPException, status, Request
 from fastapi.security import OAuth2PasswordBearer
-from jose import JWTError, jwt
+import jwt # New import
+from jwt.exceptions import PyJWTError # New import
 from sqlalchemy.orm import Session
 
 from src.database.session import get_db
@@ -50,7 +51,7 @@ async def get_current_user(token: str = Depends(get_token), db: Session = Depend
         email: str = payload.get("email") or payload.get("sub")
         if email is None:
             raise credentials_exception
-    except JWTError:
+    except PyJWTError:
         raise credentials_exception
     
     user = db.query(User).filter(User.email == email).first()

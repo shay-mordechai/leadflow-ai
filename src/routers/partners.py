@@ -9,7 +9,6 @@ from sqlalchemy.orm import Session
 from src.database.session import get_db
 from src.database.models import User, UserRole, PlanTier, Lead, LeadStatus
 from src.security.hashing import get_password_hash
-from src.security.dependencies import get_current_user
 
 logger = logging.getLogger("LeadFlowSystem")
 

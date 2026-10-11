@@ -1,7 +1,6 @@
 # src/services/background_processor.py
 import os
 import logging
-from sqlalchemy.orm import Session
 from faster_whisper import WhisperModel
 
 from src.database.session import SessionLocal

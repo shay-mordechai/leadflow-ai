@@ -1,7 +1,6 @@
 # src/routers/sessions.py
 import uuid
 import os
-import shutil
 import logging
 import magic # NEW: For Magic Bytes validation
 from fastapi import APIRouter, Depends, HTTPException, UploadFile, File
@@ -15,7 +14,6 @@ from src.database.models import MeetingSession, Lead, User
 from src.security.dependencies import get_current_user
 
 # Config
-from src.config import settings
 
 # Services - Using Celery Worker instead of FastAPI BackgroundTasks
 from src.tasks.audio_tasks import process_meeting_audio

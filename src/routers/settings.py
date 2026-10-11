@@ -3,7 +3,7 @@ import logging
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.orm import Session
 from uuid import uuid4
-from typing import Optional, List
+from typing import List
 
 from src.database.session import get_db
 from src.database.models import User, BusinessProfile, AIAgent

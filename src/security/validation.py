@@ -4,7 +4,7 @@ import uuid
 import bleach
 from typing import Tuple, Optional
 from datetime import datetime, timedelta
-from jose import jwt
+import jwt # New import
 from src.config import settings
 
 # --- JWT TOKEN GENERATION ---

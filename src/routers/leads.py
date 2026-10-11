@@ -15,7 +15,7 @@ from slowapi.util import get_remote_address
 
 from src.database.session import get_db
 # FIXED: Added 'Message' to imports for Manual Message logging
-from src.database.models import Lead, User, LeadSource, LeadStatus, WebhookDLQ, WebhookProvider, Message
+from src.database.models import Lead, User, LeadStatus, WebhookDLQ, WebhookProvider, Message
 from src.security.dependencies import get_current_user
 from src.services.communication.whatsapp import whatsapp_adapter
 
@@ -207,7 +207,7 @@ async def receive_external_lead(
         pass
 
     try:
-        try: uuid_obj = uuid.UUID(user_id)
+        try: uuid.UUID(user_id)
         except ValueError: raise HTTPException(status_code=400, detail="Invalid User ID format")
 
         target_user = db.query(User).filter(User.id == user_id).first()
@@ -219,7 +219,7 @@ async def receive_external_lead(
             idemp_key = lead_data.idempotency_key
         else:
             raw_key = f"{lead_data.phone}-{lead_data.source}-{datetime.now(timezone.utc).strftime('%Y-%m-%d')}"
-            idemp_key = hashlib.md5(raw_key.encode()).hexdigest()
+            idemp_key = hashlib.sha256(raw_key.encode()).hexdigest()
 
         existing_lead = db.query(Lead).filter(
             Lead.user_id == target_user.id,

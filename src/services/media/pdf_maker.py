@@ -1,6 +1,8 @@
 # src/services/media/pdf_maker.py
 import os
 import logging
+import re
+import tempfile
 from fpdf import FPDF
 
 logger = logging.getLogger("PDFMaker")
@@ -34,7 +36,39 @@ class PDFMaker:
         output_dir = "storage/pdfs"
         os.makedirs(output_dir, exist_ok=True)
         
-        output_path = os.path.join(output_dir, filename)
+        # Sanitize filename to prevent path traversal
+        # 1. Strip directory components: basename
+        base_filename = os.path.basename(filename)
+
+        # Separate filename and extension
+        name_without_ext, ext = os.path.splitext(base_filename)
+
+        # 2. Allow only safe characters (alphanumeric, underscore, hyphen) in the name part
+        sanitized_name = re.sub(r'[^a-zA-Z0-9_-]', '_', name_without_ext)
+
+        # 3. Enforce .pdf extension
+        sanitized_filename = f"{sanitized_name}.pdf"
+        # Ensure storage directory exists
+        output_dir = "storage/pdfs"
+        os.makedirs(output_dir, exist_ok=True)
+        # Verify the resolved path stays strictly inside the target output directory
+        # This is a crucial step to prevent writing outside the intended directory.
+        potential_output_path = os.path.join(output_dir, sanitized_filename)
+        # Use realpath to resolve any symlinks or relative path components (like ../)
+        # Then, check if the resolved path starts with the realpath of the output directory
+        # and if the filename itself is not a directory.
+        absolute_output_dir = os.path.abspath(output_dir)
+        absolute_potential_output_path = os.path.abspath(potential_output_path)
+
+        if not absolute_potential_output_path.startswith(absolute_output_dir + os.sep) and \
+           not (absolute_potential_output_path == absolute_output_dir and sanitized_filename != ""):
+            # If path traversal is detected or filename is a directory-like entry,
+            # revert to a safe default or raise an error.
+            logger.warning(f"Path traversal attempt detected with filename: {filename}. Using a safe default.")
+            sanitized_filename = f"meeting_summary_{tempfile.NamedTemporaryFile().name.split('/')[-1]}.pdf"
+            potential_output_path = os.path.join(output_dir, sanitized_filename)
+
+        output_path = potential_output_path
         pdf.output(output_path)
         
         logger.info(f"📄 PDF generated: {output_path}")

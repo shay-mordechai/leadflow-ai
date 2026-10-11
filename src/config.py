@@ -6,9 +6,10 @@ import logging
 import requests
 import json
 import time
+import tempfile # New import
 from pydantic_settings import BaseSettings, SettingsConfigDict
 from botocore.exceptions import ClientError
-from typing import List, Dict, Optional
+from typing import List
 from cryptography.fernet import Fernet
 from dotenv import load_dotenv
 
@@ -21,8 +22,8 @@ logger = logging.getLogger("Configuration")
 
 # --- SSM CACHING MECHANISM (ENCRYPTED) ---
 # Prevents API spamming to AWS if the server restart-loops
-SSM_CACHE_FILE = "/tmp/ssm_secrets_cache.enc"
-SSM_CACHE_KEY_FILE = "/tmp/ssm_cache.key"
+SSM_CACHE_FILE = os.path.join(tempfile.gettempdir(), "ssm_secrets_cache.enc")
+SSM_CACHE_KEY_FILE = os.path.join(tempfile.gettempdir(), "ssm_cache.key")
 CACHE_EXPIRATION_SECONDS = 3600  # 1 hour cache
 
 def _get_or_create_cache_key() -> bytes:
@@ -118,7 +119,7 @@ def load_aws_configurations():
                         os.remove(SSM_CACHE_FILE)
                     with os.fdopen(os.open(SSM_CACHE_FILE, flags, stat.S_IRUSR | stat.S_IWUSR), 'wb') as f:
                         f.write(encrypted_data)
-                except Exception as io_err:
+                except Exception:
                     # Fallback if file exists and we can't remove it
                     with open(SSM_CACHE_FILE, 'wb') as f:
                         f.write(encrypted_data)

@@ -215,7 +215,7 @@ class AIEngine:
                     history_str = json.dumps(chat_history) if chat_history else ""
                     # Hash the combination of persona, history, and exact input
                     hash_input = f"{system_prompt}|{normalized_input}|{history_str}"
-                    cache_key = f"ai_cache:{hashlib.md5(hash_input.encode()).hexdigest()}"
+                    cache_key = f"ai_cache:{hashlib.sha256(hash_input.encode()).hexdigest()}"
                     
                     try:
                         cached_response = await redis_client.get(cache_key)

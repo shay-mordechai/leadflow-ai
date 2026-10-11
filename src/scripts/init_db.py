@@ -50,7 +50,6 @@ def init_db():
             # Professional English Comment:
             # Hash the key using the system's hashing utility (SHA-256 + Bcrypt)
             # to ensure security standards are met even for demo data.
-            hashed_key = get_hash(raw_api_key)
 
             # Creating a Demo User / Tenant
             demo_account = User(

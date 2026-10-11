@@ -3,7 +3,7 @@ import uuid
 from sqlalchemy import create_engine, event, Column, ForeignKey
 from sqlalchemy.engine import make_url
 from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
-from sqlalchemy.orm import sessionmaker, declarative_base, declared_attr, Session
+from sqlalchemy.orm import sessionmaker, declarative_base, declared_attr
 from sqlalchemy.types import TypeDecorator, CHAR
 from src.config import settings
 

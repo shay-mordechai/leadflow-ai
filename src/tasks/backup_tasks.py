@@ -2,6 +2,7 @@
 import logging
 import os
 import sqlite3
+import tempfile # New import
 from datetime import datetime
 from src.config import settings
 from src.services.storage.s3_service import s3_service
@@ -27,7 +28,7 @@ def backup_database_to_s3():
     # and being written to can lead to a corrupted backup.
     timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
     backup_filename = f"leads_backup_{timestamp}.db"
-    temp_backup_path = f"/tmp/{backup_filename}"
+    temp_backup_path = os.path.join(tempfile.gettempdir(), backup_filename)
     
     try:
         # Generate safe snapshot

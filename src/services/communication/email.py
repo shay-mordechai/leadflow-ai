@@ -2,7 +2,7 @@
 import os
 import logging
 from html import escape
-from typing import List, Optional, Dict
+from typing import Optional, Dict
 from fastapi_mail import FastMail, MessageSchema, ConnectionConfig, MessageType
 from pydantic import EmailStr
 from src.config import settings

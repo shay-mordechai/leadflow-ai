@@ -181,7 +181,7 @@ def get_persona_config(business_type: str, custom_data: Optional[Dict[str, Any]]
     # This replaces placeholders like {business_name} with the actual values.
     try:
         formatted_system_role = template["system_instruction"].format(**context)
-    except KeyError as e:
+    except KeyError:
         # Fallback safety: If a specific key is missing in custom_data, prevent crash
         # and return the unformatted template (or handle gracefully).
         formatted_system_role = template["system_instruction"]

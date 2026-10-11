@@ -31,6 +31,19 @@ jobs:
       - name: Checkout Code
         uses: actions/checkout@v4
 
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.x' # Or a specific version like '3.10'
+
+      - name: Install dependencies
+        run: pip install -r requirements.txt
+
+      - name: Run Bandit SAST
+        run: bandit -r src/ -ll -ii
+      - name: Run Pip Audit SCA
+        run: pip-audit -r requirements.txt
+
       - name: Scan repository for leaked secrets
         uses: gitleaks/gitleaks-action@v2
         env:

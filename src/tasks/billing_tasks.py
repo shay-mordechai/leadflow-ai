@@ -3,7 +3,7 @@ import logging
 from celery import shared_task
 from datetime import datetime, timezone, timedelta
 from src.database.session import SessionLocal
-from src.database.models import User, PlanTier, SubscriptionStatus
+from src.database.models import User, SubscriptionStatus
 
 logger = logging.getLogger("BillingTasks")
 

@@ -1,6 +1,10 @@
 # src/routers/webhooks/twilio.py
 import logging
-import asyncio
+import hmac
+import hashlib
+import base64
+from urllib.parse import urlencode
+
 from fastapi import APIRouter, Request, Form, Response, HTTPException, status, Depends
 from sqlalchemy.orm import Session
 from twilio.twiml.messaging_response import MessagingResponse
@@ -17,7 +21,50 @@ from src.tasks.audio_tasks import process_audio_message
 router = APIRouter(tags=["Webhooks - Twilio"])
 logger = logging.getLogger("TwilioWebhook")
 
-@router.post("/sms")
+# New dependency for Twilio signature validation
+async def validate_twilio_signature(request: Request):
+    if not settings.TWILIO_AUTH_TOKEN:
+        logger.warning("TWILIO_AUTH_TOKEN is not configured. Skipping signature validation.")
+        return True # Or raise HTTPException if validation is mandatory even without token
+
+    twilio_signature = request.headers.get("X-Twilio-Signature")
+    if not twilio_signature:
+        logger.warning("X-Twilio-Signature header missing.")
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Twilio Signature Required")
+
+    # Reconstruct the URL Twilio sent to this endpoint
+    # Twilio includes the full URL, including query parameters, in the signature calculation.
+    # We need to get the URL exactly as Twilio sees it.
+    url = str(request.url)
+    if request.query_params:
+        # Twilio orders query parameters alphabetically before signing
+        query_string = urlencode(sorted(request.query_params.items()))
+        url = f"{str(request.base_url).rstrip('/')}{request.scope['path']}?{query_string}"
+    else:
+        url = f"{str(request.base_url).rstrip('/')}{request.scope['path']}"
+
+    # Reconstruct the POST parameters Twilio sent
+    # Twilio orders POST parameters alphabetically by key.
+    form_params = await request.form()
+    # Concatenate URL and sorted POST parameters to form the message
+    message = url.encode('utf-8')
+    for key in sorted(form_params.keys()):
+        message += form_params[key].encode('utf-8')
+
+    # Calculate HMAC-SHA1 signature
+    auth_token = settings.TWILIO_AUTH_TOKEN.encode('utf-8')
+    digest = hmac.new(auth_token, message, hashlib.sha1).digest()
+    expected_signature = base64.b64encode(digest).decode('utf-8')
+
+    # Constant-time comparison to prevent timing attacks
+    if not hmac.compare_digest(expected_signature, twilio_signature):
+        logger.warning("Invalid Twilio signature.")
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Invalid Twilio Signature")
+
+    return True
+
+
+@router.post("/sms", dependencies=[Depends(validate_twilio_signature)])
 async def incoming_sms_message(
     request: Request,
     From: str = Form(...),

@@ -3,10 +3,10 @@ import logging
 import secrets  # CRITICAL: Use secrets, not random, for cryptography
 import uuid
 from datetime import timedelta, datetime, timezone
-from fastapi import APIRouter, Depends, HTTPException, status, BackgroundTasks, Request, Response
+from fastapi import APIRouter, Depends, HTTPException, BackgroundTasks, Request, Response
 from fastapi.security import OAuth2PasswordRequestForm
 from starlette.concurrency import run_in_threadpool
-from jose import jwt, JWTError
+import jwt # New import
 from sqlalchemy.orm import Session
 
 # Local imports

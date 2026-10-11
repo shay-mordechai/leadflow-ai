@@ -5,7 +5,8 @@ import logging
 from datetime import datetime, timezone
 
 from fastapi import HTTPException, status
-from jose import JWTError, jwt
+import jwt # New import
+from jwt.exceptions import PyJWTError # New import
 from redis.asyncio import Redis, from_url
 from redis.exceptions import RedisError
 
@@ -30,7 +31,7 @@ def _remaining_token_lifetime(token: str) -> int:
             options={"verify_exp": False},
         )
         expires_at = int(claims["exp"])
-    except (JWTError, KeyError, TypeError, ValueError) as error:
+    except (PyJWTError, KeyError, TypeError, ValueError) as error:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Could not validate credentials",

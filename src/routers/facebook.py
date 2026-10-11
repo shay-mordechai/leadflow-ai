@@ -4,10 +4,9 @@ import requests
 from fastapi import APIRouter, Depends, HTTPException, Request, Response, status
 from sqlalchemy.orm import Session
 from src.database.session import get_db
-from src.database.models import User, Lead, LeadSource, LeadStatus
+from src.database.models import User
 from src.security.dependencies import get_current_user
 from src.config import settings
-from src.services.communication.whatsapp import whatsapp_adapter
 
 router = APIRouter(prefix="/facebook", tags=["Facebook Native Integration"])
 logger = logging.getLogger("FacebookIntegration")
@@ -57,16 +56,16 @@ async def facebook_oauth_callback(code: str, state: str, db: Session = Depends(g
     if not res.ok:
         raise HTTPException(status_code=400, detail="Failed to exchange code")
     
-    short_token = res.json().get("access_token")
+    # short_token = res.json().get("access_token")
 
     # 2. Exchange short-lived token for Long-Lived Token (lasts 60 days)
-    long_token_url = (
-        f"https://graph.facebook.com/{FB_API_VERSION}/oauth/access_token?"
-        f"grant_type=fb_exchange_token&client_id={FB_CLIENT_ID}&"
-        f"client_secret={FB_CLIENT_SECRET}&fb_exchange_token={short_token}"
-    )
-    long_res = requests.get(long_token_url)
-    long_token = long_res.json().get("access_token")
+    # long_token_url = (
+    #     f"https://graph.facebook.com/{FB_API_VERSION}/oauth/access_token?"
+    #     f"grant_type=fb_exchange_token&client_id={FB_CLIENT_ID}&"
+    #     f"client_secret={FB_CLIENT_SECRET}&fb_exchange_token={short_token}"
+    # )
+    # # long_res = requests.get(long_token_url)
+    # # long_token = long_res.json().get("access_token")
 
     # 3. Save to User DB (Requires adding facebook_access_token to User model later)
     user = db.query(User).filter(User.id == user_id).first()
@@ -119,7 +118,7 @@ async def receive_facebook_lead(request: Request, db: Session = Depends(get_db))
                 if change.get("field") == "leadgen":
                     leadgen_data = change.get("value", {})
                     lead_id = leadgen_data.get("leadgen_id")
-                    page_id = leadgen_data.get("page_id")
+                    # page_id = leadgen_data.get("page_id")
 
                     if not lead_id:
                         continue

@@ -1,7 +1,7 @@
 # src/services/providers/vonage.py
 import requests
 import logging
-from typing import List, Dict, Optional
+from typing import List, Dict
 from src.config import settings
 from src.services.providers.base import PhoneProviderStrategy
 
