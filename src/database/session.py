@@ -58,19 +58,16 @@ engine_kwargs = {
 
 if is_sqlite and ":memory:" in settings.DATABASE_URL:
     from sqlalchemy.pool import StaticPool
+
     engine_kwargs["poolclass"] = StaticPool
 
 sync_database_url = settings.DATABASE_URL.replace("sqlite+aiosqlite", "sqlite")
 if ":memory:" in sync_database_url and "cache=shared" not in sync_database_url:
     sync_database_url = (
-        sync_database_url
-        + ("&" if "?" in sync_database_url else "?")
-        + "cache=shared"
+        sync_database_url + ("&" if "?" in sync_database_url else "?") + "cache=shared"
     )
 
-engine = create_engine(
-    sync_database_url, connect_args=connect_args, **engine_kwargs
-)
+engine = create_engine(sync_database_url, connect_args=connect_args, **engine_kwargs)
 
 if is_sqlite:
 

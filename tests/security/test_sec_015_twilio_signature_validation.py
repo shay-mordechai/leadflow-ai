@@ -7,17 +7,17 @@ import pytest
 from fastapi.testclient import TestClient
 from temp_test_app import app  # Import the temporary test app
 
-from src.config import settings
-from src.database.models import Base
-from src.database.session import engine
-
 import src.database.models  # noqa
+from src.config import settings
+from src.database.models import Base, PhoneNumber, User
+from src.database.session import SessionLocal, engine
+
+
 
 @pytest.fixture(autouse=True, scope="session")
 def setup_db():
-    from src.database.session import engine
-    from src.database.models import Base
     import src.database.models  # noqa
+
     Base.metadata.create_all(bind=engine)
     yield
     Base.metadata.drop_all(bind=engine)
@@ -42,12 +42,15 @@ def generate_twilio_signature(url, params, auth_token):
 
 def test_twilio_webhook_with_valid_signature(client, mocker):
     # Seed a mock phone number and user in DB
-    from src.database.session import SessionLocal, engine
-    from src.database.models import User, PhoneNumber, Base
     Base.metadata.create_all(bind=engine)
     with SessionLocal() as db:
         if not db.query(PhoneNumber).filter_by(number="+97233829709").first():
-            user = User(email="owner@example.com", name="Owner", hashed_password="pw", business_name="Clinic")
+            user = User(
+                email="owner@example.com",
+                name="Owner",
+                hashed_password="pw",
+                business_name="Clinic",
+            )
             db.add(user)
             db.commit()
             db.refresh(user)
@@ -59,9 +62,18 @@ def test_twilio_webhook_with_valid_signature(client, mocker):
     mocker.patch.object(settings, "TWILIO_AUTH_TOKEN", "test_auth_token")
 
     from unittest.mock import AsyncMock
+
     # Mock Twilio service dependencies to avoid external calls
-    mocker.patch("src.services.ai.engine.ai_engine.analyze_interaction", new_callable=AsyncMock, return_value={"is_broadcast": False})
-    mocker.patch("src.services.ai.whisper.whisper_service.transcribe_from_url", new_callable=AsyncMock, return_value="transcribed text")
+    mocker.patch(
+        "src.services.ai.engine.ai_engine.analyze_interaction",
+        new_callable=AsyncMock,
+        return_value={"is_broadcast": False},
+    )
+    mocker.patch(
+        "src.services.ai.whisper.whisper_service.transcribe_from_url",
+        new_callable=AsyncMock,
+        return_value="transcribed text",
+    )
     mocker.patch("src.services.communication.whatsapp.whatsapp_adapter.send_message")
     mocker.patch("src.tasks.audio_tasks.process_audio_message.delay")
 

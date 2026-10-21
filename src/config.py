@@ -80,7 +80,7 @@ def load_aws_configurations():
                     f"⚡ Loaded secrets from ENCRYPTED local cache (Age: {int(file_age)}s)."
                 )
                 return
-    except Exception as e:
+    except Exception as e:  # noqa: BLE001
         logger.warning(f"Failed to read encrypted SSM cache: {e}")
 
     # 2. Fetch from AWS if no valid cache exists
@@ -135,7 +135,7 @@ def load_aws_configurations():
                         "wb",
                     ) as f:
                         f.write(encrypted_data)
-                except Exception:
+                except Exception:  # noqa: BLE001
                     # Fallback if file exists and we can't remove it
                     with open(SSM_CACHE_FILE, "wb") as f:
                         f.write(encrypted_data)
@@ -144,14 +144,14 @@ def load_aws_configurations():
                 logger.info(
                     f"✅ Successfully loaded and ENCRYPTED {len(fetched_secrets)} secrets from AWS SSM."
                 )
-            except Exception as ce:
+            except Exception as ce:  # noqa: BLE001
                 logger.warning(f"Could not write encrypted SSM cache file: {ce}")
 
     except requests.exceptions.RequestException:
         logger.info("ℹ️ Local environment detected. Skipping AWS SSM load.")
     except ClientError as e:
         logger.error(f"⛔ AWS SSM Client Error: {e}")
-    except Exception as e:
+    except Exception as e:  # noqa: BLE001
         logger.warning(f"⚠️ Unexpected error loading SSM secrets: {e}")
 
 
@@ -184,18 +184,14 @@ class Settings(BaseSettings):
         )
     )
     REDIS_URL: str = Field(
-        default_factory=lambda: os.getenv(
-            "REDIS_URL", "redis://127.0.0.1:6379/0"
-        )
+        default_factory=lambda: os.getenv("REDIS_URL", "redis://127.0.0.1:6379/0")
     )
     RETENTION_TTL_HOURS: int = 2160
     TRUSTED_PROXY_IPS: list[str] = []
 
     # --- Infrastructure ---
     S3_BUCKET_NAME: str = ""
-    ENCRYPTION_KEY: str = Field(
-        default_factory=lambda: os.getenv("ENCRYPTION_KEY", "")
-    )
+    ENCRYPTION_KEY: str = Field(default_factory=lambda: os.getenv("ENCRYPTION_KEY", ""))
     SENTRY_DSN: str = ""
 
     # --- External AI APIs ---
