@@ -182,10 +182,12 @@ async def test_retained_task_registry_holds_tasks_until_completion() -> None:
     assert task not in _background_tasks
 
 
-def test_login_password_verification_runs_off_event_loop(monkeypatch: pytest.MonkeyPatch) -> None:
+def test_login_password_verification_runs_off_event_loop(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
     """Vulnerability: Event Loop Starvation; synchronous BCrypt verification must run in a worker thread."""
-    from src.routers import auth
     from src.database.session import get_db
+    from src.routers import auth
 
     main_thread_id = threading.get_ident()
 

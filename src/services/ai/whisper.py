@@ -1,11 +1,12 @@
 # src/services/ai/whisper.py
-import os
-import logging
-import tempfile
-import httpx
 import asyncio
-from urllib.parse import urlsplit
+import logging
+import os
+import tempfile
 from pathlib import Path
+from urllib.parse import urlsplit
+
+import httpx
 from faster_whisper import WhisperModel
 
 logger = logging.getLogger("WhisperService")
@@ -45,12 +46,15 @@ def _is_approved_media_url(media_url: str) -> bool:
         or hostname.endswith(".fbcdn.net")
     )
 
+
 class WhisperService:
     def __init__(self):
         # We use the 'base' model for a good balance of speed and accuracy on CPU.
         self.model_size = "base"
         self.model = None
-        logger.info(f"Initializing Whisper Service. Model '{self.model_size}' will be lazy-loaded.")
+        logger.info(
+            f"Initializing Whisper Service. Model '{self.model_size}' will be lazy-loaded."
+        )
 
     def _load_model(self):
         """Lazy loading of the model to save memory during startup."""
@@ -61,11 +65,11 @@ class WhisperService:
             # - cpu_threads=2: Prevents CPU thrashing on micro instances.
             # - num_workers=1: Ensures only one transcription runs concurrently.
             self.model = WhisperModel(
-                self.model_size, 
-                device="cpu", 
+                self.model_size,
+                device="cpu",
                 compute_type="int8",
                 cpu_threads=2,
-                num_workers=1
+                num_workers=1,
             )
             logger.info("✅ Whisper Model Loaded successfully.")
         return self.model
@@ -76,30 +80,32 @@ class WhisperService:
         """
         try:
             model = self._load_model()
-            
-            # VAD_FILTER is crucial for long files! 
+
+            # VAD_FILTER is crucial for long files!
             # It skips silent parts, saving massive amounts of processing time and memory.
             segments, info = model.transcribe(
-                file_path, 
-                beam_size=5, 
+                file_path,
+                beam_size=5,
                 language="he",
                 vad_filter=True,
-                vad_parameters=dict(min_silence_duration_ms=500)
+                vad_parameters=dict(min_silence_duration_ms=500),
             )
-            
+
             logger.info(f"🎙️ Transcription started. Detected language: {info.language}")
-            
+
             # Use a generator approach to build the string to avoid huge memory spikes
             # if the file is an hour long.
             full_text = []
             for segment in segments:
                 full_text.append(segment.text)
-                
+
             final_text = " ".join(full_text).strip()
-            logger.info(f"✅ Transcription complete. Length: {len(final_text)} characters.")
-            
+            logger.info(
+                f"✅ Transcription complete. Length: {len(final_text)} characters."
+            )
+
             return final_text
-            
+
         except Exception as e:
             logger.error(f"🔥 Transcription error inside sync worker: {e}")
             raise e
@@ -113,37 +119,43 @@ class WhisperService:
             if not _is_approved_media_url(media_url):
                 raise ValueError("Media URL host is not approved")
 
-            async with httpx.AsyncClient(
-                follow_redirects=False,
-                timeout=7.0,
-            ) as client:
-                async with client.stream("GET", media_url) as response:
-                    response.raise_for_status()
-                    content_type = response.headers.get("content-type", "")
-                    media_type = content_type.split(";", 1)[0].strip().lower()
-                    suffix = _REMOTE_AUDIO_SUFFIXES.get(media_type)
-                    if suffix is None:
-                        raise ValueError("Unsupported remote audio media type")
+            async with (
+                httpx.AsyncClient(
+                    follow_redirects=False,
+                    timeout=7.0,
+                ) as client,
+                client.stream("GET", media_url) as response,
+            ):
+                response.raise_for_status()
+                content_type = response.headers.get("content-type", "")
+                media_type = content_type.split(";", 1)[0].strip().lower()
+                suffix = _REMOTE_AUDIO_SUFFIXES.get(media_type)
+                if suffix is None:
+                    raise ValueError("Unsupported remote audio media type")
 
-                    declared_length = response.headers.get("content-length")
-                    if declared_length is not None:
-                        try:
-                            if int(declared_length) > MAX_REMOTE_AUDIO_SIZE:
-                                raise ValueError("Remote audio exceeds maximum size")
-                        except ValueError as error:
-                            raise ValueError("Invalid or oversized remote audio length") from error
+                declared_length = response.headers.get("content-length")
+                if declared_length is not None:
+                    try:
+                        if int(declared_length) > MAX_REMOTE_AUDIO_SIZE:
+                            raise ValueError("Remote audio exceeds maximum size")
+                    except ValueError as error:
+                        raise ValueError(
+                            "Invalid or oversized remote audio length"
+                        ) from error
 
-                    total_bytes = 0
-                    with tempfile.NamedTemporaryFile(delete=False, suffix=suffix) as tmp_file:
-                        tmp_path = tmp_file.name
-                        async for chunk in response.aiter_bytes():
-                            total_bytes += len(chunk)
-                            if total_bytes > MAX_REMOTE_AUDIO_SIZE:
-                                raise ValueError("Remote audio exceeds maximum size")
-                            tmp_file.write(chunk)
+                total_bytes = 0
+                with tempfile.NamedTemporaryFile(
+                    delete=False, suffix=suffix
+                ) as tmp_file:
+                    tmp_path = tmp_file.name
+                    async for chunk in response.aiter_bytes():
+                        total_bytes += len(chunk)
+                        if total_bytes > MAX_REMOTE_AUDIO_SIZE:
+                            raise ValueError("Remote audio exceeds maximum size")
+                        tmp_file.write(chunk)
 
-                    if total_bytes == 0:
-                        raise ValueError("Remote audio body is empty")
+                if total_bytes == 0:
+                    raise ValueError("Remote audio body is empty")
 
             # Transcribe without blocking the event loop
             full_text = await asyncio.to_thread(self._transcribe_sync, tmp_path)
@@ -163,17 +175,25 @@ class WhisperService:
         The caller is responsible for deleting the file after processing.
         """
         candidate_path = Path(file_path).resolve()
-        if not candidate_path.is_relative_to(LOCAL_AUDIO_ROOT) or not candidate_path.is_file():
-            logger.warning("Rejected local transcription request outside the audio upload directory.")
+        if (
+            not candidate_path.is_relative_to(LOCAL_AUDIO_ROOT)
+            or not candidate_path.is_file()
+        ):
+            logger.warning(
+                "Rejected local transcription request outside the audio upload directory."
+            )
             return "[Error: Invalid media path]"
 
         logger.info("🎧 Starting transcription for validated local audio.")
         try:
-            full_text = await asyncio.to_thread(self._transcribe_sync, str(candidate_path))
+            full_text = await asyncio.to_thread(
+                self._transcribe_sync, str(candidate_path)
+            )
             return full_text
         except Exception as e:
             logger.error("❌ Local File Transcription Error (%s)", type(e).__name__)
             return "[Error processing local audio]"
+
 
 # Singleton instance
 whisper_service = WhisperService()

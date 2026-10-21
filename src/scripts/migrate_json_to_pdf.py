@@ -1,6 +1,8 @@
 # Pseudo-code for migration
 import json
-from src.database.models import Tenant, Lead
+
+from src.database.models import Lead, Tenant
+
 
 def migrate():
     # 1. Create a Default Tenant for existing data
@@ -16,7 +18,7 @@ def migrate():
     for phone, data in old_data.items():
         new_lead = Lead(
             tenant_id=default_tenant.id,
-            phone_number=phone, # SQLAlchemy TypeDecorator will encrypt this automatically
+            phone_number=phone,  # SQLAlchemy TypeDecorator will encrypt this automatically
             name=data.get("name"),
             # Map other fields...
         )

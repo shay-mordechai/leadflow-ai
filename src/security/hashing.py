@@ -1,7 +1,8 @@
 # src/security/hashing.py
-import warnings
-import logging
 import hashlib
+import logging
+import warnings
+
 from passlib.context import CryptContext
 
 # Suppress the deprecation warning for 'crypt' in Python 3.11+
@@ -13,6 +14,7 @@ logger = logging.getLogger("SecurityHashing")
 # Note: BCrypt is robust but has a known limitation of 72 bytes for input.
 pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
 
+
 def _pre_hash(secret: str) -> str:
     """
     Internal helper: Pre-hashes inputs using SHA-256.
@@ -23,7 +25,8 @@ def _pre_hash(secret: str) -> str:
     3. This ensures the input fits safely within BCrypt's limits while maintaining high security.
     """
     # Returns a 64-char hex string (e.g., 'a5d3...')
-    return hashlib.sha256(secret.encode('utf-8')).hexdigest()
+    return hashlib.sha256(secret.encode("utf-8")).hexdigest()
+
 
 def get_hash(secret: str) -> str:
     """
@@ -36,6 +39,7 @@ def get_hash(secret: str) -> str:
     safe_secret = _pre_hash(secret)
     return pwd_context.hash(safe_secret)
 
+
 def verify_hash(plain_secret: str, hashed_secret: str) -> bool:
     """
     Verifies a plain-text secret against a stored hash.
@@ -47,9 +51,10 @@ def verify_hash(plain_secret: str, hashed_secret: str) -> bool:
     try:
         safe_secret = _pre_hash(plain_secret)
         return pwd_context.verify(safe_secret, hashed_secret)
-    except Exception as e:
+    except Exception as e:  # noqa: BLE001
         logger.error(f"Hash verification error: {e}")
         return False
+
 
 # --- ALIASES FOR COMPATIBILITY ---
 # This ensures that routers calling older function names still work correctly

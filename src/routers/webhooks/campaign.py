@@ -2,7 +2,7 @@ import hashlib
 import hmac
 import logging
 import os
-from typing import Annotated, Optional
+from typing import Annotated
 
 from fastapi import APIRouter, BackgroundTasks, Depends, Header, HTTPException, status
 from pydantic import BaseModel, ConfigDict, Field, StrictStr
@@ -33,7 +33,7 @@ class InboundLeadPayload(BaseModel):
         Field(pattern=r"^\+[1-9]\d{1,14}$"),
     ]
     campaign_source: StrictStr = Field(max_length=100)
-    notes: Optional[StrictStr] = Field(default=None, max_length=250)
+    notes: StrictStr | None = Field(default=None, max_length=250)
 
 
 def trigger_outbound_ai_agent(payload: InboundLeadPayload) -> None:
@@ -42,7 +42,7 @@ def trigger_outbound_ai_agent(payload: InboundLeadPayload) -> None:
 
 
 async def verify_campaign_tenant_key(
-    x_tenant_key: Annotated[Optional[str], Header(alias="X-Tenant-Key")] = None,
+    x_tenant_key: Annotated[str | None, Header(alias="X-Tenant-Key")] = None,
 ) -> None:
     """Fail closed unless the request carries the configured campaign secret."""
     configured_secret = os.getenv("CAMPAIGN_WEBHOOK_SECRET")
@@ -102,7 +102,9 @@ async def receive_campaign_lead(
     try:
         is_new_lead = await _reserve_lead_idempotency_key(payload.phone_number)
         if not is_new_lead:
-            logger.info("Ignored duplicate campaign lead within the idempotency window.")
+            logger.info(
+                "Ignored duplicate campaign lead within the idempotency window."
+            )
             return {"status": "accepted"}
 
         background_task_capacity.add_reserved(

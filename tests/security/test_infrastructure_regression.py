@@ -1,9 +1,7 @@
 """Category 6 baseline posture tests for configuration and deployment."""
 
-import asyncio
-import logging
 import uuid
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 from types import SimpleNamespace
 from unittest.mock import AsyncMock
 
@@ -53,7 +51,9 @@ def test_production_configuration_accepts_external_secret_without_env_file(
     """Vulnerability: In-Memory Secrets; production configuration must support environment-injected secrets."""
     monkeypatch.chdir(tmp_path)
 
-    validate_config(Settings(APP_ENV="production", SECRET_KEY="secure-production-key-" * 3))
+    validate_config(
+        Settings(APP_ENV="production", SECRET_KEY="secure-production-key-" * 3)
+    )
 
 
 def test_otp_consumption_is_atomic_and_single_use() -> None:
@@ -74,7 +74,9 @@ def test_otp_consumption_is_atomic_and_single_use() -> None:
             hashed_password="unused",
         )
         user.otp_code = "123456"
-        user.otp_expires_at = datetime.now(timezone.utc).replace(tzinfo=None) + timedelta(minutes=5)
+        user.otp_expires_at = datetime.now(UTC).replace(tzinfo=None) + timedelta(
+            minutes=5
+        )
         db.add(user)
         db.commit()
         db.refresh(user)
@@ -96,6 +98,7 @@ def test_protected_audio_route_returns_not_found_for_another_tenants_lead(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     """Vulnerability: IDOR; the route must scope lead lookup to the authenticated tenant."""
+
     class Query:
         def filter(self, *_: object) -> "Query":
             return self
@@ -125,7 +128,9 @@ def test_protected_audio_route_returns_not_found_for_another_tenants_lead(
     assert response.status_code == 404
 
 
-def test_global_exception_response_hides_stack_trace(monkeypatch: pytest.MonkeyPatch) -> None:
+def test_global_exception_response_hides_stack_trace(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
     """Vulnerability: Stack Trace Leakage; unexpected exceptions return only generic client-safe details."""
     from src import main
 
@@ -185,9 +190,12 @@ def test_rate_limit_rejects_malformed_forwarded_ip(
 
     monkeypatch.setattr(settings, "TRUSTED_PROXY_IPS", ["127.0.0.1"], raising=False)
 
-    assert get_real_ip(
-        _request("127.0.0.1", [(b"cf-connecting-ip", b"198.51.100.27, 127.0.0.1")])
-    ) == "127.0.0.1"
+    assert (
+        get_real_ip(
+            _request("127.0.0.1", [(b"cf-connecting-ip", b"198.51.100.27, 127.0.0.1")])
+        )
+        == "127.0.0.1"
+    )
 
 
 def test_retention_policy_is_ninety_days_and_deletes_expired_leads(
@@ -196,7 +204,7 @@ def test_retention_policy_is_ninety_days_and_deletes_expired_leads(
     """Vulnerability: Excessive Personal Data Retention; leads beyond 90 days must be deleted."""
     monkeypatch.setattr(settings, "RETENTION_TTL_HOURS", 90 * 24)
     cutoff = retention_tasks._retention_cutoff()
-    age = datetime.now(timezone.utc).replace(tzinfo=None) - cutoff
+    age = datetime.now(UTC).replace(tzinfo=None) - cutoff
     assert timedelta(days=89, hours=23) <= age <= timedelta(days=90, minutes=1)
 
     engine = create_engine(
@@ -245,7 +253,12 @@ def test_retention_policy_is_ninety_days_and_deletes_expired_leads(
         assert retention_tasks._purge_expired_leads(db, cutoff) == 1
         assert db.query(Lead).filter(Lead.id == lead_id).first() is None
         assert db.query(Message).filter(Message.lead_id == lead_id).count() == 0
-        assert db.query(MediaInteraction).filter(MediaInteraction.lead_id == lead_id).count() == 0
+        assert (
+            db.query(MediaInteraction)
+            .filter(MediaInteraction.lead_id == lead_id)
+            .count()
+            == 0
+        )
     finally:
         db.close()
         Base.metadata.drop_all(engine)
@@ -275,7 +288,9 @@ def test_ci_workflow_runs_trivy_and_gitleaks() -> None:
     """Vulnerability: CI Supply-Chain and Secret Exposure; workflows must scan source and container inputs."""
     from pathlib import Path
 
-    workflow = Path(".github/workflows/production.yml").read_text(encoding="utf-8").lower()
+    workflow = (
+        Path(".github/workflows/production.yml").read_text(encoding="utf-8").lower()
+    )
     assert "trivy" in workflow
     assert "gitleaks" in workflow
 
@@ -296,7 +311,11 @@ def test_wasm_toolchain_and_build_are_conditional_on_data_gate_changes() -> None
     workflow = Path(".github/workflows/production.yml").read_text(encoding="utf-8")
     condition = "if: needs.detect-changes.outputs.datagate == 'true' || github.event_name == 'workflow_dispatch'"
     steps = workflow.split("- name:")
-    rust_steps = [step for step in steps if "Install Rust Toolchain (WASM)" in step or "Build WASM Filter" in step]
+    rust_steps = [
+        step
+        for step in steps
+        if "Install Rust Toolchain (WASM)" in step or "Build WASM Filter" in step
+    ]
     assert len(rust_steps) == 2
     assert all(condition in step for step in rust_steps)
 
@@ -317,7 +336,9 @@ def test_gitleaks_allowlists_are_limited_to_known_false_positives() -> None:
     from pathlib import Path
 
     config = Path(".gitleaks.toml").read_text(encoding="utf-8")
-    dashboard = Path("frontend/app/dashboard/marketer/page.tsx").read_text(encoding="utf-8")
+    dashboard = Path("frontend/app/dashboard/marketer/page.tsx").read_text(
+        encoding="utf-8"
+    )
     assert "[extend]\nuseDefault = true" in config
     assert "5be64ff630c16b659b6e82fafd24e9d59986e175" in config
     assert "frontend/app/dashboard/marketer/page\\.tsx" in config

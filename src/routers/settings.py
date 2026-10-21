@@ -1,38 +1,44 @@
 # src/routers/settings.py
 import logging
-from fastapi import APIRouter, Depends, HTTPException, status
-from sqlalchemy.orm import Session
 from uuid import uuid4
-from typing import List
 
-from src.database.session import get_db
-from src.database.models import User, BusinessProfile, AIAgent
-from src.security.dependencies import get_current_user
-from src.schemas.user import AISettingsSchema, AIAgentSchema
-from src.security.audit import audit_service
+from fastapi import APIRouter, Depends, HTTPException, status
 from pydantic import BaseModel
+from sqlalchemy.orm import Session
+
+from src.database.models import AIAgent, BusinessProfile, User
+from src.database.session import get_db
+from src.schemas.user import AIAgentSchema, AISettingsSchema
+from src.security.audit import audit_service
+from src.security.dependencies import get_current_user
 
 router = APIRouter(tags=["AI Configuration"])
 logger = logging.getLogger("LeadFlowSystem")
+
 
 # --- Schemas ---
 class ChatMessage(BaseModel):
     role: str
     content: str
 
+
 class SimulateRequest(BaseModel):
     message: str
-    history: List[ChatMessage] = []
+    history: list[ChatMessage] = []
+
 
 @router.get("", response_model=AISettingsSchema)
 def get_settings(
-    db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_user)
+    db: Session = Depends(get_db), current_user: User = Depends(get_current_user)
 ):
     """Fetch current Business Profile and AI Agent settings."""
-    profile = db.query(BusinessProfile).filter(BusinessProfile.user_id == current_user.id).first()
+    profile = (
+        db.query(BusinessProfile)
+        .filter(BusinessProfile.user_id == current_user.id)
+        .first()
+    )
     agent = db.query(AIAgent).filter(AIAgent.user_id == current_user.id).first()
-    
+
     # Fallback if no profile exists yet
     if not profile:
         return AISettingsSchema(
@@ -42,18 +48,18 @@ def get_settings(
             products_services="",
             custom_instructions="",
             summary_template="",
-            ai_agent=None
+            ai_agent=None,
         )
-    
+
     agent_data = None
     if agent:
         agent_data = AIAgentSchema(
             system_prompt=agent.system_prompt,
             voice_id=agent.voice_id,
             language=agent.language,
-            is_active=agent.is_active
+            is_active=agent.is_active,
         )
-        
+
     return AISettingsSchema(
         business_name=profile.business_name,
         business_type=profile.business_type,
@@ -61,22 +67,27 @@ def get_settings(
         products_services=profile.products_services,
         custom_instructions=profile.custom_instructions,
         summary_template=profile.summary_template,
-        ai_agent=agent_data
+        ai_agent=agent_data,
     )
+
 
 @router.post("", status_code=status.HTTP_200_OK)
 def update_settings(
     data: AISettingsSchema,
     db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_user)
+    current_user: User = Depends(get_current_user),
 ):
     """
     Update Business Profile and AI Agent configuration.
     """
     try:
         # 1. Upsert Business Profile
-        profile = db.query(BusinessProfile).filter(BusinessProfile.user_id == current_user.id).first()
-        
+        profile = (
+            db.query(BusinessProfile)
+            .filter(BusinessProfile.user_id == current_user.id)
+            .first()
+        )
+
         if not profile:
             logger.info(f"Creating new business profile for user {current_user.email}")
             profile = BusinessProfile(
@@ -87,7 +98,7 @@ def update_settings(
                 ai_tone=data.ai_tone,
                 products_services=data.products_services,
                 custom_instructions=data.custom_instructions,
-                summary_template=data.summary_template
+                summary_template=data.summary_template,
             )
             db.add(profile)
         else:
@@ -97,11 +108,11 @@ def update_settings(
             profile.products_services = data.products_services
             profile.custom_instructions = data.custom_instructions
             profile.summary_template = data.summary_template
-            
+
         # 2. Upsert AI Agent (The Brain)
         agent = db.query(AIAgent).filter(AIAgent.user_id == current_user.id).first()
         master_prompt = _generate_master_prompt(data)
-        
+
         if not agent:
             agent = AIAgent(
                 id=uuid4(),
@@ -109,7 +120,7 @@ def update_settings(
                 system_prompt=master_prompt,
                 voice_id=data.ai_agent.voice_id if data.ai_agent else "female_calm_1",
                 language=data.ai_agent.language if data.ai_agent else "he-IL",
-                is_active=True
+                is_active=True,
             )
             db.add(agent)
         else:
@@ -129,38 +140,41 @@ def update_settings(
                 details={
                     "business_name": data.business_name,
                     "ai_tone": data.ai_tone,
-                    "prompt_length": len(master_prompt)
-                }
+                    "prompt_length": len(master_prompt),
+                },
             )
         except Exception as audit_err:
             logger.warning(f"Audit log failed but settings were saved: {audit_err}")
 
-        return {"status": "success", "message": "Business Profile and AI Brain updated successfully."}
+        return {
+            "status": "success",
+            "message": "Business Profile and AI Brain updated successfully.",
+        }
 
     except Exception as e:
         db.rollback()
-        logger.error(f"Failed to update settings for {current_user.email}: {str(e)}")
+        logger.error(f"Failed to update settings for {current_user.email}: {e!s}")
         raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, 
-            detail="לא הצלחנו לשמור את השינויים. צוות הפיתוח קיבל דיווח."
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="לא הצלחנו לשמור את השינויים. צוות הפיתוח קיבל דיווח.",
         )
+
 
 # --- NEW: AI Simulator Endpoint ---
 @router.post("/simulate")
 async def simulate_ai_chat(
     data: SimulateRequest,
     db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_user)
+    current_user: User = Depends(get_current_user),
 ):
     """
     Allows the user to test their AI prompt live from the dashboard.
     """
     agent = db.query(AIAgent).filter(AIAgent.user_id == current_user.id).first()
-    
+
     if not agent or not agent.system_prompt:
         raise HTTPException(
-            status_code=400, 
-            detail="אנא הגדר ושמור את מוח ה-AI לפני השימוש בסימולטור."
+            status_code=400, detail="אנא הגדר ושמור את מוח ה-AI לפני השימוש בסימולטור."
         )
 
     try:
@@ -168,16 +182,18 @@ async def simulate_ai_chat(
         formatted_history = []
         for msg in data.history:
             sender = "model" if msg.role == "bot" else "user"
-            
+
             # FIX: Gemini API crashes (HTTP 400) if the history starts with a 'model' message.
             # We skip 'bot' messages until we find the first 'user' message.
             if not formatted_history and sender == "model":
                 continue
-                
-            formatted_history.append({
-                "sender_type": "user" if sender == "user" else "bot",
-                "content": msg.content
-            })
+
+            formatted_history.append(
+                {
+                    "sender_type": "user" if sender == "user" else "bot",
+                    "content": msg.content,
+                }
+            )
 
         # Lazy load the AI Engine to prevent circular imports
         from src.services.ai.engine import ai_engine
@@ -187,17 +203,18 @@ async def simulate_ai_chat(
             system_prompt=agent.system_prompt,
             text_input=data.message,
             sender_name="לקוח פוטנציאלי (סימולטור)",
-            chat_history=formatted_history
+            chat_history=formatted_history,
         )
 
         return {
             "reply": ai_response.get("reply_text", "הייתה בעיה בניסוח התשובה."),
-            "needs_human": ai_response.get("needs_human_escalation", False)
+            "needs_human": ai_response.get("needs_human_escalation", False),
         }
-        
+
     except Exception as e:
         logger.error(f"Simulator error for {current_user.email}: {e}")
         raise HTTPException(status_code=500, detail="שגיאה בסימולציית ה-AI")
+
 
 def _generate_master_prompt(data: AISettingsSchema) -> str:
     """
@@ -205,11 +222,13 @@ def _generate_master_prompt(data: AISettingsSchema) -> str:
     """
     tone_instruction = ""
     tone = data.ai_tone
-    
+
     if tone == "רשמי" or tone == "Professional":
         tone_instruction = "דבר בשפה רשמית, מקצועית ומכובדת. השתמש בשפה גבוהה אך ברורה."
     elif tone == "חברי" or tone == "Friendly":
-        tone_instruction = "דבר בגובה העיניים, היה אמפתי, נחמד, ושזור אימוג'ים במידה הנכונה."
+        tone_instruction = (
+            "דבר בגובה העיניים, היה אמפתי, נחמד, ושזור אימוג'ים במידה הנכונה."
+        )
     elif tone == "מכירתי" or tone == "Sales":
         tone_instruction = "המטרה העיקרית שלך היא להניע לפעולה. הצע הצעות ערך ברורות וצור דחיפות חיובית."
     else:

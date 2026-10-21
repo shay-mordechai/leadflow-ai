@@ -1,32 +1,37 @@
 # src/services/communication/email.py
-import os
 import logging
+import os
 from html import escape
-from typing import Optional, Dict
-from fastapi_mail import FastMail, MessageSchema, ConnectionConfig, MessageType
+
+from fastapi_mail import ConnectionConfig, FastMail, MessageSchema, MessageType
 from pydantic import EmailStr
+
 from src.config import settings
 
 logger = logging.getLogger("EmailService")
+
 
 class EmailService:
     """
     Asynchronous email service handler using fastapi-mail.
     Supports OTP delivery, PDFs, and Admin Crash Alerts.
     """
-    def __init__(self):  
+
+    def __init__(self):
         self.conf = self._create_config()
 
-    def _create_config(self) -> Optional[ConnectionConfig]:
+    def _create_config(self) -> ConnectionConfig | None:
         """
         Safely creates the connection configuration.
         Returns None if credentials are missing.
         """
         username = settings.MAIL_USERNAME
         password = settings.MAIL_PASSWORD
-        
+
         if not username or not password:
-            logger.warning("⚠️ SMTP Credentials missing in Config. Emails will NOT be sent (Log only).")
+            logger.warning(
+                "⚠️ SMTP Credentials missing in Config. Emails will NOT be sent (Log only)."
+            )
             return None
 
         try:
@@ -39,7 +44,7 @@ class EmailService:
                 MAIL_STARTTLS=True,
                 MAIL_SSL_TLS=False,
                 USE_CREDENTIALS=True,
-                VALIDATE_CERTS=True
+                VALIDATE_CERTS=True,
             )
         except Exception as e:
             logger.error(f"❌ Failed to configure SMTP: {e}")
@@ -47,7 +52,9 @@ class EmailService:
 
     async def send_password_reset_email(self, to_email: EmailStr, otp_code: str):
         if not self.conf:
-            logger.info("🛑 [MOCK RESET EMAIL] Credentials are not configured; reset email not sent.")
+            logger.info(
+                "🛑 [MOCK RESET EMAIL] Credentials are not configured; reset email not sent."
+            )
             return
 
         html_content = f"""
@@ -63,14 +70,16 @@ class EmailService:
                 subject="Password Reset Code",
                 recipients=[to_email],
                 body=html_content,
-                subtype=MessageType.html
+                subtype=MessageType.html,
             )
             fm = FastMail(self.conf)
             await fm.send_message(message)
         except Exception as e:
             logger.error(f"❌ Failed to send password reset email: {e}")
 
-    async def send_error_alert_email(self, error_summary: str, stack_trace: str, request_info: Dict):
+    async def send_error_alert_email(
+        self, error_summary: str, stack_trace: str, request_info: dict
+    ):
         """
         Sends an emergency crash report to the System Administrator.
         """
@@ -92,12 +101,12 @@ class EmailService:
         <pre style='background: #f4f4f4; padding: 10px; border: 1px solid #ddd;'>{escape(stack_trace)}</pre>
         """
 
-        try:  
+        try:
             message = MessageSchema(
                 subject=f"🚨 LeadFlow Crash: {error_summary[:60]}",
                 recipients=[admin_email],
                 body=html_content,
-                subtype=MessageType.html
+                subtype=MessageType.html,
             )
 
             fm = FastMail(self.conf)
@@ -108,7 +117,9 @@ class EmailService:
 
     async def send_otp_email(self, to_email: EmailStr, otp_code: str):
         if not self.conf:
-            logger.info("🛑 [MOCK EMAIL] Credentials are not configured; login email not sent.")
+            logger.info(
+                "🛑 [MOCK EMAIL] Credentials are not configured; login email not sent."
+            )
             return
 
         html_content = f"""
@@ -123,7 +134,7 @@ class EmailService:
                 subject=f"Login Code: {otp_code}",
                 recipients=[to_email],
                 body=html_content,
-                subtype=MessageType.html
+                subtype=MessageType.html,
             )
             fm = FastMail(self.conf)
             await fm.send_message(message)
@@ -151,7 +162,7 @@ class EmailService:
                 recipients=[to_email],
                 body=html_content,
                 subtype=MessageType.html,
-                attachments=[pdf_path]
+                attachments=[pdf_path],
             )
             fm = FastMail(self.conf)
             await fm.send_message(message)
@@ -162,10 +173,12 @@ class EmailService:
 # --- Singleton Instance Initialization ---
 email_service = EmailService()
 
+
 # --- Global Helper Wrappers for Backwards Compatibility ---
 async def send_otp_email(to_email: str, otp_code: str):
     """Global wrapper for OTP delivery via global singleton."""
     await email_service.send_otp_email(to_email, otp_code)
+
 
 async def send_password_reset_email(to_email: str, otp_code: str):
     """Global wrapper for password reset delivery via global singleton."""

@@ -1,7 +1,8 @@
 # src/logging_config.py
 import logging
-from logging.handlers import RotatingFileHandler
 import os
+from logging.handlers import RotatingFileHandler
+
 
 def setup_logging():
     """
@@ -14,14 +15,14 @@ def setup_logging():
 
     # Create formatters
     formatter = logging.Formatter(
-        '%(asctime)s - %(name)s - %(levelname)s - %(message)s'
+        "%(asctime)s - %(name)s - %(levelname)s - %(message)s"
     )
 
     # 1. File Handler (Rotating)
     file_handler = RotatingFileHandler(
         log_file,
-        maxBytes=5 * 1024 * 1024, # 5 MB
-        backupCount=3
+        maxBytes=5 * 1024 * 1024,  # 5 MB
+        backupCount=3,
     )
     file_handler.setFormatter(formatter)
     file_handler.setLevel(logging.INFO)

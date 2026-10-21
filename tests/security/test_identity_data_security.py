@@ -4,9 +4,10 @@ import base64
 import json
 import logging
 import uuid
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 from io import BytesIO
 from types import SimpleNamespace
+from typing import Self
 from unittest.mock import AsyncMock, MagicMock
 
 import pytest
@@ -19,15 +20,21 @@ from src.config import settings
 from src.database.session import get_db
 from src.routers import auth, sessions
 from src.security import dependencies
-from src.security.dependencies import get_current_user
 from src.security.audit import AuditService
+from src.security.dependencies import get_current_user
 from src.services.communication import email as email_module
 
 
 def _unsigned_jwt(claims: dict[str, object]) -> str:
-    encode_segment = lambda value: base64.urlsafe_b64encode(  # noqa: E731
-        json.dumps(value, separators=(",", ":"), default=lambda item: int(item.timestamp())).encode()
-    ).rstrip(b"=").decode()
+    encode_segment = lambda value: (
+        base64.urlsafe_b64encode(
+            json.dumps(
+                value, separators=(",", ":"), default=lambda item: int(item.timestamp())
+            ).encode()
+        )
+        .rstrip(b"=")
+        .decode()
+    )
     return f"{encode_segment({'alg': 'none', 'typ': 'JWT'})}.{encode_segment(claims)}."
 
 
@@ -48,7 +55,7 @@ async def test_current_user_rejects_jwt_algorithm_downgrade(algorithm: str) -> N
     claims = {
         "sub": "user@example.com",
         "email": "user@example.com",
-        "exp": datetime.now(timezone.utc) + timedelta(minutes=5),
+        "exp": datetime.now(UTC) + timedelta(minutes=5),
         "jti": str(uuid.uuid4()),
         "token_version": 0,
     }
@@ -68,7 +75,9 @@ async def test_current_user_rejects_jwt_algorithm_downgrade(algorithm: str) -> N
 
 
 @pytest.mark.asyncio
-async def test_redis_blocklist_rejects_revoked_token(monkeypatch: pytest.MonkeyPatch) -> None:
+async def test_redis_blocklist_rejects_revoked_token(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
     """Vulnerability: Stateless JWT Revocation; a Redis-blocklisted bearer token must fail immediately."""
     from src.security import token_revocation
 
@@ -105,7 +114,6 @@ async def test_tokens_from_before_password_change_are_rejected(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     """Vulnerability: Stolen JWT after password change; auth-version mismatch must revoke earlier sessions."""
-    from src.security import token_revocation
 
     token = jwt.encode(
         {
@@ -113,7 +121,7 @@ async def test_tokens_from_before_password_change_are_rejected(
             "email": "user@example.com",
             "jti": str(uuid.uuid4()),
             "token_version": 2,
-            "exp": datetime.now(timezone.utc) + timedelta(minutes=5),
+            "exp": datetime.now(UTC) + timedelta(minutes=5),
         },
         settings.SECRET_KEY,
         algorithm="HS256",
@@ -163,7 +171,9 @@ def test_audit_log_strips_line_breaks_ansi_and_control_sequences(
 
 
 @pytest.mark.asyncio
-async def test_error_email_escapes_untrusted_html(monkeypatch: pytest.MonkeyPatch) -> None:
+async def test_error_email_escapes_untrusted_html(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
     """Vulnerability: SSTI and HTML Injection; untrusted error/request values must render as escaped text."""
     service = email_module.EmailService()
     service.conf = object()
@@ -200,7 +210,9 @@ def test_audio_upload_uses_mime_derived_extension_and_contained_path(
     user_id = uuid.uuid4()
     media_root = tmp_path / "audio"
     monkeypatch.setattr(sessions, "UPLOAD_DIR", str(media_root))
-    monkeypatch.setattr(sessions.magic, "from_buffer", lambda _data, mime=True: "audio/wav")
+    monkeypatch.setattr(
+        sessions.magic, "from_buffer", lambda _data, mime=True: "audio/wav"
+    )
     monkeypatch.setattr(sessions.process_meeting_audio, "delay", MagicMock())
 
     class Query:
@@ -286,7 +298,7 @@ async def test_remote_audio_transcriber_does_not_fetch_internal_or_untrusted_url
         def __init__(self, **_: object) -> None:
             pass
 
-        async def __aenter__(self) -> "FakeClient":
+        async def __aenter__(self) -> Self:
             return self
 
         async def __aexit__(self, *_: object) -> None:
@@ -316,9 +328,9 @@ async def test_remote_audio_transcriber_rejects_unapproved_content_type(
     monkeypatch.setattr(service, "_transcribe_sync", parser)
 
     class Response:
-        headers = {"content-type": "text/html"}
+        headers = {"content-type": "text/html"}  # noqa: RUF012
 
-        async def __aenter__(self) -> "Response":
+        async def __aenter__(self) -> Self:
             return self
 
         async def __aexit__(self, *_: object) -> None:
@@ -334,7 +346,7 @@ async def test_remote_audio_transcriber_rejects_unapproved_content_type(
         def __init__(self, **_: object) -> None:
             pass
 
-        async def __aenter__(self) -> "Client":
+        async def __aenter__(self) -> Self:
             return self
 
         async def __aexit__(self, *_: object) -> None:
@@ -364,9 +376,9 @@ async def test_remote_audio_transcriber_enforces_streaming_size_limit(
     monkeypatch.setattr(service, "_transcribe_sync", parser)
 
     class Response:
-        headers = {"content-type": "audio/ogg"}
+        headers = {"content-type": "audio/ogg"}  # noqa: RUF012
 
-        async def __aenter__(self) -> "Response":
+        async def __aenter__(self) -> Self:
             return self
 
         async def __aexit__(self, *_: object) -> None:
@@ -382,7 +394,7 @@ async def test_remote_audio_transcriber_enforces_streaming_size_limit(
         def __init__(self, **_: object) -> None:
             pass
 
-        async def __aenter__(self) -> "Client":
+        async def __aenter__(self) -> Self:
             return self
 
         async def __aexit__(self, *_: object) -> None:

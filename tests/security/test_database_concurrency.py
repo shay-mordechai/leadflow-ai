@@ -89,13 +89,12 @@ async def _run_concurrent_reservations(
         await db.commit()
 
     async def reserve() -> int | None:
-        async with session_factory() as db:
-            async with db.begin():
-                return await whatsapp_pipeline._reserve_ai_message_credit(
-                    db,
-                    user_id,
-                    max_count,
-                )
+        async with session_factory() as db, db.begin():
+            return await whatsapp_pipeline._reserve_ai_message_credit(
+                db,
+                user_id,
+                max_count,
+            )
 
     reservation_results = await asyncio.gather(reserve(), reserve())
     async with session_factory() as db:

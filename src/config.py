@@ -1,17 +1,18 @@
-import os
-from pathlib import Path
-import stat
-import boto3
-import logging
-import requests
 import json
+import logging
+import os
+import stat
+import tempfile  # New import
 import time
-import tempfile # New import
-from pydantic_settings import BaseSettings, SettingsConfigDict
+from pathlib import Path
+
+import boto3
+import requests
 from botocore.exceptions import ClientError
-from typing import List
 from cryptography.fernet import Fernet
 from dotenv import load_dotenv
+from pydantic import Field
+from pydantic_settings import BaseSettings, SettingsConfigDict
 
 # --- טעינת קובץ ה-.env המקומי ---
 # פעולה זו קוראת את הנתונים מקובץ ה-.env ומכניסה אותם לתוך os.environ
@@ -26,32 +27,38 @@ SSM_CACHE_FILE = os.path.join(tempfile.gettempdir(), "ssm_secrets_cache.enc")
 SSM_CACHE_KEY_FILE = os.path.join(tempfile.gettempdir(), "ssm_cache.key")
 CACHE_EXPIRATION_SECONDS = 3600  # 1 hour cache
 
+
 def _get_or_create_cache_key() -> bytes:
     """
     Tier 2 Security: Generates or retrieves a local encryption key.
     Enforces strict file permissions (600) so only the owner can read it.
     """
     if os.path.exists(SSM_CACHE_KEY_FILE):
-        with open(SSM_CACHE_KEY_FILE, 'rb') as f:
+        with open(SSM_CACHE_KEY_FILE, "rb") as f:
             return f.read()
     else:
         key = Fernet.generate_key()
         # Open file descriptor with strict permissions
         flags = os.O_WRONLY | os.O_CREAT | os.O_EXCL
         # stat.S_IRUSR | stat.S_IWUSR equals to 0o600 (Owner Read/Write only)
-        with os.fdopen(os.open(SSM_CACHE_KEY_FILE, flags, stat.S_IRUSR | stat.S_IWUSR), 'wb') as f:
+        with os.fdopen(
+            os.open(SSM_CACHE_KEY_FILE, flags, stat.S_IRUSR | stat.S_IWUSR), "wb"
+        ) as f:
             f.write(key)
         return key
+
 
 def load_aws_configurations():
     # [12-Factor] Bypass AWS SSM unless explicitly enabled via environment variable
     if os.getenv("ENABLE_AWS_SSM", "false").lower() != "true":
-        logger.info("Cloud-agnostic mode: skipping AWS SSM and using local .env variables.")
+        logger.info(
+            "Cloud-agnostic mode: skipping AWS SSM and using local .env variables."
+        )
         return
 
     if os.getenv("APP_ENV") == "development":
         return
-    
+
     # 1. Check local ENCRYPTED cache first
     try:
         if os.path.exists(SSM_CACHE_FILE):
@@ -59,17 +66,19 @@ def load_aws_configurations():
             if file_age < CACHE_EXPIRATION_SECONDS:
                 key = _get_or_create_cache_key()
                 fernet = Fernet(key)
-                
-                with open(SSM_CACHE_FILE, 'rb') as f:
+
+                with open(SSM_CACHE_FILE, "rb") as f:
                     encrypted_data = f.read()
-                    
+
                 decrypted_data = fernet.decrypt(encrypted_data)
-                cached_secrets = json.loads(decrypted_data.decode('utf-8'))
-                
+                cached_secrets = json.loads(decrypted_data.decode("utf-8"))
+
                 for k, v in cached_secrets.items():
                     os.environ[k] = v
-                    
-                logger.info(f"⚡ Loaded secrets from ENCRYPTED local cache (Age: {int(file_age)}s).")
+
+                logger.info(
+                    f"⚡ Loaded secrets from ENCRYPTED local cache (Age: {int(file_age)}s)."
+                )
                 return
     except Exception as e:
         logger.warning(f"Failed to read encrypted SSM cache: {e}")
@@ -79,8 +88,9 @@ def load_aws_configurations():
         token_url = "http://169.254.169.254/latest/api/token"
         headers = {"X-aws-ec2-metadata-token-ttl-seconds": "21600"}
         token_response = requests.put(token_url, headers=headers, timeout=1)
-        if token_response.status_code != 200: return 
-            
+        if token_response.status_code != 200:
+            return
+
         token = token_response.text.strip()
         region_url = "http://169.254.169.254/latest/meta-data/placement/region"
         region_headers = {"X-aws-ec2-metadata-token": token}
@@ -88,12 +98,15 @@ def load_aws_configurations():
         region = region_response.text.strip()
 
         logger.info(f"☁️ Fetching fresh secrets from AWS SSM (Region: {region})...")
-        ssm = boto3.client('ssm', region_name=region)
+        ssm = boto3.client("ssm", region_name=region)
         ssm_path = os.getenv("SSM_PATH_PREFIX", "/leadflow/prod/")
-        if not ssm_path.endswith("/"): ssm_path += "/"
+        if not ssm_path.endswith("/"):
+            ssm_path += "/"
 
-        paginator = ssm.get_paginator('get_parameters_by_path')
-        page_iterator = paginator.paginate(Path=ssm_path, Recursive=True, WithDecryption=True)
+        paginator = ssm.get_paginator("get_parameters_by_path")
+        page_iterator = paginator.paginate(
+            Path=ssm_path, Recursive=True, WithDecryption=True
+        )
 
         fetched_secrets = {}
         for page in page_iterator:
@@ -102,32 +115,37 @@ def load_aws_configurations():
                 value = param["Value"]
                 os.environ[key] = value
                 fetched_secrets[key] = value
-        
+
         # 3. Encrypt and save to cache
         if fetched_secrets:
             try:
                 key = _get_or_create_cache_key()
                 fernet = Fernet(key)
-                
-                json_data = json.dumps(fetched_secrets).encode('utf-8')
+
+                json_data = json.dumps(fetched_secrets).encode("utf-8")
                 encrypted_data = fernet.encrypt(json_data)
-                
+
                 flags = os.O_WRONLY | os.O_CREAT | os.O_TRUNC
                 try:
                     # Remove old file if exists to recreate with strict permissions
                     if os.path.exists(SSM_CACHE_FILE):
                         os.remove(SSM_CACHE_FILE)
-                    with os.fdopen(os.open(SSM_CACHE_FILE, flags, stat.S_IRUSR | stat.S_IWUSR), 'wb') as f:
+                    with os.fdopen(
+                        os.open(SSM_CACHE_FILE, flags, stat.S_IRUSR | stat.S_IWUSR),
+                        "wb",
+                    ) as f:
                         f.write(encrypted_data)
                 except Exception:
                     # Fallback if file exists and we can't remove it
-                    with open(SSM_CACHE_FILE, 'wb') as f:
+                    with open(SSM_CACHE_FILE, "wb") as f:
                         f.write(encrypted_data)
                     os.chmod(SSM_CACHE_FILE, stat.S_IRUSR | stat.S_IWUSR)
-                 
-                logger.info(f"✅ Successfully loaded and ENCRYPTED {len(fetched_secrets)} secrets from AWS SSM.")
+
+                logger.info(
+                    f"✅ Successfully loaded and ENCRYPTED {len(fetched_secrets)} secrets from AWS SSM."
+                )
             except Exception as ce:
-                 logger.warning(f"Could not write encrypted SSM cache file: {ce}")
+                logger.warning(f"Could not write encrypted SSM cache file: {ce}")
 
     except requests.exceptions.RequestException:
         logger.info("ℹ️ Local environment detected. Skipping AWS SSM load.")
@@ -136,41 +154,59 @@ def load_aws_configurations():
     except Exception as e:
         logger.warning(f"⚠️ Unexpected error loading SSM secrets: {e}")
 
+
 load_aws_configurations()
+
 
 class Settings(BaseSettings):
     # חיבור הקובץ .env בצורה טבעית למנגנון של Pydantic
-    model_config = SettingsConfigDict(env_file=".env", env_file_encoding="utf-8", extra="ignore")
+    model_config = SettingsConfigDict(
+        env_file=".env", env_file_encoding="utf-8", extra="ignore"
+    )
 
     # --- Core Configuration ---
     APP_NAME: str = "LeadFlow AI"
-    APP_ENV: str = "development"
-    SECRET_KEY: str = "temporary_dev_key" 
+    APP_ENV: str = Field(
+        default_factory=lambda: os.getenv(
+            "APP_ENV", os.getenv("ENVIRONMENT", "development")
+        )
+    )
+    SECRET_KEY: str = "temporary_dev_key"
     ALGORITHM: str = "HS256"
     ACCESS_TOKEN_EXPIRE_MINUTES: int = 1440
     BASE_URL: str = "http://localhost:8000"
     ALLOWED_HOSTS: str = "*"
-    
+
     # --- Database & Queues ---
-    DATABASE_URL: str = "sqlite:////app/data/leads.db"
-    REDIS_URL: str = "redis://127.0.0.1:6379/0"
+    DATABASE_URL: str = Field(
+        default_factory=lambda: os.getenv(
+            "DATABASE_URL", "sqlite:////app/data/leads.db"
+        )
+    )
+    REDIS_URL: str = Field(
+        default_factory=lambda: os.getenv(
+            "REDIS_URL", "redis://127.0.0.1:6379/0"
+        )
+    )
     RETENTION_TTL_HOURS: int = 2160
-    TRUSTED_PROXY_IPS: List[str] = []
-    
+    TRUSTED_PROXY_IPS: list[str] = []
+
     # --- Infrastructure ---
     S3_BUCKET_NAME: str = ""
-    ENCRYPTION_KEY: str = "" 
+    ENCRYPTION_KEY: str = Field(
+        default_factory=lambda: os.getenv("ENCRYPTION_KEY", "")
+    )
     SENTRY_DSN: str = ""
-    
+
     # --- External AI APIs ---
     OPENAI_API_KEY: str = ""
     GOOGLE_API_KEY: str = ""
-    
+
     # --- Telephony Providers ---
     TWILIO_ACCOUNT_SID: str = ""
     TWILIO_AUTH_TOKEN: str = ""
     TWILIO_WHATSAPP_NUMBER: str = ""
-    
+
     VONAGE_API_KEY: str = ""
     VONAGE_API_SECRET: str = ""
     VONAGE_APP_ID: str = ""
@@ -178,14 +214,14 @@ class Settings(BaseSettings):
     SIGNALWIRE_PROJECT_ID: str = ""
     SIGNALWIRE_AUTH_TOKEN: str = ""
     SIGNALWIRE_SPACE_URL: str = ""
-    
+
     # --- Meta / WhatsApp ---
     META_ACCESS_TOKEN: str = ""
     WHATSAPP_PHONE_ID: str = ""
     WHATSAPP_VERIFY_TOKEN: str = "my_secure_token"
     WHATSAPP_APP_SECRET: str = ""
     GRAPH_API_VERSION: str = "v21.0"
-    
+
     # --- Email (SMTP) & Alerts ---
     MAIL_USERNAME: str = ""
     MAIL_PASSWORD: str = ""
@@ -199,22 +235,33 @@ class Settings(BaseSettings):
     MESHULAM_API_KEY: str = "MOCK_API_KEY"
     MESHULAM_PAGE_CODE: str = "MOCK_PAGE_CODE"
 
+
 def validate_config(s: Settings):
     if s.APP_ENV == "production":
         if Path(".env").is_file():
-            raise ValueError("Production configuration must not load secrets from a .env file")
+            raise ValueError(
+                "Production configuration must not load secrets from a .env file"
+            )
         if s.SECRET_KEY == "temporary_dev_key" or len(s.SECRET_KEY) < 32:
-            raise ValueError("Production SECRET_KEY must be externally supplied and at least 32 characters")
+            raise ValueError(
+                "Production SECRET_KEY must be externally supplied and at least 32 characters"
+            )
     if not (s.GOOGLE_API_KEY or s.OPENAI_API_KEY):
         logger.warning("❌ CRITICAL: No AI Engines configured.")
     if not s.WHATSAPP_APP_SECRET:
-        logger.warning("WHATSAPP_APP_SECRET is empty; Meta POST signature verification will reject traffic.")
+        logger.warning(
+            "WHATSAPP_APP_SECRET is empty; Meta POST signature verification will reject traffic."
+        )
     if not (s.META_ACCESS_TOKEN and s.WHATSAPP_PHONE_ID):
-        logger.warning("META_ACCESS_TOKEN or WHATSAPP_PHONE_ID missing; Graph API sends will fail.")
+        logger.warning(
+            "META_ACCESS_TOKEN or WHATSAPP_PHONE_ID missing; Graph API sends will fail."
+        )
+
 
 try:
     settings = Settings()
-    if settings.APP_ENV == "production": validate_config(settings)
+    if settings.APP_ENV == "production":
+        validate_config(settings)
 except Exception as e:
     logger.critical(f"🔥 FATAL: Configuration failed. Error: {e}")
     raise

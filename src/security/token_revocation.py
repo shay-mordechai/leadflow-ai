@@ -2,11 +2,11 @@
 
 import hashlib
 import logging
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 
+import jwt  # New import
 from fastapi import HTTPException, status
-import jwt # New import
-from jwt.exceptions import PyJWTError # New import
+from jwt.exceptions import PyJWTError  # New import
 from redis.asyncio import Redis, from_url
 from redis.exceptions import RedisError
 
@@ -37,7 +37,7 @@ def _remaining_token_lifetime(token: str) -> int:
             detail="Could not validate credentials",
             headers={"WWW-Authenticate": "Bearer"},
         ) from error
-    return max(0, expires_at - int(datetime.now(timezone.utc).timestamp()))
+    return max(0, expires_at - int(datetime.now(UTC).timestamp()))
 
 
 async def revoke_token(token: str) -> None:

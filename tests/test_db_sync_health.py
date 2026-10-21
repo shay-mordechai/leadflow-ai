@@ -57,7 +57,9 @@ def test_db_sync_endpoint_returns_503_for_revision_mismatch(monkeypatch) -> None
     }
 
 
-def test_db_sync_endpoint_fails_closed_when_expected_revision_missing(monkeypatch) -> None:
+def test_db_sync_endpoint_fails_closed_when_expected_revision_missing(
+    monkeypatch,
+) -> None:
     """Schema correlation: absent deployment metadata must never report an unverified DB as synchronized."""
     monkeypatch.delenv("EXPECTED_DB_REVISION", raising=False)
     monkeypatch.setenv("CURRENT_IMAGE_SHA", "sha256:running")

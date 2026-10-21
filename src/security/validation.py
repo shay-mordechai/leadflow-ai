@@ -1,14 +1,16 @@
 # src/security/validation.py
 import re
 import uuid
-import bleach
-from typing import Tuple, Optional
 from datetime import datetime, timedelta
-import jwt # New import
+
+import bleach
+import jwt  # New import
+
 from src.config import settings
 
+
 # --- JWT TOKEN GENERATION ---
-def create_access_token(data: dict, expires_delta: Optional[timedelta] = None) -> str:
+def create_access_token(data: dict, expires_delta: timedelta | None = None) -> str:
     """
     Generates a JWT Token signed with the server's SECRET_KEY.
     Used for user authentication after OTP verification.
@@ -16,23 +18,22 @@ def create_access_token(data: dict, expires_delta: Optional[timedelta] = None) -
     to_encode = data.copy()
     to_encode.setdefault("jti", str(uuid.uuid4()))
     to_encode.setdefault("token_version", 0)
-    
+
     if expires_delta:
-        expire = datetime.utcnow() + expires_delta
+        expire = datetime.utcnow() + expires_delta  # noqa: DTZ003
     else:
         # Default expiration set in config (usually 24 hours)
-        expire = datetime.utcnow() + timedelta(minutes=settings.ACCESS_TOKEN_EXPIRE_MINUTES)
-    
+        expire = datetime.utcnow() + timedelta(  # noqa: DTZ003
+            minutes=settings.ACCESS_TOKEN_EXPIRE_MINUTES
+        )
+
     # Standard JWT claims
     to_encode.update({"exp": expire})
-    
-    encoded_jwt = jwt.encode(
-        to_encode, 
-        settings.SECRET_KEY, 
-        algorithm="HS256"
-    )
-    
+
+    encoded_jwt = jwt.encode(to_encode, settings.SECRET_KEY, algorithm="HS256")
+
     return encoded_jwt
+
 
 # --- INPUT SANITIZATION ---
 class SecurityValidator:
@@ -42,10 +43,10 @@ class SecurityValidator:
 
     # Strict Regex for Israeli Mobile Numbers (05X-XXXXXXX or +972-5X-XXXXXXX)
     # Prevents Injection via phone fields and ensures data integrity.
-    ISRAEL_PHONE_REGEX = re.compile(r'^(?:\+972|0)(5[0-248-9])\-?\d{7}$')
+    ISRAEL_PHONE_REGEX = re.compile(r"^(?:\+972|0)(5[0-248-9])\-?\d{7}$")
 
     @staticmethod
-    def sanitize_text(text: Optional[str]) -> str:
+    def sanitize_text(text: str | None) -> str:
         """
         Sanitizes input strings to prevent Stored Cross-Site Scripting (XSS).
         Removes all HTML tags and dangerous attributes.
@@ -59,7 +60,7 @@ class SecurityValidator:
         return cleaned.strip()
 
     @staticmethod
-    def validate_israeli_phone(phone: str) -> Tuple[bool, str]:
+    def validate_israeli_phone(phone: str) -> tuple[bool, str]:
         """
         Validates and normalizes phone numbers.
         Returns: (is_valid, normalized_number)
@@ -68,12 +69,12 @@ class SecurityValidator:
             return False, ""
 
         # Remove common separators (dashes, spaces)
-        clean_num = re.sub(r'[\s\-]', '', phone)
+        clean_num = re.sub(r"[\s\-]", "", phone)
 
         # Check against regex
         # Note: The regex assumes the cleaned number format
-        if clean_num.startswith('+972'):
-             clean_num = '0' + clean_num[4:]
+        if clean_num.startswith("+972"):
+            clean_num = "0" + clean_num[4:]
 
         match = SecurityValidator.ISRAEL_PHONE_REGEX.match(clean_num)
         if match:

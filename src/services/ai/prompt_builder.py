@@ -1,5 +1,6 @@
+from collections.abc import Mapping, Sequence
 from html import escape
-from typing import Any, Mapping, Sequence
+from typing import Any
 
 
 class PromptBuilder:
@@ -66,8 +67,8 @@ Primary Objective: Answer basic inquiries and coordinate follow-up with the busi
 <tenant_profile>
 <business_name>{cls._xml_safe(business_name)}</business_name>
 <business_type>{cls._xml_safe(business_type)}</business_type>
-<products_services>{cls._xml_safe(products_services or 'No specific catalog provided.')}</products_services>
-<custom_instructions>{cls._xml_safe(custom_instructions or 'Follow default professional behavior.')}</custom_instructions>
+<products_services>{cls._xml_safe(products_services or "No specific catalog provided.")}</products_services>
+<custom_instructions>{cls._xml_safe(custom_instructions or "Follow default professional behavior.")}</custom_instructions>
 </tenant_profile>"""
 
     @classmethod
@@ -90,7 +91,7 @@ Primary Objective: Answer basic inquiries and coordinate follow-up with the busi
         bounded_latest_message = latest_message[: cls.MAX_INBOUND_MESSAGE_LENGTH]
 
         return f"""<lead_context>
-<lead_name>{cls._xml_safe(lead_name or 'לקוח')}</lead_name>
+<lead_name>{cls._xml_safe(lead_name or "לקוח")}</lead_name>
 <lead_source>{cls._xml_safe(lead_source)}</lead_source>
 </lead_context>
 

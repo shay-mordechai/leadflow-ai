@@ -5,5 +5,6 @@ YOGA_STUDIO_POLICY_HEBREW = """
 3. רשימת המתנה: כל הקודמת זוכה.
 """
 
+
 def get_policy_text() -> str:
     return YOGA_STUDIO_POLICY_HEBREW

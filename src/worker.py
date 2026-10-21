@@ -1,7 +1,9 @@
 # src/worker.py
 import logging
+
 from celery import Celery
 from celery.schedules import crontab
+
 from src.config import settings
 
 # Initialize Celery Application and include all task modules
@@ -44,6 +46,7 @@ celery_app.conf.update(
 )
 
 logger = logging.getLogger("CeleryWorker")
+
 
 @celery_app.task(name="ping_test")
 def ping_test(message: str):

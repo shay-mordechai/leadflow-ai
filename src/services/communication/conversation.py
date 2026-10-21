@@ -1,15 +1,18 @@
 # src/services/communication/conversation.py
 # Handles bi-directional communication logic between the AI Bot and the Lead.
 
-from src.database.models import Lead
 # Adjusted import path for the new folder structure
 from src.services.communication.whatsapp_adapter import whatsapp_adapter
+
+from src.database.models import Lead
+
 
 class ConversationManager:
     """
     Orchestrates the conversation flow.
     Decides if a message needs an AI reply, a qualification question, or a human handover.
     """
+
     def __init__(self, db):
         self.db = db
 

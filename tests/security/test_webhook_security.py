@@ -1,9 +1,9 @@
 """Security regression tests for inbound and outbound webhook behavior."""
 
-import json
 import asyncio
 import hashlib
 import hmac
+import json
 import threading
 from unittest.mock import AsyncMock, MagicMock
 
@@ -11,8 +11,8 @@ import pytest
 from fastapi import BackgroundTasks, HTTPException
 from starlette.requests import Request
 
-from src.schemas.ai_response import WhatsAppAgentResponse
 from src.routers.webhooks import campaign, whatsapp
+from src.schemas.ai_response import WhatsAppAgentResponse
 from src.services.communication import whatsapp_pipeline
 
 
@@ -23,13 +23,7 @@ def test_meta_webhook_timestamp_must_be_within_five_minutes():
         "entry": [
             {
                 "changes": [
-                    {
-                        "value": {
-                            "messages": [
-                                {"timestamp": str(current_time - 301)}
-                            ]
-                        }
-                    }
+                    {"value": {"messages": [{"timestamp": str(current_time - 301)}]}}
                 ]
             }
         ]
@@ -48,13 +42,7 @@ def test_meta_webhook_accepts_current_timestamp():
         "entry": [
             {
                 "changes": [
-                    {
-                        "value": {
-                            "messages": [
-                                {"timestamp": str(current_time - 300)}
-                            ]
-                        }
-                    }
+                    {"value": {"messages": [{"timestamp": str(current_time - 300)}]}}
                 ]
             }
         ]
@@ -78,9 +66,7 @@ async def test_whatsapp_route_rejects_stale_signed_event(monkeypatch):
                     "changes": [
                         {
                             "value": {
-                                "messages": [
-                                    {"timestamp": str(current_time - 301)}
-                                ]
+                                "messages": [{"timestamp": str(current_time - 301)}]
                             }
                         }
                     ]

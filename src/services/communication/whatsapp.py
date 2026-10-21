@@ -2,7 +2,6 @@
 import logging
 import os
 import tempfile
-from typing import Optional
 
 import requests
 
@@ -31,12 +30,16 @@ class WhatsAppAdapter:
     def _is_production(self) -> bool:
         return (settings.APP_ENV or "").lower() == "production"
 
-    def _credentials(self, access_token: Optional[str] = None, phone_number_id: Optional[str] = None) -> tuple[str, str]:
+    def _credentials(
+        self, access_token: str | None = None, phone_number_id: str | None = None
+    ) -> tuple[str, str]:
         token = (access_token or self.access_token or "").strip()
         phone_id = (phone_number_id or self.phone_number_id or "").strip()
         return token, phone_id
 
-    def is_configured(self, access_token: Optional[str] = None, phone_number_id: Optional[str] = None) -> bool:
+    def is_configured(
+        self, access_token: str | None = None, phone_number_id: str | None = None
+    ) -> bool:
         token, phone_id = self._credentials(access_token, phone_number_id)
         return bool(token and phone_id)
 
@@ -44,8 +47,8 @@ class WhatsAppAdapter:
         self,
         to_phone: str,
         text: str,
-        phone_number_id: Optional[str] = None,
-        access_token: Optional[str] = None,
+        phone_number_id: str | None = None,
+        access_token: str | None = None,
     ) -> bool:
         """
         Sends a WhatsApp text message via Meta Graph API.
@@ -61,7 +64,9 @@ class WhatsAppAdapter:
 
         if not token or not phone_id:
             if self._is_production():
-                logger.error("Graph API credentials missing in production; message not sent.")
+                logger.error(
+                    "Graph API credentials missing in production; message not sent."
+                )
                 return False
             logger.warning(
                 "[DEV MOCK] Meta credentials missing. Would send WhatsApp to %s: %s",
@@ -94,7 +99,9 @@ class WhatsAppAdapter:
                 return False
             data = response.json() if response.content else {}
             message_id = (data.get("messages") or [{}])[0].get("id")
-            logger.info("Graph WhatsApp message sent to %s (id=%s)", clean_phone, message_id)
+            logger.info(
+                "Graph WhatsApp message sent to %s (id=%s)", clean_phone, message_id
+            )
             return True
         except requests.exceptions.RequestException as exc:
             logger.error("Network error sending Graph WhatsApp message: %s", exc)
@@ -106,8 +113,8 @@ class WhatsAppAdapter:
     def download_media(
         self,
         media_id: str,
-        access_token: Optional[str] = None,
-    ) -> Optional[str]:
+        access_token: str | None = None,
+    ) -> str | None:
         """
         Downloads Cloud API media by Graph media id into a secure temp file.
         """
@@ -118,9 +125,13 @@ class WhatsAppAdapter:
 
         if not token:
             if self._is_production():
-                logger.error("Cannot download Meta media in production without META_ACCESS_TOKEN.")
+                logger.error(
+                    "Cannot download Meta media in production without META_ACCESS_TOKEN."
+                )
             else:
-                logger.warning("[DEV MOCK] Cannot download Meta media without credentials.")
+                logger.warning(
+                    "[DEV MOCK] Cannot download Meta media without credentials."
+                )
             return None
 
         headers = {"Authorization": f"Bearer {token}"}

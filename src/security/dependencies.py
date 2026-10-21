@@ -1,36 +1,41 @@
 # src/security/dependencies.py
-from fastapi import Depends, HTTPException, status, Request
+import jwt  # New import
+from fastapi import Depends, HTTPException, Request, status
 from fastapi.security import OAuth2PasswordBearer
-import jwt # New import
-from jwt.exceptions import PyJWTError # New import
+from jwt.exceptions import PyJWTError  # New import
 from sqlalchemy.orm import Session
 
-from src.database.session import get_db
-from src.database.models import User
 from src.config import settings
+from src.database.models import User
+from src.database.session import get_db
 from src.security.token_revocation import ensure_token_not_revoked
 
 oauth2_scheme = OAuth2PasswordBearer(tokenUrl="/api/v1/auth/login", auto_error=False)
+
 
 def get_token(request: Request, token: str = Depends(oauth2_scheme)) -> str:
     # Check header first (via OAuth2PasswordBearer)
     if token:
         return token
-    
+
     # Fallback to HttpOnly cookie
     cookie_token = request.cookies.get("access_token")
     if cookie_token:
         if cookie_token.startswith("Bearer "):
             return cookie_token.split(" ")[1]
         return cookie_token
-        
+
     raise HTTPException(
         status_code=status.HTTP_401_UNAUTHORIZED,
         detail="Not authenticated",
         headers={"WWW-Authenticate": "Bearer"},
     )
 
-async def get_current_user(token: str = Depends(get_token), db: Session = Depends(get_db)):
+
+async def get_current_user(
+    token: str = Depends(get_token),
+    db: Session = Depends(get_db),  # noqa: B008
+):
     credentials_exception = HTTPException(
         status_code=status.HTTP_401_UNAUTHORIZED,
         detail="Could not validate credentials",
@@ -53,7 +58,7 @@ async def get_current_user(token: str = Depends(get_token), db: Session = Depend
             raise credentials_exception
     except PyJWTError:
         raise credentials_exception
-    
+
     user = db.query(User).filter(User.email == email).first()
     if user is None or payload["token_version"] != (user.token_version or 0):
         raise credentials_exception

@@ -1,14 +1,17 @@
 # src/routers/system.py
 import logging
-from fastapi import APIRouter, Depends, status
-from sqlalchemy.orm import Session
-from sqlalchemy import text
-from src.database.session import get_db
-from src.config import settings
+
 import redis
+from fastapi import APIRouter, Depends, status
+from sqlalchemy import text
+from sqlalchemy.orm import Session
+
+from src.config import settings
+from src.database.session import get_db
 
 router = APIRouter(prefix="/api/v1/system", tags=["System & Health"])
 logger = logging.getLogger("SystemHealth")
+
 
 @router.get("/health")
 async def health_check(db: Session = Depends(get_db)):
@@ -20,9 +23,9 @@ async def health_check(db: Session = Depends(get_db)):
         "status": "healthy",
         "database": "unhealthy",
         "redis": "unhealthy",
-        "storage": "unhealthy"
+        "storage": "unhealthy",
     }
-    
+
     # 1. Check Database connection
     try:
         db.execute(text("SELECT 1"))
@@ -42,7 +45,7 @@ async def health_check(db: Session = Depends(get_db)):
 
     # 3. Check Local Storage path writability
     try:
-        storage_path = getattr(settings, 'STORAGE_BASE_PATH', '/app/storage')
+        storage_path = getattr(settings, "STORAGE_BASE_PATH", "/app/storage")
         if os.access(storage_path, os.W_OK):
             health_status["storage"] = "healthy"
         else:

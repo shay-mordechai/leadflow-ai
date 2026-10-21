@@ -1,6 +1,6 @@
 import logging
 import os
-from typing import Any, Optional
+from typing import Any
 
 import httpx
 from google import genai
@@ -63,7 +63,7 @@ async def _reserve_ai_message_credit(
     db: AsyncSession,
     user_id: Any,
     max_message_count: int,
-) -> Optional[int]:
+) -> int | None:
     """Atomically reserve one monthly AI message slot if the tenant has quota left."""
     statement = (
         update(User)
@@ -102,11 +102,11 @@ async def _release_ai_message_credit(db: AsyncSession, user_id: Any) -> bool:
         return False
 
 
-def _digits_only(value: Optional[str]) -> str:
+def _digits_only(value: str | None) -> str:
     return "".join(character for character in (value or "") if character.isdigit())
 
 
-def _extract_text_body(message: dict[str, Any]) -> Optional[str]:
+def _extract_text_body(message: dict[str, Any]) -> str | None:
     message_type = message.get("type")
     if message_type == "text":
         body = (message.get("text") or {}).get("body")
@@ -126,7 +126,7 @@ def _extract_text_body(message: dict[str, Any]) -> Optional[str]:
 async def _resolve_tenant(
     db: AsyncSession,
     metadata: dict[str, Any],
-) -> tuple[Optional[User], Optional[PhoneNumber]]:
+) -> tuple[User | None, PhoneNumber | None]:
     phone_number_id = (metadata.get("phone_number_id") or "").strip()
     display_phone = _digits_only(metadata.get("display_phone_number"))
     phone_record = None
@@ -141,9 +141,7 @@ async def _resolve_tenant(
     if phone_record is None and display_phone:
         phone_tail = display_phone[-9:] if len(display_phone) >= 9 else display_phone
         phone_record = await db.scalar(
-            select(PhoneNumber)
-            .where(PhoneNumber.number.contains(phone_tail))
-            .limit(1)
+            select(PhoneNumber).where(PhoneNumber.number.contains(phone_tail)).limit(1)
         )
 
     if phone_record is not None:
@@ -152,9 +150,7 @@ async def _resolve_tenant(
     if display_phone:
         phone_tail = display_phone[-9:] if len(display_phone) >= 9 else display_phone
         user = await db.scalar(
-            select(User)
-            .where(User.assigned_phone_number.contains(phone_tail))
-            .limit(1)
+            select(User).where(User.assigned_phone_number.contains(phone_tail)).limit(1)
         )
         return user, None
     return None, None
@@ -164,7 +160,7 @@ async def send_whatsapp_message(
     phone_number_id: str,
     recipient_phone: str,
     text: str,
-) -> Optional[str]:
+) -> str | None:
     """Send a text message through Meta Graph API and return its message ID."""
     token = (os.getenv("WHATSAPP_API_TOKEN") or "").strip()
     clean_phone = _digits_only(recipient_phone)
@@ -215,21 +211,28 @@ async def _prepare_message_context(
         logger.warning("Skipping Meta message without sender number id=%s", external_id)
         return "ignored_incomplete_message", {}
     if not text_body:
-        logger.info("Ignoring unsupported or empty Meta message type=%s id=%s", message.get("type"), external_id)
+        logger.info(
+            "Ignoring unsupported or empty Meta message type=%s id=%s",
+            message.get("type"),
+            external_id,
+        )
         return "ignored_unsupported_type", {}
 
     contact_profile = ((contacts[0] or {}).get("profile") or {}) if contacts else {}
     sender_name = contact_profile.get("name") or "Guest"
     user, phone_record = await _resolve_tenant(db, metadata)
     if user is None:
-        logger.warning("Received message for unassigned number: %s", metadata.get("display_phone_number"))
+        logger.warning(
+            "Received message for unassigned number: %s",
+            metadata.get("display_phone_number"),
+        )
         return "ignored_unassigned_number", {}
 
-    agent = await db.scalar(
-        select(AIAgent).where(AIAgent.user_id == user.id).limit(1)
-    )
+    agent = await db.scalar(select(AIAgent).where(AIAgent.user_id == user.id).limit(1))
     if agent is None or not agent.is_active:
-        logger.info("AI agent disabled or missing for %s", metadata.get("display_phone_number"))
+        logger.info(
+            "AI agent disabled or missing for %s", metadata.get("display_phone_number")
+        )
         return "agent_disabled", {}
 
     sender_tail = sender_id[-9:] if len(sender_id) >= 9 else sender_id
@@ -275,7 +278,9 @@ async def _prepare_message_context(
     if _turn_limit_reached(inbound_turn_count or 0):
         lead.bot_active = False
         lead.requires_human = True
-        logger.warning("Automated-turn limit reached for lead %s; escalating to a human", lead.id)
+        logger.warning(
+            "Automated-turn limit reached for lead %s; escalating to a human", lead.id
+        )
         return "turn_limit_reached", {
             "phone_number_id": (
                 metadata.get("phone_number_id")
@@ -287,7 +292,9 @@ async def _prepare_message_context(
             "needs_human_escalation": True,
         }
 
-    max_message_limit = PRO_MESSAGE_LIMIT if user.plan_tier == PlanTier.PRO else STARTER_MESSAGE_LIMIT
+    max_message_limit = (
+        PRO_MESSAGE_LIMIT if user.plan_tier == PlanTier.PRO else STARTER_MESSAGE_LIMIT
+    )
     reserved_message_count = await _reserve_ai_message_credit(
         db,
         user.id,
@@ -330,7 +337,9 @@ async def _prepare_message_context(
             or user.business_name
             or "העסק שלנו"
         ),
-        products_services=(business_profile.products_services if business_profile else None),
+        products_services=(
+            business_profile.products_services if business_profile else None
+        ),
         custom_instructions=(
             (business_profile.custom_instructions if business_profile else None)
             or agent.system_prompt
@@ -338,7 +347,9 @@ async def _prepare_message_context(
     )
     lead_turn_prompt = PromptBuilder.build_lead_turn_prompt(
         lead_name=sender_name,
-        lead_source=str(lead.source.value if hasattr(lead.source, "value") else lead.source),
+        lead_source=str(
+            lead.source.value if hasattr(lead.source, "value") else lead.source
+        ),
         conversation_history=history,
         latest_message=text_body,
     )
@@ -366,9 +377,13 @@ async def _process_single_message(
 ) -> str:
     try:
         async with db.begin():
-            result, context = await _prepare_message_context(db, metadata, contacts, message)
+            result, context = await _prepare_message_context(
+                db, metadata, contacts, message
+            )
     except IntegrityError:
-        logger.warning("Concurrent duplicate Meta WhatsApp message id=%s", message.get("id"))
+        logger.warning(
+            "Concurrent duplicate Meta WhatsApp message id=%s", message.get("id")
+        )
         return "duplicate"
 
     if result in {"limit_exceeded", "turn_limit_reached"}:
@@ -403,15 +418,20 @@ async def _process_single_message(
         await _release_ai_message_credit(db, context["user_id"])
         return "gemini_failed"
 
-    post_inference_result: Optional[str] = None
+    post_inference_result: str | None = None
     try:
         async with db.begin():
             lead = await db.get(Lead, context["lead_id"])
             if lead is None:
-                logger.error("Lead %s disappeared before response dispatch", context["lead_id"])
+                logger.error(
+                    "Lead %s disappeared before response dispatch", context["lead_id"]
+                )
                 post_inference_result = "lead_missing"
             elif lead.bot_active is False:
-                logger.info("Human takeover began during inference for lead %s; suppressing reply", lead.id)
+                logger.info(
+                    "Human takeover began during inference for lead %s; suppressing reply",
+                    lead.id,
+                )
                 post_inference_result = "muted_during_inference"
             else:
                 lead.qualification_score = structured_output.lead_qualification_score
@@ -420,7 +440,10 @@ async def _process_single_message(
                     lead.requires_human = True
                     logger.warning("Human handoff required for lead %s", lead.id)
     except Exception:
-        logger.exception("Failed to update qualification or escalation state for lead %s", context["lead_id"])
+        logger.exception(
+            "Failed to update qualification or escalation state for lead %s",
+            context["lead_id"],
+        )
         await _release_ai_message_credit(db, context["user_id"])
         return "database_update_failed"
     if post_inference_result is not None:
@@ -434,23 +457,33 @@ async def _process_single_message(
             structured_output.reply_text,
         )
     except Exception:
-        logger.exception("Meta Graph API send failed for inbound message id=%s", message.get("id"))
+        logger.exception(
+            "Meta Graph API send failed for inbound message id=%s", message.get("id")
+        )
         await _release_ai_message_credit(db, context["user_id"])
         return "meta_send_failed"
 
     try:
         async with db.begin():
-            db.add(Message(
-                lead_id=context["lead_id"],
-                sender_type="bot",
-                content=structured_output.reply_text,
-                external_id=outbound_id,
-            ))
+            db.add(
+                Message(
+                    lead_id=context["lead_id"],
+                    sender_type="bot",
+                    content=structured_output.reply_text,
+                    external_id=outbound_id,
+                )
+            )
     except Exception:
-        logger.exception("Meta sent reply but database sync failed for lead %s", context["lead_id"])
+        logger.exception(
+            "Meta sent reply but database sync failed for lead %s", context["lead_id"]
+        )
         return "database_sync_failed"
 
-    logger.info("WhatsApp reply sent for lead %s (outbound_id=%s)", context["lead_id"], outbound_id)
+    logger.info(
+        "WhatsApp reply sent for lead %s (outbound_id=%s)",
+        context["lead_id"],
+        outbound_id,
+    )
     return "ai_replied"
 
 
@@ -484,7 +517,9 @@ async def process_whatsapp_message(payload: dict[str, Any]) -> None:
                                     client,
                                 )
                             except Exception:
-                                logger.exception("Unhandled WhatsApp message processing failure")
+                                logger.exception(
+                                    "Unhandled WhatsApp message processing failure"
+                                )
                                 await db.rollback()
     except Exception:
         logger.exception("WhatsApp background pipeline failed")

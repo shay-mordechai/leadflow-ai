@@ -1,13 +1,14 @@
 import os
 import sys
-import pytest
 from unittest.mock import AsyncMock, MagicMock, patch
+
+import pytest
 from pydantic import ValidationError
 
 # Ensure root directory is in sys.path
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
 
-from src.schemas.ai_response import WhatsAppAgentResponse, LeadExtraction
+from src.schemas.ai_response import WhatsAppAgentResponse
 from src.services.ai.prompt_builder import PromptBuilder
 
 
@@ -24,10 +25,7 @@ class TestAIResponseSchema:
             "lead_intent": "BOOKING",
             "lead_qualification_score": 90,
             "needs_human_escalation": False,
-            "extracted_data": {
-                "goal": "אימון אישי",
-                "preferred_time": "ערב"
-            }
+            "extracted_data": {"goal": "אימון אישי", "preferred_time": "ערב"},
         }
         response = WhatsAppAgentResponse(**payload)
         assert response.reply_text == "שלום, נשמח לתאם שיחה."
@@ -43,7 +41,7 @@ class TestAIResponseSchema:
                 reply_text="בדיקה",
                 lead_intent="INQUIRY",
                 lead_qualification_score=150,  # Invalid: gt 100
-                needs_human_escalation=False
+                needs_human_escalation=False,
             )
 
 
@@ -59,7 +57,7 @@ class TestPromptBuilder:
             business_type="Fitness",
             business_name="PowerGym",
             products_services="מנוי חודשי: 200 ש״ח",
-            custom_instructions="לשמור על יחס אדיב"
+            custom_instructions="לשמור על יחס אדיב",
         )
 
         assert "" in instruction
@@ -74,13 +72,13 @@ class TestPromptBuilder:
         """Verify dynamic Layer 4 wraps lead data and incoming user message cleanly."""
         history = [
             {"sender": "דני", "text": "היי"},
-            {"sender": "בוט", "text": "שלום דני, במה נוכל לעזור?"}
+            {"sender": "בוט", "text": "שלום דני, במה נוכל לעזור?"},
         ]
         lead_prompt = PromptBuilder.build_lead_turn_prompt(
             lead_name="דני",
             lead_source="WhatsApp",
             conversation_history=history,
-            latest_message="כמה עולה אימון?"
+            latest_message="כמה עולה אימון?",
         )
 
         assert "" in lead_prompt
@@ -117,6 +115,7 @@ class TestWebhookWorkerLogic:
             mock_post.return_value = mock_response
 
             import httpx
+
             async with httpx.AsyncClient() as client:
                 res = await client.post(
                     "https://graph.facebook.com/v21.0/123456/messages",
@@ -125,8 +124,8 @@ class TestWebhookWorkerLogic:
                         "messaging_product": "whatsapp",
                         "to": "972500000000",
                         "type": "text",
-                        "text": {"body": "הודעת בדיקה"}
-                    }
+                        "text": {"body": "הודעת בדיקה"},
+                    },
                 )
 
             assert res.status_code == 200
@@ -139,7 +138,7 @@ class TestWebhookWorkerLogic:
 # =====================================================================
 @pytest.mark.skipif(
     not os.getenv("GEMINI_API_KEY"),
-    reason="GEMINI_API_KEY environment variable not set. Skipping live inference."
+    reason="GEMINI_API_KEY environment variable not set. Skipping live inference.",
 )
 def test_live_gemini_structured_output():
     """Live call to Gemini 2.5 Flash verifying end-to-end Pydantic parsing."""
@@ -151,14 +150,14 @@ def test_live_gemini_structured_output():
     sys_instruction = PromptBuilder.build_system_instruction(
         business_type="Fitness",
         business_name="PowerGym",
-        products_services="אימון ניסיון ללא עלות"
+        products_services="אימון ניסיון ללא עלות",
     )
 
     user_payload = PromptBuilder.build_lead_turn_prompt(
         lead_name="יוסי",
         lead_source="Facebook",
         conversation_history=[],
-        latest_message="שלום, אפשר לבוא לאימון ניסיון מחר?"
+        latest_message="שלום, אפשר לבוא לאימון ניסיון מחר?",
     )
 
     response = client.models.generate_content(

@@ -48,8 +48,7 @@ def init_limiter() -> Limiter:
         return limiter_instance
     except Exception as e:  # noqa: BLE001
         env = (
-            os.getenv("APP_ENV")
-            or getattr(settings, "APP_ENV", "development")
+            os.getenv("APP_ENV") or getattr(settings, "APP_ENV", "development")
         ).lower()
         if env == "production":
             logger.critical(
@@ -66,4 +65,3 @@ def init_limiter() -> Limiter:
 
 
 limiter = init_limiter()
-

@@ -1,21 +1,25 @@
 # src/scripts/init_db.py
 
-import sys
-import os
-import uuid
 import logging
+import os
+import sys
+import uuid
 
 # Professional English Comment:
 # Ensure the project root is in the python path for module resolution when running as a script.
 sys.path.append(os.getcwd())
 
-from src.database.models import Base, User  # Note: Assuming User is the primary model now, replace Tenant if needed
-from src.database.session import engine, SessionLocal
+from src.database.models import (  # Note: Assuming User is the primary model now, replace Tenant if needed
+    Base,
+    User,
+)
+from src.database.session import SessionLocal, engine
 from src.security.hashing import get_hash
 
 # Setup logging for better visibility during deployment
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger("DatabaseInit")
+
 
 def init_db():
     """
@@ -56,28 +60,26 @@ def init_db():
                 id=uuid.uuid4(),
                 name="Demo Admin",
                 email="admin@leadflow.local",
-                hashed_password=get_hash("Admin123!"), # Example password
-                
+                hashed_password=get_hash("Admin123!"),  # Example password
                 # --- MANDATORY FIELDS ---
                 business_type="General Business",
                 is_active=True,
                 plan_tier="PRO",
                 subscription_status="ACTIVE",
                 # ------------------------
-                
                 last_known_city="Tel Aviv",
-                last_known_country="Israel"
+                last_known_country="Israel",
             )
 
             session.add(demo_account)
             session.commit()
 
-            print("\n" + "="*50)
+            print("\n" + "=" * 50)
             print("🚀 DEMO ACCOUNT CREATED SUCCESSFULLY")
             print(f"👤 Name: {demo_account.name}")
             print(f"📧 Email: {demo_account.email}")
             print(f"🔑 Initial API Key: {raw_api_key}")
-            print("="*50 + "\n")
+            print("=" * 50 + "\n")
         else:
             logger.info(">> Existing data detected. Skipping seed generation.")
 
@@ -86,6 +88,7 @@ def init_db():
         session.rollback()
     finally:
         session.close()
+
 
 if __name__ == "__main__":
     init_db()

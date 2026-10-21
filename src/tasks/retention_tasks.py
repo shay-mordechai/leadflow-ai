@@ -1,8 +1,7 @@
 # src/tasks/retention_tasks.py
 import logging
 import os
-from datetime import datetime, timedelta, timezone
-from typing import Optional
+from datetime import UTC, datetime, timedelta
 
 from celery import shared_task
 from sqlalchemy.orm import Session
@@ -31,7 +30,7 @@ def _retention_cutoff() -> datetime:
         90 * 24,
         int(getattr(settings, "RETENTION_TTL_HOURS", 90 * 24) or 90 * 24),
     )
-    cutoff = datetime.now(timezone.utc) - timedelta(hours=ttl_hours)
+    cutoff = datetime.now(UTC) - timedelta(hours=ttl_hours)
     if settings.DATABASE_URL.startswith("sqlite"):
         return cutoff.replace(tzinfo=None)
     return cutoff
@@ -62,7 +61,7 @@ def _is_protected_path(real_path: str) -> bool:
     return any(marker in real_path for marker in _PROTECTED_PATH_MARKERS)
 
 
-def _safe_unlink(file_path: Optional[str]) -> bool:
+def _safe_unlink(file_path: str | None) -> bool:
     """
     Delete a local media file if it lives under storage/data mounts.
     Missing files, S3 keys, and paths outside the allowed roots are skipped.
@@ -71,7 +70,11 @@ def _safe_unlink(file_path: Optional[str]) -> bool:
         return False
 
     candidate = str(file_path).strip()
-    if candidate.startswith("s3://") or candidate.startswith("http://") or candidate.startswith("https://"):
+    if (
+        candidate.startswith("s3://")
+        or candidate.startswith("http://")
+        or candidate.startswith("https://")
+    ):
         logger.info("Skipping remote media path during retention: %s", candidate)
         return False
 
@@ -82,16 +85,25 @@ def _safe_unlink(file_path: Optional[str]) -> bool:
         return False
 
     if _is_protected_path(real_path):
-        logger.warning("Refusing to delete protected path during retention: %s", real_path)
+        logger.warning(
+            "Refusing to delete protected path during retention: %s", real_path
+        )
         return False
 
-    if not any(real_path == root or real_path.startswith(root + os.sep) for root in _allowed_roots()):
-        logger.warning("Refusing to delete path outside storage/data roots: %s", real_path)
+    if not any(
+        real_path == root or real_path.startswith(root + os.sep)
+        for root in _allowed_roots()
+    ):
+        logger.warning(
+            "Refusing to delete path outside storage/data roots: %s", real_path
+        )
         return False
 
     try:
         if os.path.isdir(real_path):
-            logger.warning("Refusing to delete directory during retention: %s", real_path)
+            logger.warning(
+                "Refusing to delete directory during retention: %s", real_path
+            )
             return False
         if not os.path.exists(real_path):
             logger.info("Retention file already absent: %s", real_path)
@@ -285,7 +297,9 @@ def purge_expired_tenant_data(self):
     Enforce at least 90 days of retention, then remove expired CRM and conversation data.
     """
     cutoff = _retention_cutoff()
-    logger.info("Starting retention purge for records older than %s", cutoff.isoformat())
+    logger.info(
+        "Starting retention purge for records older than %s", cutoff.isoformat()
+    )
 
     db: Session = SessionLocal()
     stats = {

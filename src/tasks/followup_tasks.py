@@ -1,13 +1,15 @@
 # src/tasks/followup_tasks.py
 import logging
 from contextlib import contextmanager
-from datetime import datetime, timezone, timedelta
+from datetime import UTC, datetime, timedelta
+
 from celery import shared_task
 
+from src.database.models import Lead, LeadStatus, WebhookDLQ, WebhookProvider
 from src.database.session import SessionLocal
-from src.database.models import WebhookDLQ, Lead, LeadStatus, WebhookProvider
 
 logger = logging.getLogger("FollowupTasks")
+
 
 @contextmanager
 def get_db():
@@ -27,12 +29,17 @@ def process_smart_followups():
     """
     with get_db() as db:
         try:
-            threshold_date = datetime.now(timezone.utc) - timedelta(hours=24)
-            stale_leads = db.query(Lead).filter(
-                Lead.status == LeadStatus.IN_PROGRESS,
-                Lead.updated_at < threshold_date,
-                Lead.needs_followup == False
-            ).limit(100).all()
+            threshold_date = datetime.now(UTC) - timedelta(hours=24)
+            stale_leads = (
+                db.query(Lead)
+                .filter(
+                    Lead.status == LeadStatus.IN_PROGRESS,
+                    Lead.updated_at < threshold_date,
+                    Lead.needs_followup == False,
+                )
+                .limit(100)
+                .all()
+            )
 
             if not stale_leads:
                 return "No stale leads found."
@@ -40,7 +47,7 @@ def process_smart_followups():
             for lead in stale_leads:
                 lead.needs_followup = True
                 logger.info(f"Flagged Lead {lead.id} ({lead.name}) for AI Follow-up.")
-                
+
             db.commit()
             return f"Successfully processed {len(stale_leads)} smart followups."
         except Exception as e:
@@ -58,23 +65,30 @@ def process_dlq_events():
     """
     with get_db() as db:
         try:
-            pending_dlq = db.query(WebhookDLQ).filter(
-                WebhookDLQ.is_resolved == False,
-                WebhookDLQ.retry_count < 5
-            ).order_by(WebhookDLQ.created_at.asc()).limit(50).all()
+            pending_dlq = (
+                db.query(WebhookDLQ)
+                .filter(WebhookDLQ.is_resolved == False, WebhookDLQ.retry_count < 5)
+                .order_by(WebhookDLQ.created_at.asc())
+                .limit(50)
+                .all()
+            )
 
             if not pending_dlq:
                 return "No pending DLQ events."
 
-            logger.info(f"♻️ DLQ Replayer found {len(pending_dlq)} pending events. Reprocessing...")
-                
+            logger.info(
+                f"♻️ DLQ Replayer found {len(pending_dlq)} pending events. Reprocessing..."
+            )
+
             for dlq in pending_dlq:
                 # שימוש ב-nested transaction (savepoint) עבור כל רשומה בנפרד
                 try:
                     with db.begin_nested():
                         dlq.retry_count += 1
-                        logger.info(f"Attempting retry {dlq.retry_count} for DLQ ID {dlq.id} ({dlq.provider})")
-                        
+                        logger.info(
+                            f"Attempting retry {dlq.retry_count} for DLQ ID {dlq.id} ({dlq.provider})"
+                        )
+
                         # לוגיקת עיבוד לפי ספק
                         if dlq.provider == WebhookProvider.META:
                             # Meta/WhatsApp payload reprocessing logic
@@ -84,7 +98,7 @@ def process_dlq_events():
                             dlq.is_resolved = True
                         else:
                             dlq.is_resolved = True
-                            
+
                         logger.info(f"Successfully reprocessed DLQ ID {dlq.id}")
                 except Exception as retry_err:
                     # שגיאה ברשומה ספציפית תבצע רולבק רק אליה, והלולאה תמשיך כרגיל

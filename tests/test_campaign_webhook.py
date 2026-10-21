@@ -46,9 +46,7 @@ def test_campaign_webhook_requires_configured_tenant_key(client, monkeypatch):
     assert response.status_code == 401
 
 
-def test_campaign_webhook_validates_and_deduplicates_leads(
-    client, monkeypatch
-):
+def test_campaign_webhook_validates_and_deduplicates_leads(client, monkeypatch):
     monkeypatch.setenv("CAMPAIGN_WEBHOOK_SECRET", "test-secret")
     processed_leads = []
     monkeypatch.setattr(
@@ -110,9 +108,7 @@ def test_campaign_webhook_rejects_invalid_payload(client, monkeypatch, payload):
     assert response.status_code == 422
 
 
-def test_campaign_webhook_fails_closed_when_redis_is_unavailable(
-    client, monkeypatch
-):
+def test_campaign_webhook_fails_closed_when_redis_is_unavailable(client, monkeypatch):
     """Campaign Webhook Race Conditions (TOCTOU): do not silently fall back to process-local deduplication when Redis fails."""
 
     class UnavailableRedis:

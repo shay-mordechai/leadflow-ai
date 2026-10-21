@@ -1,12 +1,12 @@
+import asyncio
 import json
 import logging
 import os
-import asyncio
-from typing import Dict, Any
+from typing import Any
 
 logger = logging.getLogger("ProfileLoader")
 
-FALLBACK_PROFILE: Dict[str, Any] = {
+FALLBACK_PROFILE: dict[str, Any] = {
     "business_name": "Customer Support",
     "business_type": "General Service",
     "tone": "polite, helpful and concise",
@@ -18,16 +18,18 @@ FALLBACK_PROFILE: Dict[str, Any] = {
         "ask_name": True,
         "ask_service": True,
         "ask_budget": True,
-        "ask_availability": True
-    }
+        "ask_availability": True,
+    },
 }
 
-def _read_profile_sync(file_path: str) -> Dict[str, Any]:
+
+def _read_profile_sync(file_path: str) -> dict[str, Any]:
     """Synchronous file read executed inside a worker thread."""
     with open(file_path, "r", encoding="utf-8") as f:
         return json.load(f)
 
-async def load_tenant_profile(file_path: str | None) -> Dict[str, Any]:
+
+async def load_tenant_profile(file_path: str | None) -> dict[str, Any]:
     """
     Asynchronously loads a tenant profile JSON file from disk.
     Returns FALLBACK_PROFILE if file is missing, empty, or corrupted.

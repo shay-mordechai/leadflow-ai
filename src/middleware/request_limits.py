@@ -37,7 +37,9 @@ class RequestBodyLimitMiddleware:
             return
 
         headers = {key.lower(): value for key, value in scope.get("headers", [])}
-        content_type = headers.get(b"content-type", b"").split(b";", 1)[0].strip().lower()
+        content_type = (
+            headers.get(b"content-type", b"").split(b";", 1)[0].strip().lower()
+        )
         path = scope.get("path", "")
         is_audio_upload = (
             path.startswith(self.upload_path_prefix)

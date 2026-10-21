@@ -1,19 +1,20 @@
 # src/services/ai/engine.py
+import hashlib
 import json
 import logging
 import os
-import hashlib
 import re
 from datetime import date
+from typing import Any
+
 import redis.asyncio as aioredis
+from fastapi.concurrency import run_in_threadpool
 from google import genai
 from google.genai import types
-from typing import Dict, Any, List
-from fastapi.concurrency import run_in_threadpool
 
 from src.config import settings
-from src.services.ai.prompt_builder import PromptBuilder
 from src.services.ai.output_sanitizer import sanitize_ai_output
+from src.services.ai.prompt_builder import PromptBuilder
 
 logger = logging.getLogger("AI_Engine")
 MAX_OUTPUT_TOKENS = 512
@@ -29,6 +30,7 @@ def _validate_tool_date(date_str: str) -> None:
         raise ValueError("date_str must be a valid YYYY-MM-DD date") from exc
     if parsed_date.isoformat() != date_str:
         raise ValueError("date_str must be a valid YYYY-MM-DD date")
+
 
 # --- CENTRALIZED CONFIGURATION ---
 if not settings.GOOGLE_API_KEY:
@@ -47,10 +49,13 @@ def check_calendar_availability(date_str: str) -> str:
     """Checks the business owner's calendar for available slots on a given date (YYYY-MM-DD)."""
     _validate_tool_date(date_str)
     logger.info(f"🤖 AI AGENT TOOL CALLED: check_calendar_availability for {date_str}")
-    return json.dumps({
-        "available_slots": ["09:00", "11:30", "15:00", "17:00"],
-        "message": "These are the available slots. Ask the user which one they prefer."
-    })
+    return json.dumps(
+        {
+            "available_slots": ["09:00", "11:30", "15:00", "17:00"],
+            "message": "These are the available slots. Ask the user which one they prefer.",
+        }
+    )
+
 
 def book_appointment(date_str: str, time_str: str, lead_name: str) -> str:
     """Books an appointment for the lead on the specified date and time."""
@@ -59,19 +64,29 @@ def book_appointment(date_str: str, time_str: str, lead_name: str) -> str:
         raise ValueError("time_str must be a valid 24-hour HH:MM time")
     if not lead_name.strip() or len(lead_name) > 50:
         raise ValueError("lead_name must contain between 1 and 50 characters")
-    logger.info(f"🤖 AI AGENT TOOL CALLED: book_appointment for {lead_name} at {date_str} {time_str}")
-    return json.dumps({
-        "status": "success",
-        "message": "Appointment booked successfully. Confirm it politely with the user."
-    })
+    logger.info(
+        f"🤖 AI AGENT TOOL CALLED: book_appointment for {lead_name} at {date_str} {time_str}"
+    )
+    return json.dumps(
+        {
+            "status": "success",
+            "message": "Appointment booked successfully. Confirm it politely with the user.",
+        }
+    )
+
 
 def qualify_lead(budget: int, timeframe: str) -> str:
     """Saves the lead's budget and timeframe to the database to qualify them."""
-    logger.info(f"🤖 AI AGENT TOOL CALLED: qualify_lead - Budget: {budget}, Timeframe: {timeframe}")
-    return json.dumps({
-        "status": "qualified",
-        "message": "Lead details saved. Proceed with the conversation naturally."
-    })
+    logger.info(
+        f"🤖 AI AGENT TOOL CALLED: qualify_lead - Budget: {budget}, Timeframe: {timeframe}"
+    )
+    return json.dumps(
+        {
+            "status": "qualified",
+            "message": "Lead details saved. Proceed with the conversation naturally.",
+        }
+    )
+
 
 # List of tools to pass to the Gemini Agent
 AI_TOOLS = [check_calendar_availability, book_appointment, qualify_lead]
@@ -83,6 +98,7 @@ class AIEngine:
     Handles Model Initialization, File Uploads, Response Parsing, and Agentic Function Calling.
     Includes Redis Semantic Caching to reduce API costs.
     """
+
     def __init__(self):
         self.model_name = "gemini-2.5-flash"
         self.client = genai.Client(
@@ -95,12 +111,16 @@ class AIEngine:
     def _clean_json_text(self, text: str) -> str:
         """Helper to strip Markdown formatting from JSON responses."""
         text = text.strip()
-        if text.startswith("```json"): text = text[7:]
-        elif text.startswith("```"): text = text[3:]
-        if text.endswith("```"): text = text[:-3]
+        if text.startswith("```json"):
+            text = text[7:]
+        elif text.startswith("```"):
+            text = text[3:]
+        text = text.removesuffix("```")
         return text.strip()
 
-    def generate_raw_analysis(self, prompt: str, media_path: str = None, mime_type: str = "audio/ogg") -> Dict[str, Any]:
+    def generate_raw_analysis(
+        self, prompt: str, media_path: str = None, mime_type: str = "audio/ogg"
+    ) -> dict[str, Any]:
         try:
             content = [prompt]
             if media_path and os.path.exists(media_path):
@@ -112,7 +132,7 @@ class AIEngine:
                             mime_type=mime_type,
                         )
                     )
-                
+
             try:
                 response = self.client.models.generate_content(
                     model=self.model_name,
@@ -134,7 +154,7 @@ class AIEngine:
                         max_output_tokens=MAX_OUTPUT_TOKENS,
                     ),
                 )
-                
+
             if not response.text:
                 return {}
 
@@ -158,15 +178,17 @@ class AIEngine:
         audio_path: str = None,
         sender_name: str = "Guest",
         expected_schema: str = None,
-        chat_history: List[Dict] = None
-    ) -> Dict[str, Any]:
+        chat_history: list[dict] = None,
+    ) -> dict[str, Any]:
         if text_input is not None:
             text_input = text_input[: PromptBuilder.MAX_INBOUND_MESSAGE_LENGTH]
 
         # SCENARIO A: Audio/Media or Explicit Schema provided -> Legacy JSON Mode
         if audio_path or expected_schema:
             if audio_path:
-                logger.info("Media payload detected. Using standard JSON analysis mode.")
+                logger.info(
+                    "Media payload detected. Using standard JSON analysis mode."
+                )
             if not expected_schema:
                 expected_schema = """{
                     "intent": "general_inquiry" | "booking" | "support" | "greeting" | "other",
@@ -177,16 +199,14 @@ class AIEngine:
             final_prompt = f"""
             {system_prompt}
             Current User Talking to you: {sender_name}
-            User Message: {text_input if text_input else 'Audio Message (Transcribed separately)'}
+            User Message: {text_input if text_input else "Audio Message (Transcribed separately)"}
             Task: You must respond in the character defined above.
             Return ONLY a valid JSON object strictly matching this format:
             {expected_schema}
             """
 
             return await run_in_threadpool(
-                self.generate_raw_analysis,
-                prompt=final_prompt,
-                media_path=audio_path
+                self.generate_raw_analysis, prompt=final_prompt, media_path=audio_path
             )
 
         # SCENARIO B: Text-Based Chat -> Agentic / Function Calling Mode
@@ -195,15 +215,25 @@ class AIEngine:
             try:
                 text_lower = text_input.lower() if text_input else ""
                 trigger_words = [
-                    "human", "representative", "manager", "urgent",
-                    "נציג", "אנושי", "מנהל", "שירות לקוחות", "מענה אנושי", "תענה לי בן אדם"
+                    "human",
+                    "representative",
+                    "manager",
+                    "urgent",
+                    "נציג",
+                    "אנושי",
+                    "מנהל",
+                    "שירות לקוחות",
+                    "מענה אנושי",
+                    "תענה לי בן אדם",
                 ]
                 if any(word in text_lower for word in trigger_words):
-                    logger.warning(f"🚨 Rule-Based Handoff Triggered for: {sender_name}")
+                    logger.warning(
+                        f"🚨 Rule-Based Handoff Triggered for: {sender_name}"
+                    )
                     return {
                         "intent": "escalation",
                         "reply_text": "אני מבין. העברתי את הפנייה שלך, ונציג אנושי יחזור אליך בהקדם.",
-                        "needs_human_escalation": True
+                        "needs_human_escalation": True,
                     }
 
                 # -------------------------------------------------------------
@@ -215,12 +245,16 @@ class AIEngine:
                     history_str = json.dumps(chat_history) if chat_history else ""
                     # Hash the combination of persona, history, and exact input
                     hash_input = f"{system_prompt}|{normalized_input}|{history_str}"
-                    cache_key = f"ai_cache:{hashlib.sha256(hash_input.encode()).hexdigest()}"
-                    
+                    cache_key = (
+                        f"ai_cache:{hashlib.sha256(hash_input.encode()).hexdigest()}"
+                    )
+
                     try:
                         cached_response = await redis_client.get(cache_key)
                         if cached_response:
-                            logger.info(f"⚡ CACHE HIT! Saved Gemini API cost for query: {normalized_input[:30]}...")
+                            logger.info(
+                                f"⚡ CACHE HIT! Saved Gemini API cost for query: {normalized_input[:30]}..."
+                            )
                             return json.loads(cached_response)
                     except Exception as cache_err:
                         logger.warning(f"Redis cache read error: {cache_err}")
@@ -254,7 +288,9 @@ class AIEngine:
                 formatted_history.append(
                     types.Content(
                         role="user",
-                        parts=[types.Part.from_text(text=f"[{sender_name}]: {text_input}")],
+                        parts=[
+                            types.Part.from_text(text=f"[{sender_name}]: {text_input}")
+                        ],
                     )
                 )
                 generation_config = types.GenerateContentConfig(
@@ -266,24 +302,28 @@ class AIEngine:
                     ),
                 )
 
-                logger.info("Sending message to AI Agent and awaiting potential tool execution...")
+                logger.info(
+                    "Sending message to AI Agent and awaiting potential tool execution..."
+                )
                 response = await run_in_threadpool(
                     self.client.models.generate_content,
                     model=self.model_name,
                     contents=formatted_history,
                     config=generation_config,
                 )
-                final_text = response.text if hasattr(response, 'text') else ""
+                final_text = response.text if hasattr(response, "text") else ""
                 final_text = sanitize_ai_output(final_text)
-                
+
                 # Robust Handoff Detection
                 upper_text = final_text.upper()
                 needs_human = "[HANDOFF]" in upper_text or "HANDOFF" in upper_text
 
                 result = {
                     "intent": "agent_handled",
-                    "reply_text": final_text.replace("[HANDOFF]", "").replace("[handoff]", "").strip(),
-                    "needs_human_escalation": needs_human
+                    "reply_text": final_text.replace("[HANDOFF]", "")
+                    .replace("[handoff]", "")
+                    .strip(),
+                    "needs_human_escalation": needs_human,
                 }
 
                 # Save successful responses to Cache (TTL: 24 hours)
@@ -300,8 +340,9 @@ class AIEngine:
                 return {
                     "error": "AI request failed",
                     "reply_text": "אני קצת עמוסה כרגע, אפשר לנסות שוב בעוד רגע?",
-                    "needs_human_escalation": True
+                    "needs_human_escalation": True,
                 }
+
 
 # Singleton Instance
 ai_engine = AIEngine()

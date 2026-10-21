@@ -19,37 +19,49 @@ on:
 
 env:
   REGISTRY: ghcr.io
-  # Convert repository owner to lowercase to prevent GHCR push errors
   IMAGE_NAME: ${{ github.repository_owner }}
 
 jobs:
-  security-scans:
+  security-and-test-gates:
     runs-on: ubuntu-latest
     permissions:
       contents: read
     steps:
       - name: Checkout Code
         uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
 
-      - name: Setup Python
+      - name: Setup Python 3.12
         uses: actions/setup-python@v5
         with:
-          python-version: '3.x' # Or a specific version like '3.10'
+          python-version: '3.12'
+          cache: 'pip'
 
-      - name: Install dependencies
-        run: pip install -r requirements.txt pip-audit
+      - name: Install dependencies and test scanners
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt bandit pip-audit pytest pytest-asyncio
         
-      - name: Run Bandit SAST
-        run: bandit -r src/ -ll -ii
-      - name: Run Pip Audit SCA
-        run: pip-audit -r requirements.txt
-
       - name: Scan repository for leaked secrets
         uses: gitleaks/gitleaks-action@v2
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: Scan repository dependencies and filesystem
+      - name: Run Bandit SAST
+        run: bandit -r src/ -ll -ii
+
+      - name: Run Pip Audit SCA
+        run: pip-audit -r requirements.txt
+
+      - name: Run Tests Verification Gate
+        env:
+          ENVIRONMENT: "test"
+          DATABASE_URL: "sqlite+aiosqlite:///:memory:"
+          ENCRYPTION_KEY: "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA="
+        run: pytest tests/ -q
+
+      - name: Scan repository filesystem and dependencies (Trivy)
         uses: aquasecurity/trivy-action@v0.36.0
         with:
           scan-type: fs
@@ -85,7 +97,7 @@ jobs:
               - 'data-gate/**'
 
   build-and-push:
-    needs: [ detect-changes, security-scans ]
+    needs: [ detect-changes, security-and-test-gates ]
     runs-on: ubuntu-latest
     permissions:
       contents: read

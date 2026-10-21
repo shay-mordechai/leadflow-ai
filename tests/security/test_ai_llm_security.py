@@ -4,9 +4,13 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
-from src.services.ai.engine import ai_engine, book_appointment, check_calendar_availability
-from src.services.ai.prompt_builder import PromptBuilder
 from src.schemas.ai_response import WhatsAppAgentResponse
+from src.services.ai.engine import (
+    ai_engine,
+    book_appointment,
+    check_calendar_availability,
+)
+from src.services.ai.prompt_builder import PromptBuilder
 from src.services.communication import whatsapp_pipeline
 from src.services.communication.whatsapp_pipeline import _turn_limit_reached
 
@@ -75,9 +79,9 @@ def test_context_window_overflow_truncates_latest_message():
         conversation_history=[],
         latest_message=inbound_message,
     )
-    latest_context = prompt.split("<latest_message>", 1)[1].split(
-        "</latest_message>", 1
-    )[0].strip()
+    latest_context = (
+        prompt.split("<latest_message>", 1)[1].split("</latest_message>", 1)[0].strip()
+    )
 
     assert len(latest_context) == 1_000
     assert latest_context == inbound_message[:1_000]
@@ -99,9 +103,9 @@ async def test_legacy_ai_engine_truncates_inbound_text_before_prompting():
             expected_schema="{}",
         )
 
-    submitted_message = captured_prompts[0].split("User Message: ", 1)[1].split(
-        "\n", 1
-    )[0]
+    submitted_message = (
+        captured_prompts[0].split("User Message: ", 1)[1].split("\n", 1)[0]
+    )
     assert len(submitted_message) == 1_000
 
 
@@ -165,10 +169,7 @@ def test_async_gemini_client_has_seven_second_http_timeout():
 
     http_options = client_factory.call_args.kwargs["http_options"]
     assert http_options.timeout == 7_000
-    assert (
-        whatsapp_pipeline._build_generation_config("system").max_output_tokens
-        == 512
-    )
+    assert whatsapp_pipeline._build_generation_config("system").max_output_tokens == 512
 
 
 @pytest.mark.asyncio
@@ -226,9 +227,7 @@ async def test_inbound_turn_count_persists_handoff_state_at_limit(monkeypatch):
         status="in_progress",
         source="whatsapp",
     )
-    database.scalar = AsyncMock(
-        side_effect=[None, MagicMock(is_active=True), lead, 15]
-    )
+    database.scalar = AsyncMock(side_effect=[None, MagicMock(is_active=True), lead, 15])
     monkeypatch.setattr(
         whatsapp_pipeline,
         "_resolve_tenant",

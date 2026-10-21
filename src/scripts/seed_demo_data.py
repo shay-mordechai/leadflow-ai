@@ -2,10 +2,12 @@
 # Database seeding script for development and demonstration purposes.
 # Synchronized with the hashing utilities in src.security.hashing.
 
-from src.database.session import SessionLocal
-from src.database.models import Tenant, Lead
-from src.security.hashing import get_hash
 import uuid
+
+from src.database.models import Lead, Tenant
+from src.database.session import SessionLocal
+from src.security.hashing import get_hash
+
 
 def seed_data():
     db = SessionLocal()
@@ -21,7 +23,7 @@ def seed_data():
                 whatsapp_number="0501234567",
                 city_coverage="תל אביב, הרצליה, רמת גן",
                 api_key_hash=get_hash("demo-key-123"),
-                is_active=True
+                is_active=True,
             )
             db.add(coach)
             db.flush()
@@ -32,7 +34,9 @@ def seed_data():
         # 2. Check if we already have leads to avoid clutter
         existing_leads_count = db.query(Lead).filter(Lead.tenant_id == coach.id).count()
         if existing_leads_count > 0:
-            print(f"ℹ️ {existing_leads_count} leads already exist for this coach. Skipping lead seeding.")
+            print(
+                f"ℹ️ {existing_leads_count} leads already exist for this coach. Skipping lead seeding."
+            )
         else:
             # Create a Qualified Lead
             lead1 = Lead(
@@ -43,7 +47,7 @@ def seed_data():
                 city="תל אביב",
                 status="QUALIFIED",
                 summary_text="הלקוח מעוניין בתוכנית ליווי אישית לריצת מרתון. גר בתל אביב ופנוי בבקרים.",
-                last_message_text="אני גר בתל אביב, מתי אפשר לקבוע פגישת ייעוץ?"
+                last_message_text="אני גר בתל אביב, מתי אפשר לקבוע פגישת ייעוץ?",
             )
 
             # Create a Lead that needs re-routing
@@ -56,7 +60,7 @@ def seed_data():
                 status="REROUTED",
                 coach_feedback="MISMATCH: הלקוחה גרה בחיפה, יוסי המאמן אינו מכסה אזור זה.",
                 summary_text="הלקוחה מחפשת מאמן פילאטיס בחיפה. יש להפנות למאמן אזור צפון.",
-                last_message_text="שלום, אני מחיפה. אתם מגיעים לפה לאימונים אישיים?"
+                last_message_text="שלום, אני מחיפה. אתם מגיעים לפה לאימונים אישיים?",
             )
 
             db.add_all([lead1, lead2])
@@ -69,6 +73,7 @@ def seed_data():
         print(f"❌ Error seeding data: {e}")
     finally:
         db.close()
+
 
 if __name__ == "__main__":
     seed_data()

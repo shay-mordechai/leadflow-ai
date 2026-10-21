@@ -1,0 +1,36 @@
+{
+  "hooks": {
+    "PreToolUse": [
+      {
+        "matcher": "Read|Edit|Write|Bash|Grep|Glob",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "python3 -c \"import sys, json; data = json.load(sys.stdin); text = json.dumps(data); forbidden = ['.env', '.pem', 'tfstate', 'AWS_SECRET', 'leads.db', 'reset_db_schema', 'rm -rf', 'DROP TABLE', 'DELETE FROM']; hit = [f for f in forbidden if f in text]; (sys.stderr.write(f'SECURITY VIOLATION: Access to {hit} is blocked. Use mocks or in-memory fixtures.\\n'), sys.exit(2)) if hit else sys.exit(0)\""
+          }
+        ]
+      }
+    ],
+    "PostToolUse": [
+      {
+        "matcher": "Write|Edit",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "ruff check --fix src tests && ruff format src tests"
+          }
+        ]
+      }
+    ],
+    "Stop": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "DATABASE_URL=\"sqlite:///:memory:\" pytest tests/ --maxfail=1 --disable-warnings -q"
+          }
+        ]
+      }
+    ]
+  }
+}

@@ -1,14 +1,17 @@
 # src/services/phone.py
-import httpx
 import logging
-import vonage
-from twilio.rest import Client as TwilioClient
-from typing import List, Dict, Any
-from src.config import settings
 import os
 import uuid
+from typing import Any
+
+import httpx
+import vonage
+from twilio.rest import Client as TwilioClient
+
+from src.config import settings
 
 logger = logging.getLogger("TelephonyManager")
+
 
 class TelephonyService:
     def __init__(self):
@@ -20,7 +23,9 @@ class TelephonyService:
         # --- 1. Init Twilio ---
         if settings.TWILIO_ACCOUNT_SID and settings.TWILIO_AUTH_TOKEN:
             try:
-                self.twilio_client = TwilioClient(settings.TWILIO_ACCOUNT_SID, settings.TWILIO_AUTH_TOKEN)
+                self.twilio_client = TwilioClient(
+                    settings.TWILIO_ACCOUNT_SID, settings.TWILIO_AUTH_TOKEN
+                )
                 self.providers.append("twilio")
                 logger.info("✅ Twilio Client Initialized")
             except Exception as e:
@@ -29,14 +34,18 @@ class TelephonyService:
             self.twilio_client = None
 
         # --- 2. Init Vonage ---
-        if settings.VONAGE_API_KEY and settings.VONAGE_API_SECRET and os.path.exists(settings.VONAGE_PRIVATE_KEY_PATH):
+        if (
+            settings.VONAGE_API_KEY
+            and settings.VONAGE_API_SECRET
+            and os.path.exists(settings.VONAGE_PRIVATE_KEY_PATH)
+        ):
             try:
                 # Auth with both Key/Secret (for SMS) and App/PrivateKey (for Voice)
                 self.vonage_auth = vonage.Auth(
                     api_key=settings.VONAGE_API_KEY,
                     api_secret=settings.VONAGE_API_SECRET,
                     application_id=settings.VONAGE_APP_ID,
-                    private_key=settings.VONAGE_PRIVATE_KEY_PATH
+                    private_key=settings.VONAGE_PRIVATE_KEY_PATH,
                 )
                 self.vonage_client = vonage.Vonage(self.vonage_auth)
                 self.providers.append("vonage")
@@ -51,16 +60,22 @@ class TelephonyService:
         self.sw_project = settings.SIGNALWIRE_PROJECT_ID
         self.sw_token = settings.SIGNALWIRE_AUTH_TOKEN
         self.sw_space = settings.SIGNALWIRE_SPACE_URL
-        
+
         if self.sw_project and self.sw_token and self.sw_space:
-            clean_host = self.sw_space.replace("https://", "").replace("http://", "").strip("/")
-            self.sw_base = f"https://{clean_host}/api/laml/2010-04-01/Accounts/{self.sw_project}"
+            clean_host = (
+                self.sw_space.replace("https://", "").replace("http://", "").strip("/")
+            )
+            self.sw_base = (
+                f"https://{clean_host}/api/laml/2010-04-01/Accounts/{self.sw_project}"
+            )
             self.providers.append("signalwire")
             logger.info("✅ SignalWire Configured")
         else:
             self.sw_base = None
 
-    async def search_best_numbers(self, country_code: str, area_code: str = None) -> List[Dict]:
+    async def search_best_numbers(
+        self, country_code: str, area_code: str = None
+    ) -> list[dict]:
         """
         Aggregates available numbers from ALL active providers.
         Includes a filter to ensure numbers match the requested country code.
@@ -71,15 +86,19 @@ class TelephonyService:
         if self.twilio_client:
             try:
                 logger.info("🔍 Searching Twilio...")
-                numbers = self.twilio_client.available_phone_numbers(country_code).local.list(limit=5)
+                numbers = self.twilio_client.available_phone_numbers(
+                    country_code
+                ).local.list(limit=5)
                 for n in numbers:
-                    results.append({
-                        "number": n.phone_number,
-                        "country": country_code,
-                        "provider": "twilio",
-                        "price_monthly": 1.15,
-                        "capabilities": ["voice", "sms"]
-                    })
+                    results.append(
+                        {
+                            "number": n.phone_number,
+                            "country": country_code,
+                            "provider": "twilio",
+                            "price_monthly": 1.15,
+                            "capabilities": ["voice", "sms"],
+                        }
+                    )
             except Exception as e:
                 logger.warning(f"⚠️ Twilio Search Failed: {e}")
 
@@ -88,16 +107,20 @@ class TelephonyService:
             try:
                 logger.info("🔍 Searching Vonage...")
                 # Vonage uses 2-letter ISO code
-                resp = self.vonage_client.numbers.get_available_numbers(country_code, {"size": 5, "type": "mobile-lvn"})
+                resp = self.vonage_client.numbers.get_available_numbers(
+                    country_code, {"size": 5, "type": "mobile-lvn"}
+                )
                 if "numbers" in resp:
                     for n in resp["numbers"]:
-                        results.append({
-                            "number": "+" + n["msisdn"],
-                            "country": country_code,
-                            "provider": "vonage",
-                            "price_monthly": 1.00,
-                            "capabilities": ["voice", "sms"]
-                        })
+                        results.append(
+                            {
+                                "number": "+" + n["msisdn"],
+                                "country": country_code,
+                                "provider": "vonage",
+                                "price_monthly": 1.00,
+                                "capabilities": ["voice", "sms"],
+                            }
+                        )
             except Exception as e:
                 logger.warning(f"⚠️ Vonage Search Failed: {e}")
 
@@ -106,64 +129,84 @@ class TelephonyService:
             try:
                 logger.info("🔍 Searching SignalWire...")
                 params = {"Limit": 5}
-                if area_code: params["AreaCode"] = area_code
-                
+                if area_code:
+                    params["AreaCode"] = area_code
+
                 async with httpx.AsyncClient(timeout=5.0) as client:
                     resp = await client.get(
                         f"{self.sw_base}/AvailablePhoneNumbers/{country_code}/Local.json",
                         params=params,
-                        auth=(self.sw_project, self.sw_token)
+                        auth=(self.sw_project, self.sw_token),
                     )
                     if resp.status_code == 200:
                         data = resp.json()
                         for n in data.get("available_phone_numbers", []):
-                            results.append({
-                                "number": n.get("phone_number"),
-                                "country": country_code,
-                                "provider": "signalwire",
-                                "price_monthly": 0.80,
-                                "capabilities": ["voice", "sms"]
-                            })
+                            results.append(
+                                {
+                                    "number": n.get("phone_number"),
+                                    "country": country_code,
+                                    "provider": "signalwire",
+                                    "price_monthly": 0.80,
+                                    "capabilities": ["voice", "sms"],
+                                }
+                            )
             except Exception as e:
                 logger.warning(f"⚠️ SignalWire Search Failed: {e}")
 
         # --- Fallback for Testing ---
         if len(results) == 0:
-             logger.info("⚠️ No numbers found. Injecting a MOCK number to prevent test failure.")
-             results.append({
-                 "number": "+972500000000", 
-                 "country": country_code, 
-                 "provider": "mock", 
-                 "price_monthly": 0.00,
-                 "capabilities": ["voice", "sms"]
-             })
+            logger.info(
+                "⚠️ No numbers found. Injecting a MOCK number to prevent test failure."
+            )
+            results.append(
+                {
+                    "number": "+972500000000",
+                    "country": country_code,
+                    "provider": "mock",
+                    "price_monthly": 0.00,
+                    "capabilities": ["voice", "sms"],
+                }
+            )
 
         # --- D. Filter Results (Strict Region Check) ---
         filtered_results = []
         for res in results:
             num = str(res.get("number", ""))
-            
+
             # If searching for Israel, ensure it starts with +972
             if country_code == "IL" and not num.startswith("+972"):
                 continue
-                
+
             filtered_results.append(res)
 
-        logger.info(f"🏁 Found total {len(filtered_results)} valid numbers across providers.")
+        logger.info(
+            f"🏁 Found total {len(filtered_results)} valid numbers across providers."
+        )
         return filtered_results
 
-    async def purchase_number(self, provider: str, phone_number: str, user_id: str) -> Dict[str, Any]:
+    async def purchase_number(
+        self, provider: str, phone_number: str, user_id: str
+    ) -> dict[str, Any]:
         """
         Routes the purchase request to the correct provider.
         Includes a safeguard to mock purchases if real purchasing is disabled.
         """
         logger.info(f"🛒 Purchasing {phone_number} via {provider} for user {user_id}")
-        
+
         # --- SAFEGUARD: Mock Mode ---
         # If settings explicitly disable real purchases OR the provider is 'mock', just return success!
-        if not getattr(settings, "ENABLE_REAL_PHONE_PURCHASE", True) or provider == "mock":
-            logger.info(f"🎭 MOCK PURCHASE: Successfully 'bought' {phone_number}. No real money spent.")
-            return {"status": "success", "sid": f"mock_{uuid.uuid4()}", "provider": provider}
+        if (
+            not getattr(settings, "ENABLE_REAL_PHONE_PURCHASE", True)
+            or provider == "mock"
+        ):
+            logger.info(
+                f"🎭 MOCK PURCHASE: Successfully 'bought' {phone_number}. No real money spent."
+            )
+            return {
+                "status": "success",
+                "sid": f"mock_{uuid.uuid4()}",
+                "provider": provider,
+            }
 
         if provider == "twilio" and self.twilio_client:
             return self._purchase_twilio(phone_number, user_id)
@@ -171,7 +214,7 @@ class TelephonyService:
             return self._purchase_vonage(phone_number, user_id)
         elif provider == "signalwire" and self.sw_base:
             return await self._purchase_signalwire(phone_number, user_id)
-        
+
         return {"status": "failed", "detail": "Provider not configured or unknown"}
 
     # --- Internal Purchase Logic ---
@@ -179,24 +222,33 @@ class TelephonyService:
     def _purchase_twilio(self, phone_number: str, user_id: str):
         try:
             incoming_phone = self.twilio_client.incoming_phone_numbers.create(
-                phone_number=phone_number,
-                friendly_name=f"User {user_id}"
+                phone_number=phone_number, friendly_name=f"User {user_id}"
             )
             # Update Webhooks
             incoming_phone.update(
                 voice_url=f"{settings.BASE_URL}/webhooks/voice/incoming",
                 voice_method="POST",
                 sms_url=f"{settings.BASE_URL}/api/v1/provisioning/webhook/twilio/sms",
-                sms_method="POST"
+                sms_method="POST",
             )
-            return {"status": "success", "sid": incoming_phone.sid, "provider": "twilio"}
+            return {
+                "status": "success",
+                "sid": incoming_phone.sid,
+                "provider": "twilio",
+            }
         except Exception as e:
             logger.error(f"Twilio Buy Error: {e}")
             # --- TRIAL ACCOUNT BYPASS FOR TESTING ---
             if "Upgrade required" in str(e):
-                logger.warning("Twilio Trial Account detected. Bypassing error and storing number (Mock Mode).")
-                return {"status": "success", "sid": f"trial_bypass_{uuid.uuid4()}", "provider": "twilio"}
-                
+                logger.warning(
+                    "Twilio Trial Account detected. Bypassing error and storing number (Mock Mode)."
+                )
+                return {
+                    "status": "success",
+                    "sid": f"trial_bypass_{uuid.uuid4()}",
+                    "provider": "twilio",
+                }
+
             return {"status": "failed", "detail": str(e)}
 
     def _purchase_vonage(self, phone_number: str, user_id: str):
@@ -204,9 +256,7 @@ class TelephonyService:
             clean_num = phone_number.replace("+", "")
             self.vonage_client.numbers.buy(country="IL", msisdn=clean_num)
             self.vonage_client.numbers.update(
-                country="IL", 
-                msisdn=clean_num, 
-                app_id=settings.VONAGE_APP_ID
+                country="IL", msisdn=clean_num, app_id=settings.VONAGE_APP_ID
             )
             return {"status": "success", "provider": "vonage"}
         except Exception as e:
@@ -219,23 +269,24 @@ class TelephonyService:
                 resp = await client.post(
                     f"{self.sw_base}/IncomingPhoneNumbers.json",
                     data={"PhoneNumber": phone_number, "FriendlyName": user_id},
-                    auth=(self.sw_project, self.sw_token)
+                    auth=(self.sw_project, self.sw_token),
                 )
                 if resp.status_code != 201:
                     return {"status": "failed", "detail": resp.text}
-                
+
                 sid = resp.json().get("sid")
                 await client.post(
                     f"{self.sw_base}/IncomingPhoneNumbers/{sid}.json",
                     data={
                         "VoiceUrl": f"{settings.BASE_URL}/webhooks/voice/incoming",
-                        "SmsUrl": f"{settings.BASE_URL}/api/v1/provisioning/webhook/twilio/sms"
+                        "SmsUrl": f"{settings.BASE_URL}/api/v1/provisioning/webhook/twilio/sms",
                     },
-                    auth=(self.sw_project, self.sw_token)
+                    auth=(self.sw_project, self.sw_token),
                 )
                 return {"status": "success", "sid": sid, "provider": "signalwire"}
         except Exception as e:
             return {"status": "failed", "detail": str(e)}
+
 
 # Export Singleton
 phone_service = TelephonyService()

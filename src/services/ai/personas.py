@@ -1,5 +1,5 @@
 # src/services/ai/personas.py
-from typing import Dict, Any, Optional
+from typing import Any
 
 # ==============================================================================
 # 🧠 SMART BUSINESS PERSONA ENGINE
@@ -8,11 +8,52 @@ from typing import Dict, Any, Optional
 # 1. Keyword Mapping: Maps specific user inputs to broader industry categories.
 # This prevents the need for endless if/else statements.
 KEYWORD_REGISTRY = {
-    "fitness": ["yoga", "pilates", "fitness", "gym", "trainer", "studio", "dance", "crossfit"],
-    "real_estate": ["real estate", "realtor", "broker", "agent", "property", "asset management"],
-    "consulting": ["coach", "therapist", "psychologist", "consultant", "mentor", "advisor", "counselor"],
-    "trades": ["plumber", "electrician", "handyman", "locksmith", "technician", "ac repair", "renovation"],
-    "beauty": ["nails", "hair", "barber", "esthetician", "makeup", "beauty", "spa", "laser"],
+    "fitness": [
+        "yoga",
+        "pilates",
+        "fitness",
+        "gym",
+        "trainer",
+        "studio",
+        "dance",
+        "crossfit",
+    ],
+    "real_estate": [
+        "real estate",
+        "realtor",
+        "broker",
+        "agent",
+        "property",
+        "asset management",
+    ],
+    "consulting": [
+        "coach",
+        "therapist",
+        "psychologist",
+        "consultant",
+        "mentor",
+        "advisor",
+        "counselor",
+    ],
+    "trades": [
+        "plumber",
+        "electrician",
+        "handyman",
+        "locksmith",
+        "technician",
+        "ac repair",
+        "renovation",
+    ],
+    "beauty": [
+        "nails",
+        "hair",
+        "barber",
+        "esthetician",
+        "makeup",
+        "beauty",
+        "spa",
+        "laser",
+    ],
 }
 
 # 2. Default Context: Fallback values if the user hasn't configured specific settings yet.
@@ -21,7 +62,7 @@ DEFAULT_CONTEXT = {
     "cancellation_policy": "Please notify us 24 hours in advance for cancellations.",
     "booking_method": "Phone coordination or App.",
     "location": "Not specified",
-    "tone_instruction": "Professional, polite, and efficient."
+    "tone_instruction": "Professional, polite, and efficient.",
 }
 
 # 3. Persona Templates: The core system prompts for each industry.
@@ -49,9 +90,8 @@ Language: Hebrew (Modern, Friendly, Female-Gender focus if applicable).
 2. **The Workout:** Brief list of exercises/focus areas.
 3. **Homework/Tips:** One actionable tip.
 4. **Call to Action:** "Book your next class!"
-"""
+""",
     },
-
     # --- 🏠 REAL ESTATE ---
     "real_estate": {
         "base_tone": "Professional, Sharp, Trustworthy, Direct. Minimal Emojis.",
@@ -74,9 +114,8 @@ Language: Hebrew (Formal but accessible).
 2. **Property Discussed:** Address/Project.
 3. **Objections:** What did they dislike?
 4. **Next Step:** Contract / Visit / Dead lead.
-"""
+""",
     },
-
     # --- 🧠 CONSULTING & THERAPY ---
     "consulting": {
         "base_tone": "Empathetic, Calm, Private, Respectful.",
@@ -99,9 +138,8 @@ Language: Hebrew (Calm and reassuring).
 2. **Key Insight:** The "Aha!" moment.
 3. **Action Items:** What does the client need to do?
 4. **Next Session:** Date/Time.
-"""
+""",
     },
-
     # --- 🔧 HOME SERVICES & TRADES ---
     "trades": {
         "base_tone": "Quick, Practical, Solution-Oriented. 'Talks Business'.",
@@ -124,8 +162,8 @@ Language: Hebrew (Direct, Short sentences).
 2. **The Issue:** Urgent/Standard.
 3. **Quote Status:** Pending/Given.
 4. **Schedule:** When to arrive.
-"""
-    }
+""",
+    },
 }
 
 # --- FALLBACK (GENERIC BUSINESS) ---
@@ -143,17 +181,20 @@ Language: Hebrew.
 **Guardrails:**
 - If you don't know the answer, ask the business owner.
 """,
-    "summary_format": "Summarize the key points and next actions."
+    "summary_format": "Summarize the key points and next actions.",
 }
 
-def get_persona_config(business_type: str, custom_data: Optional[Dict[str, Any]] = None) -> Dict[str, str]:
+
+def get_persona_config(
+    business_type: str, custom_data: dict[str, Any] | None = None
+) -> dict[str, str]:
     """
     Generates a fully customized AI persona configuration.
-    
+
     Args:
         business_type (str): The user input (e.g., 'Yoga Instructor', 'Plumber').
         custom_data (dict): Specific business rules (business_name, cancellation_policy, links).
-    
+
     Returns:
         Dict: Contains 'role_prompt', 'voice_instruction', and 'tone_config'.
     """
@@ -163,17 +204,17 @@ def get_persona_config(business_type: str, custom_data: Optional[Dict[str, Any]]
     # 1. Merge default context with user-provided custom data (Safe Merge)
     # This ensures no KeyErrors if the user didn't provide a specific field.
     context = {**DEFAULT_CONTEXT, **custom_data}
-    
+
     # 2. Normalize Business Type (Fuzzy Matching)
     # We convert the user's input (e.g., "Pilates Studio") to a known category key (e.g., "fitness").
     normalized_category = "generic"
     search_term = business_type.lower()
-    
+
     for category, keywords in KEYWORD_REGISTRY.items():
         if any(k in search_term for k in keywords):
             normalized_category = category
             break
-            
+
     # 3. Fetch the appropriate template
     template = PERSONA_TEMPLATES.get(normalized_category, GENERIC_TEMPLATE)
 
@@ -189,5 +230,5 @@ def get_persona_config(business_type: str, custom_data: Optional[Dict[str, Any]]
     return {
         "role_prompt": formatted_system_role,
         "voice_instruction": template["summary_format"],
-        "tone_config": template["base_tone"]
+        "tone_config": template["base_tone"],
     }

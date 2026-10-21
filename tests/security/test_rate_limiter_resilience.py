@@ -32,4 +32,3 @@ def test_rate_limiter_test_env_fallback() -> None:
     ):
         lim = src.security.rate_limiter.init_limiter()
         assert isinstance(lim, Limiter)
-

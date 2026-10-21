@@ -1,11 +1,13 @@
 # src/services/providers/vonage.py
-import requests
 import logging
-from typing import List, Dict
+
+import requests
+
 from src.config import settings
 from src.services.providers.base import PhoneProviderStrategy
 
 logger = logging.getLogger("VonageProvider")
+
 
 class VonageProvider(PhoneProviderStrategy):
     def __init__(self):
@@ -21,7 +23,9 @@ class VonageProvider(PhoneProviderStrategy):
     def is_configured(self) -> bool:
         return bool(self.api_key and self.api_secret)
 
-    def search_numbers(self, country_code: str, number_type: str = "mobile-lvn", limit: int = 5) -> List[Dict]:
+    def search_numbers(
+        self, country_code: str, number_type: str = "mobile-lvn", limit: int = 5
+    ) -> list[dict]:
         if not self.is_configured:
             return []
 
@@ -33,25 +37,29 @@ class VonageProvider(PhoneProviderStrategy):
                 "country": country_code,
                 "features": "VOICE,SMS",
                 "size": limit,
-                "type": v_type
+                "type": v_type,
             }
-            
+
             # SECURITY FIX (B113): Added timeout
-            response = requests.get(f"{self.base_url}/search", params=params, timeout=10)
+            response = requests.get(
+                f"{self.base_url}/search", params=params, timeout=10
+            )
             data = response.json()
-            
+
             results = []
-            if 'numbers' in data:
-                for num in data['numbers']:
-                    results.append({
-                        "number": "+" + num['msisdn'], 
-                        "friendly_name": f"Vonage {num.get('type', 'Unknown')}",
-                        "locality": num.get('type', 'unknown'),
-                        "country": country_code,
-                        "price_monthly": float(num.get('cost', 1.25)),
-                        "currency": "EUR",
-                        "provider": "vonage"
-                    })
+            if "numbers" in data:
+                for num in data["numbers"]:
+                    results.append(
+                        {
+                            "number": "+" + num["msisdn"],
+                            "friendly_name": f"Vonage {num.get('type', 'Unknown')}",
+                            "locality": num.get("type", "unknown"),
+                            "country": country_code,
+                            "price_monthly": float(num.get("cost", 1.25)),
+                            "currency": "EUR",
+                            "provider": "vonage",
+                        }
+                    )
             return results
         except Exception as e:
             logger.error(f"[Vonage] Search Exception: {e}")
