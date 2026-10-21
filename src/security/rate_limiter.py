@@ -1,9 +1,12 @@
 # src/security/rate_limiter.py
-from slowapi import Limiter
-from fastapi import Request
 import ipaddress
-from src.config import settings
 import logging
+import os
+
+from fastapi import Request
+from slowapi import Limiter
+
+from src.config import settings
 
 logger = logging.getLogger("SecurityLimiter")
 
@@ -37,11 +40,20 @@ def create_limiter(redis_url: str) -> Limiter:
     )
 
 
-# AGENT FIX: Using Redis storage for the Rate Limiter instead of In-Memory.
-# This ensures that when running multiple Gunicorn workers, the limits are shared globally.
 try:
     limiter = create_limiter(settings.REDIS_URL)
     logger.info("🛡️ Redis Rate Limiter initialized successfully.")
-except Exception as e:
-    logger.warning(f"⚠️ Could not connect Rate Limiter to Redis, falling back to memory. Error: {e}")
-    limiter = Limiter(key_func=get_real_ip)
+except Exception as e:  # noqa: BLE001
+    env = getattr(settings, "ENVIRONMENT", "development").lower()
+    if env == "production":
+        logger.critical(
+            f"CRITICAL: Redis is required for distributed rate limiting in production (PID {os.getpid()}). Error: {e}"
+        )
+        raise RuntimeError(
+            "CRITICAL: Redis is required for distributed rate limiting in production."
+        )
+    else:
+        logger.warning(
+            f"EVENT: RATE_LIMITER_REDIS_FALLBACK | Could not connect Rate Limiter to Redis, falling back to in-memory (PID {os.getpid()}). Error: {e}"
+        )
+        limiter = Limiter(key_func=get_real_ip)
