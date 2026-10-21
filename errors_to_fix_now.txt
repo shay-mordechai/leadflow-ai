@@ -1,0 +1,449 @@
+RUF100 [*] Unused `noqa` directive (non-enabled: `BLE001`)
+  --> src/config.py:83:29
+   |
+81 |                 )
+82 |                 return
+83 |     except Exception as e:  # noqa: BLE001
+   |                             ^^^^^^^^^^^^^^
+84 |         logger.warning(f"Failed to read encrypted SSM cache: {e}")
+   |
+help: Remove unused `noqa` directive
+   |
+82 |                 return
+   -     except Exception as e:  # noqa: BLE001
+83 +     except Exception as e:
+84 |         logger.warning(f"Failed to read encrypted SSM cache: {e}")
+   |
+
+RUF100 [*] Unused `noqa` directive (non-enabled: `BLE001`)
+   --> src/config.py:138:36
+    |
+136 |                     ) as f:
+137 |                         f.write(encrypted_data)
+138 |                 except Exception:  # noqa: BLE001
+    |                                    ^^^^^^^^^^^^^^
+139 |                     # Fallback if file exists and we can't remove it
+140 |                     with open(SSM_CACHE_FILE, "wb") as f:
+    |
+help: Remove unused `noqa` directive
+    |
+137 |                         f.write(encrypted_data)
+    -                 except Exception:  # noqa: BLE001
+138 +                 except Exception:
+139 |                     # Fallback if file exists and we can't remove it
+    |
+
+RUF100 [*] Unused `noqa` directive (non-enabled: `BLE001`)
+   --> src/config.py:147:38
+    |
+145 |                     f"✅ Successfully loaded and ENCRYPTED {len(fetched_secrets)} secrets from AWS SSM."
+146 |                 )
+147 |             except Exception as ce:  # noqa: BLE001
+    |                                      ^^^^^^^^^^^^^^
+148 |                 logger.warning(f"Could not write encrypted SSM cache file: {ce}")
+    |
+help: Remove unused `noqa` directive
+    |
+146 |                 )
+    -             except Exception as ce:  # noqa: BLE001
+147 +             except Exception as ce:
+148 |                 logger.warning(f"Could not write encrypted SSM cache file: {ce}")
+    |
+
+RUF100 [*] Unused `noqa` directive (non-enabled: `BLE001`)
+   --> src/config.py:154:29
+    |
+152 |     except ClientError as e:
+153 |         logger.error(f"⛔ AWS SSM Client Error: {e}")
+154 |     except Exception as e:  # noqa: BLE001
+    |                             ^^^^^^^^^^^^^^
+155 |         logger.warning(f"⚠️ Unexpected error loading SSM secrets: {e}")
+    |
+help: Remove unused `noqa` directive
+    |
+153 |         logger.error(f"⛔ AWS SSM Client Error: {e}")
+    -     except Exception as e:  # noqa: BLE001
+154 +     except Exception as e:
+155 |         logger.warning(f"⚠️ Unexpected error loading SSM secrets: {e}")
+    |
+
+F821 Undefined name `os`
+  --> src/routers/system.py:49:12
+   |
+47 |     try:
+48 |         storage_path = getattr(settings, "STORAGE_BASE_PATH", "/app/storage")
+49 |         if os.access(storage_path, os.W_OK):
+   |            ^^
+50 |             health_status["storage"] = "healthy"
+51 |         else:
+   |
+
+F821 Undefined name `os`
+  --> src/routers/system.py:49:36
+   |
+47 |     try:
+48 |         storage_path = getattr(settings, "STORAGE_BASE_PATH", "/app/storage")
+49 |         if os.access(storage_path, os.W_OK):
+   |                                    ^^
+50 |             health_status["storage"] = "healthy"
+51 |         else:
+   |
+
+F821 Undefined name `Any`
+   --> src/routers/webhooks/whatsapp.py:460:57
+    |
+460 | def _legacy_process_whatsapp_message(payload: dict[str, Any]) -> None:
+    |                                                         ^^^
+461 |     """Run payload processing in FastAPI's background worker thread."""
+462 |     if payload.get("object") != "whatsapp_business_account":
+    |
+
+F821 Undefined name `Any`
+   --> src/routers/webhooks/whatsapp.py:473:24
+    |
+472 | async def _process_whatsapp_message(
+473 |     payload: dict[str, Any], client: genai.Client
+    |                        ^^^
+474 | ) -> None:
+475 |     """Process a Meta payload after acknowledging the webhook request."""
+    |
+
+F821 Undefined name `db`
+  --> src/scripts/migrate_json_to_pdf.py:10:5
+   |
+ 8 |     # 1. Create a Default Tenant for existing data
+ 9 |     default_tenant = Tenant(name="Legacy Migration", api_key_hash="...")
+10 |     db.add(default_tenant)
+   |     ^^
+11 |     db.commit()
+   |
+
+F821 Undefined name `db`
+  --> src/scripts/migrate_json_to_pdf.py:11:5
+   |
+ 9 |     default_tenant = Tenant(name="Legacy Migration", api_key_hash="...")
+10 |     db.add(default_tenant)
+11 |     db.commit()
+   |     ^^
+12 |
+13 |     # 2. Load JSON
+   |
+
+F821 Undefined name `db`
+  --> src/scripts/migrate_json_to_pdf.py:25:9
+   |
+23 |             # Map other fields...
+24 |         )
+25 |         db.add(new_lead)
+   |         ^^
+26 |
+27 |     db.commit()
+   |
+
+F821 Undefined name `db`
+  --> src/scripts/migrate_json_to_pdf.py:27:5
+   |
+25 |         db.add(new_lead)
+26 |
+27 |     db.commit()
+   |     ^^
+28 |     print("Migration Complete. Check 'leads' table.")
+   |
+
+RUF100 [*] Unused `noqa` directive (non-enabled: `BLE001`)
+  --> src/security/audit.py:65:33
+   |
+63 |                 },
+64 |             )
+65 |         except Exception as e:  # noqa: BLE001
+   |                                 ^^^^^^^^^^^^^^
+66 |             # We use logger.error but don't raise to ensure
+67 |             # audit failures don't crash the main business flow
+   |
+help: Remove unused `noqa` directive
+   |
+64 |             )
+   -         except Exception as e:  # noqa: BLE001
+65 +         except Exception as e:
+66 |             # We use logger.error but don't raise to ensure
+   |
+
+RUF100 [*] Unused `noqa` directive (non-enabled: `B008`)
+  --> src/security/dependencies.py:37:37
+   |
+35 | async def get_current_user(
+36 |     token: str = Depends(get_token),
+37 |     db: Session = Depends(get_db),  # noqa: B008
+   |                                     ^^^^^^^^^^^^
+38 | ):
+39 |     credentials_exception = HTTPException(
+   |
+help: Remove unused `noqa` directive
+   |
+36 |     token: str = Depends(get_token),
+   -     db: Session = Depends(get_db),  # noqa: B008
+37 +     db: Session = Depends(get_db),
+38 | ):
+   |
+
+RUF100 [*] Unused `noqa` directive (non-enabled: `BLE001`)
+  --> src/security/encryption.py:52:41
+   |
+50 |                 try:
+51 |                     self._cipher = Fernet(key)
+52 |                 except Exception as e:  # noqa: BLE001
+   |                                         ^^^^^^^^^^^^^^
+53 |                     logger.critical(f"Failed to initialize Fernet cipher: {e}")
+54 |                     raise ValueError(
+   |
+help: Remove unused `noqa` directive
+   |
+51 |                     self._cipher = Fernet(key)
+   -                 except Exception as e:  # noqa: BLE001
+52 +                 except Exception as e:
+53 |                     logger.critical(f"Failed to initialize Fernet cipher: {e}")
+   |
+
+RUF100 [*] Unused `noqa` directive (non-enabled: `BLE001`)
+  --> src/security/encryption.py:72:33
+   |
+70 |             # Fernet requires bytes input and produces bytes output
+71 |             return cipher.encrypt(plaintext.encode("utf-8")).decode("utf-8")
+72 |         except Exception as e:  # noqa: BLE001
+   |                                 ^^^^^^^^^^^^^^
+73 |             logger.error(f"Encryption operation failed: {e}")
+74 |             return None
+   |
+help: Remove unused `noqa` directive
+   |
+71 |             return cipher.encrypt(plaintext.encode("utf-8")).decode("utf-8")
+   -         except Exception as e:  # noqa: BLE001
+72 +         except Exception as e:
+73 |             logger.error(f"Encryption operation failed: {e}")
+   |
+
+RUF100 [*] Unused `noqa` directive (non-enabled: `BLE001`)
+  --> src/security/encryption.py:87:33
+   |
+85 |             cipher = self._get_cipher()
+86 |             return cipher.decrypt(ciphertext.encode("utf-8")).decode("utf-8")
+87 |         except Exception as e:  # noqa: BLE001
+   |                                 ^^^^^^^^^^^^^^
+88 |             # Decryption failure is logged as a critical security issue.
+89 |             # A placeholder is returned to prevent unhandled service crashes.
+   |
+help: Remove unused `noqa` directive
+   |
+86 |             return cipher.decrypt(ciphertext.encode("utf-8")).decode("utf-8")
+   -         except Exception as e:  # noqa: BLE001
+87 +         except Exception as e:
+88 |             # Decryption failure is logged as a critical security issue.
+   |
+
+RUF100 [*] Unused `noqa` directive (non-enabled: `BLE001`)
+  --> src/security/hashing.py:54:29
+   |
+52 |         safe_secret = _pre_hash(plain_secret)
+53 |         return pwd_context.verify(safe_secret, hashed_secret)
+54 |     except Exception as e:  # noqa: BLE001
+   |                             ^^^^^^^^^^^^^^
+55 |         logger.error(f"Hash verification error: {e}")
+56 |         return False
+   |
+help: Remove unused `noqa` directive
+   |
+53 |         return pwd_context.verify(safe_secret, hashed_secret)
+   -     except Exception as e:  # noqa: BLE001
+54 +     except Exception as e:
+55 |         logger.error(f"Hash verification error: {e}")
+   |
+
+RUF100 [*] Unused `noqa` directive (non-enabled: `BLE001`)
+  --> src/security/rate_limiter.py:49:29
+   |
+47 |         logger.info("🛡️ Redis Rate Limiter initialized successfully.")
+48 |         return limiter_instance
+49 |     except Exception as e:  # noqa: BLE001
+   |                             ^^^^^^^^^^^^^^
+50 |         env = (
+51 |             os.getenv("APP_ENV") or getattr(settings, "APP_ENV", "development")
+   |
+help: Remove unused `noqa` directive
+   |
+48 |         return limiter_instance
+   -     except Exception as e:  # noqa: BLE001
+49 +     except Exception as e:
+50 |         env = (
+   |
+
+RUF100 [*] Unused `noqa` directive (non-enabled: `DTZ003`)
+  --> src/security/validation.py:23:53
+   |
+22 |     if expires_delta:
+23 |         expire = datetime.utcnow() + expires_delta  # noqa: DTZ003
+   |                                                     ^^^^^^^^^^^^^^
+24 |     else:
+25 |         # Default expiration set in config (usually 24 hours)
+   |
+help: Remove unused `noqa` directive
+   |
+22 |     if expires_delta:
+   -         expire = datetime.utcnow() + expires_delta  # noqa: DTZ003
+23 +         expire = datetime.utcnow() + expires_delta
+24 |     else:
+   |
+
+RUF100 [*] Unused `noqa` directive (non-enabled: `DTZ003`)
+  --> src/security/validation.py:26:50
+   |
+24 |     else:
+25 |         # Default expiration set in config (usually 24 hours)
+26 |         expire = datetime.utcnow() + timedelta(  # noqa: DTZ003
+   |                                                  ^^^^^^^^^^^^^^
+27 |             minutes=settings.ACCESS_TOKEN_EXPIRE_MINUTES
+28 |         )
+   |
+help: Remove unused `noqa` directive
+   |
+25 |         # Default expiration set in config (usually 24 hours)
+   -         expire = datetime.utcnow() + timedelta(  # noqa: DTZ003
+26 +         expire = datetime.utcnow() + timedelta(
+27 |             minutes=settings.ACCESS_TOKEN_EXPIRE_MINUTES
+   |
+
+TRY004 Prefer `TypeError` exception for invalid type
+   --> src/services/communication/whatsapp_pipeline.py:411:13
+    |
+409 |         structured_output = response.parsed
+410 |         if not isinstance(structured_output, WhatsAppAgentResponse):
+411 |             raise ValueError("Gemini did not return a parsed WhatsAppAgentResponse")
+    |             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+412 |     except Exception as ai_error:
+413 |         logger.error(
+    |
+
+SIM117 [*] Use a single `with` statement with multiple contexts instead of nested `with` statements
+   --> src/services/communication/whatsapp_pipeline.py:497:9
+    |
+496 |       try:
+497 | /         async with _create_gemini_client().aio as client:
+498 | |             async with AsyncSessionLocal() as db:
+    | |_________________________________________________^
+499 |                   for entry in payload.get("entry", []):
+500 |                       for change in entry.get("changes", []):
+    |
+help: Combine `with` statements
+    |
+496 |     try:
+    -         async with _create_gemini_client().aio as client:
+    -             async with AsyncSessionLocal() as db:
+    -                 for entry in payload.get("entry", []):
+    -                     for change in entry.get("changes", []):
+    -                         try:
+    -                             value = change["value"]
+    -                             metadata = value.get("metadata", {})
+    -                             messages = value.get("messages", [])
+    -                             contacts = value.get("contacts", [])
+    -                         except (AttributeError, KeyError, TypeError):
+    -                             logger.exception("Skipping malformed Meta webhook change")
+    -                             continue
+497 +         async with _create_gemini_client().aio as client, AsyncSessionLocal() as db:
+498 +             for entry in payload.get("entry", []):
+499 +                 for change in entry.get("changes", []):
+500 +                     try:
+501 +                         value = change["value"]
+502 +                         metadata = value.get("metadata", {})
+503 +                         messages = value.get("messages", [])
+504 +                         contacts = value.get("contacts", [])
+505 +                     except (AttributeError, KeyError, TypeError):
+506 +                         logger.exception("Skipping malformed Meta webhook change")
+507 +                         continue
+508 |
+    -                         for message in messages:
+    -                             try:
+    -                                 await _process_single_message(
+    -                                     db,
+    -                                     metadata,
+    -                                     contacts,
+    -                                     message,
+    -                                     client,
+    -                                 )
+    -                             except Exception:
+    -                                 logger.exception(
+    -                                     "Unhandled WhatsApp message processing failure"
+    -                                 )
+    -                                 await db.rollback()
+509 +                     for message in messages:
+510 +                         try:
+511 +                             await _process_single_message(
+512 +                                 db,
+513 +                                 metadata,
+514 +                                 contacts,
+515 +                                 message,
+516 +                                 client,
+517 +                             )
+518 +                         except Exception:
+519 +                             logger.exception(
+520 +                                 "Unhandled WhatsApp message processing failure"
+521 +                             )
+522 +                             await db.rollback()
+523 |     except Exception:
+    |
+
+SIM117 [*] Use a single `with` statement with multiple contexts instead of nested `with` statements
+  --> src/tasks/backup_tasks.py:37:9
+   |
+35 |       try:
+36 |           # Generate safe snapshot
+37 | /         with sqlite3.connect(db_path) as source:
+38 | |             with sqlite3.connect(temp_backup_path) as dest:
+   | |___________________________________________________________^
+39 |                   source.backup(dest)
+   |
+help: Combine `with` statements
+   |
+36 |         # Generate safe snapshot
+   -         with sqlite3.connect(db_path) as source:
+   -             with sqlite3.connect(temp_backup_path) as dest:
+   -                 source.backup(dest)
+37 +         with sqlite3.connect(db_path) as source, sqlite3.connect(temp_backup_path) as dest:
+38 +             source.backup(dest)
+39 |
+   |
+
+RUF100 [*] Unused `noqa` directive (non-enabled: `RUF012`)
+   --> tests/security/test_identity_data_security.py:331:50
+    |
+330 |     class Response:
+331 |         headers = {"content-type": "text/html"}  # noqa: RUF012
+    |                                                  ^^^^^^^^^^^^^^
+332 |
+333 |         async def __aenter__(self) -> Self:
+    |
+help: Remove unused `noqa` directive
+    |
+330 |     class Response:
+    -         headers = {"content-type": "text/html"}  # noqa: RUF012
+331 +         headers = {"content-type": "text/html"}
+332 |
+    |
+
+RUF100 [*] Unused `noqa` directive (non-enabled: `RUF012`)
+   --> tests/security/test_identity_data_security.py:379:50
+    |
+378 |     class Response:
+379 |         headers = {"content-type": "audio/ogg"}  # noqa: RUF012
+    |                                                  ^^^^^^^^^^^^^^
+380 |
+381 |         async def __aenter__(self) -> Self:
+    |
+help: Remove unused `noqa` directive
+    |
+378 |     class Response:
+    -         headers = {"content-type": "audio/ogg"}  # noqa: RUF012
+379 +         headers = {"content-type": "audio/ogg"}
+380 |
+    |
+
+Found 26 errors.
+[*] 17 fixable with `--fix`.

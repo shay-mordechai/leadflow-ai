@@ -43,9 +43,7 @@ async def upload_kyc_document(
     No local files are saved.
     """
     if user.plan_tier != PlanTier.PRO.value and user.plan_tier != PlanTier.PRO:
-        raise HTTPException(
-            status_code=403, detail="Only PRO users can upload KYC documents."
-        )
+        raise HTTPException(status_code=403, detail="Only PRO users can upload KYC documents.")
 
     allowed_types = ["image/jpeg", "image/png", "application/pdf"]
     if file.content_type not in allowed_types:
@@ -76,17 +74,13 @@ async def upload_kyc_document(
         }
     except Exception as e:
         logger.error(f"KYC S3 upload failed for {user.email}: {e}")
-        raise HTTPException(
-            status_code=500, detail="נכשלנו לשמור את המסמך בענן המאובטח."
-        )
+        raise HTTPException(status_code=500, detail="נכשלנו לשמור את המסמך בענן המאובטח.")
 
 
 @router.get("/available", response_model=list[PhoneResult])
 async def search_available_phones(
     country_code: str = Query("IL", min_length=2, max_length=2),
-    area_code: str | None = Query(
-        None, description="Preferred prefix e.g., '03', '04', 'mobile'"
-    ),
+    area_code: str | None = Query(None, description="Preferred prefix e.g., '03', '04', 'mobile'"),
     current_user: User = Depends(get_current_user),
 ):
     """
@@ -122,9 +116,7 @@ async def search_available_phones(
                     filtered.append(phone)
 
             final_results = (
-                filtered
-                if filtered
-                else [p for p in results if "+9725" in p.get("number", "")]
+                filtered if filtered else [p for p in results if "+9725" in p.get("number", "")]
             )
             if not final_results:
                 raise HTTPException(
@@ -137,9 +129,7 @@ async def search_available_phones(
         raise
     except Exception as e:
         logger.error(f"Global telecom search failed: {e}")
-        raise HTTPException(
-            status_code=500, detail="שגיאת תקשורת מול שרת הטלפוניה (Twilio)."
-        )
+        raise HTTPException(status_code=500, detail="שגיאת תקשורת מול שרת הטלפוניה (Twilio).")
 
 
 @router.post("/purchase")
@@ -183,9 +173,7 @@ async def purchase_phone_number(
         db.add(new_phone)
         db.commit()
 
-        logger.info(
-            f"✅ Real Number purchased: {new_phone.number} for user {user.email}"
-        )
+        logger.info(f"✅ Real Number purchased: {new_phone.number} for user {user.email}")
 
         return {
             "status": "success",

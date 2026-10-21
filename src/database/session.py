@@ -31,9 +31,9 @@ class GUID(TypeDecorator):
             return str(value)
         else:
             if not isinstance(value, uuid.UUID):
-                return "%.32x" % uuid.UUID(value).int
+                return f"{uuid.UUID(value).int:032x}"
             else:
-                return "%.32x" % value.int
+                return f"{value.int:032x}"
 
     def process_result_value(self, value, dialect):
         if value is None:
@@ -90,9 +90,7 @@ if async_database_url.drivername in {"sqlite", "sqlite+pysqlite", "sqlite+aiosql
     async_database_url = async_database_url.set(drivername="sqlite+aiosqlite")
     url_str = str(async_database_url)
     if ":memory:" in url_str and "cache=shared" not in url_str:
-        async_database_url = make_url(
-            url_str + ("&" if "?" in url_str else "?") + "cache=shared"
-        )
+        async_database_url = make_url(url_str + ("&" if "?" in url_str else "?") + "cache=shared")
 elif async_database_url.drivername in {
     "postgres",
     "postgresql",
@@ -100,15 +98,11 @@ elif async_database_url.drivername in {
 }:
     async_database_url = async_database_url.set(drivername="postgresql+asyncpg")
 else:
-    raise ValueError(
-        f"Unsupported async database driver: {async_database_url.drivername}"
-    )
+    raise ValueError(f"Unsupported async database driver: {async_database_url.drivername}")
 
 async_engine_kwargs = {"pool_pre_ping": True, "pool_recycle": 1800}
 if not async_database_url.drivername.startswith("sqlite+"):
-    async_engine_kwargs.update(
-        {"pool_size": 20, "max_overflow": 10, "pool_timeout": 30}
-    )
+    async_engine_kwargs.update({"pool_size": 20, "max_overflow": 10, "pool_timeout": 30})
 
 async_engine = create_async_engine(async_database_url, **async_engine_kwargs)
 AsyncSessionLocal = async_sessionmaker(

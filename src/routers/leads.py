@@ -43,9 +43,7 @@ class PagixLead(BaseModel):
     """
 
     name: str = Field(..., min_length=2, max_length=100, description="Lead's full name")
-    phone: str = Field(
-        ..., min_length=9, max_length=20, description="Lead's phone number"
-    )
+    phone: str = Field(..., min_length=9, max_length=20, description="Lead's phone number")
     email: EmailStr | None = None
     source: str = Field(default="LANDING_PAGE", max_length=50)
     idempotency_key: str | None = Field(
@@ -72,17 +70,13 @@ class LeadResponse(BaseModel):
 
 # NEW: Schemas for Human Takeover
 class ManualMessageRequest(BaseModel):
-    content: str = Field(
-        ..., min_length=1, description="Text content of the manual message"
-    )
+    content: str = Field(..., min_length=1, description="Text content of the manual message")
 
 
 class BotStatusRequest(BaseModel):
     model_config = {"extra": "forbid"}
 
-    bot_active: bool = Field(
-        ..., description="True to enable AI, False to mute (Human Takeover)"
-    )
+    bot_active: bool = Field(..., description="True to enable AI, False to mute (Human Takeover)")
 
 
 # --- Routes ---
@@ -130,11 +124,7 @@ async def toggle_bot_status(
     SECURE ENDPOINT: Toggles the AI bot on/off for a specific lead.
     When off, the bot will not respond to incoming WhatsApp messages.
     """
-    lead = (
-        db.query(Lead)
-        .filter(Lead.id == lead_id, Lead.user_id == current_user.id)
-        .first()
-    )
+    lead = db.query(Lead).filter(Lead.id == lead_id, Lead.user_id == current_user.id).first()
     if not lead:
         raise HTTPException(status_code=404, detail="Lead not found")
 
@@ -169,11 +159,7 @@ async def send_manual_message(
     SECURE ENDPOINT: Sends a manual WhatsApp message to the lead.
     Automatically disables the bot for this lead to prevent AI interference.
     """
-    lead = (
-        db.query(Lead)
-        .filter(Lead.id == lead_id, Lead.user_id == current_user.id)
-        .first()
-    )
+    lead = db.query(Lead).filter(Lead.id == lead_id, Lead.user_id == current_user.id).first()
     if not lead:
         raise HTTPException(status_code=404, detail="Lead not found")
 
@@ -194,18 +180,14 @@ async def send_manual_message(
         lead.requires_human = False
 
         db.commit()
-        logger.info(
-            f"👤 Manual message sent to {clean_phone} by {current_user.email}. Bot muted."
-        )
+        logger.info(f"👤 Manual message sent to {clean_phone} by {current_user.email}. Bot muted.")
 
         return {"success": True, "message": "הודעה נשלחה בהצלחה והבוט הושתק."}
 
     except Exception as e:
         db.rollback()
         logger.error(f"Failed to send manual message: {e}")
-        raise HTTPException(
-            status_code=500, detail="שגיאה בשליחת הודעה. ייתכן ואין לך מספר מחובר."
-        )
+        raise HTTPException(status_code=500, detail="שגיאה בשליחת הודעה. ייתכן ואין לך מספר מחובר.")
 
 
 # --- OTHER ENDPOINTS (Feedback & Webhooks) ---
@@ -221,17 +203,11 @@ async def submit_lead_feedback(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
-    lead = (
-        db.query(Lead)
-        .filter(Lead.id == lead_id, Lead.user_id == current_user.id)
-        .first()
-    )
+    lead = db.query(Lead).filter(Lead.id == lead_id, Lead.user_id == current_user.id).first()
     if not lead:
         raise HTTPException(status_code=404, detail="Lead not found")
     if rating not in [1, -1, 0]:
-        raise HTTPException(
-            status_code=400, detail="Invalid rating value. Must be 1 or -1."
-        )
+        raise HTTPException(status_code=400, detail="Invalid rating value. Must be 1 or -1.")
 
     lead.ai_rating = rating
     if note:
@@ -268,7 +244,9 @@ async def receive_external_lead(
         if lead_data.idempotency_key:
             idemp_key = lead_data.idempotency_key
         else:
-            raw_key = f"{lead_data.phone}-{lead_data.source}-{datetime.now(UTC).strftime('%Y-%m-%d')}"
+            raw_key = (
+                f"{lead_data.phone}-{lead_data.source}-{datetime.now(UTC).strftime('%Y-%m-%d')}"
+            )
             idemp_key = hashlib.sha256(raw_key.encode()).hexdigest()
 
         existing_lead = (
@@ -278,9 +256,7 @@ async def receive_external_lead(
         )
 
         if existing_lead:
-            logger.info(
-                f"🛡️ Idempotency Shield: Caught duplicate lead {lead_data.phone}."
-            )
+            logger.info(f"🛡️ Idempotency Shield: Caught duplicate lead {lead_data.phone}.")
             return {
                 "status": "success",
                 "message": "Lead already processed",
@@ -307,20 +283,16 @@ async def receive_external_lead(
             clean_phone = "".join(filter(str.isdigit, lead_data.phone))
             biz_name = getattr(target_user, "business_name", "העסק שלנו") or "העסק שלנו"
             intro_text = f"היי {lead_data.name}, תודה שהשארת פרטים! אני המזכירה הווירטואלית של {biz_name}. איך אפשר לעזור לך היום?"
-            success = whatsapp_adapter.send_message(
-                to_phone=clean_phone, text=intro_text
-            )
+            success = whatsapp_adapter.send_message(to_phone=clean_phone, text=intro_text)
             if success:
-                logger.info(
-                    f"🚀 Speed-to-Lead: Proactive message sent to {clean_phone}"
-                )
+                logger.info(f"🚀 Speed-to-Lead: Proactive message sent to {clean_phone}")
         except Exception as wa_err:
             logger.error(f"WhatsApp outreach failed for lead {new_lead.id}: {wa_err}")
 
         return {"status": "success", "lead_id": str(new_lead.id)}
 
-    except HTTPException as he:
-        raise he
+    except HTTPException:
+        raise
     except Exception as e:
         db.rollback()
         logger.error(f"Error processing webhook: {e!s}")
@@ -328,11 +300,7 @@ async def receive_external_lead(
             fallback_payload = (
                 raw_payload
                 if raw_payload
-                else (
-                    lead_data.model_dump(mode="json")
-                    if lead_data
-                    else {"raw": "Unknown"}
-                )
+                else (lead_data.model_dump(mode="json") if lead_data else {"raw": "Unknown"})
             )
             dlq_entry = WebhookDLQ(
                 provider=WebhookProvider.CUSTOM,
@@ -342,9 +310,7 @@ async def receive_external_lead(
             db.add(dlq_entry)
             db.commit()
         except Exception as dlq_err:
-            logger.critical(
-                f"🔥 FATAL: Could not save failed webhook to DLQ. Error: {dlq_err!s}"
-            )
+            logger.critical(f"🔥 FATAL: Could not save failed webhook to DLQ. Error: {dlq_err!s}")
 
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,

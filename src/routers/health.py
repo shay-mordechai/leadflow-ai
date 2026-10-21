@@ -44,11 +44,7 @@ def database_sync_status(db: Session = Depends(get_db)) -> JSONResponse:
             },
         )
 
-    is_synced = (
-        bool(expected_revision)
-        and bool(image_sha)
-        and actual_revision == expected_revision
-    )
+    is_synced = bool(expected_revision) and bool(image_sha) and actual_revision == expected_revision
     payload = {
         "is_synced": is_synced,
         "image_sha": image_sha,

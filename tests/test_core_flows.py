@@ -31,9 +31,7 @@ def db_engine():
 
 @pytest.fixture(scope="function")
 def db_session(db_engine):
-    TestingSessionLocal = sessionmaker(
-        autocommit=False, autoflush=False, bind=db_engine
-    )
+    TestingSessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=db_engine)
     db = TestingSessionLocal()
     try:
         yield db
@@ -43,9 +41,7 @@ def db_session(db_engine):
 
 @pytest.fixture(scope="function")
 def client(db_engine):
-    TestingSessionLocal = sessionmaker(
-        autocommit=False, autoflush=False, bind=db_engine
-    )
+    TestingSessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=db_engine)
 
     # Dependency Override: Replace the real DB with our testing DB
     def override_get_db():
@@ -98,9 +94,7 @@ def test_full_auth_flow(client):
         otp_code = mock_email.call_args[0][1]
 
     # 3. Verify OTP (Sets HttpOnly Cookie)
-    verify_res = client.post(
-        "/api/v1/auth/verify-otp", json={"email": email, "otp_code": otp_code}
-    )
+    verify_res = client.post("/api/v1/auth/verify-otp", json={"email": email, "otp_code": otp_code})
     assert verify_res.status_code == 200
 
     # Extract token from secure HttpOnly cookie stored in client.cookies
@@ -186,9 +180,7 @@ def test_human_takeover_and_messaging(client, db_session):
     client.cookies.set("access_token", f"Bearer {token}")
 
     # 1. Toggle Bot Off
-    toggle_res = client.patch(
-        f"/api/v1/leads/{lead.id}/bot-status", json={"bot_active": False}
-    )
+    toggle_res = client.patch(f"/api/v1/leads/{lead.id}/bot-status", json={"bot_active": False})
     assert toggle_res.status_code == 200
     assert toggle_res.json()["bot_active"] is False
 

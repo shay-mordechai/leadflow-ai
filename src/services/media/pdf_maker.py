@@ -44,7 +44,7 @@ class PDFMaker:
         base_filename = os.path.basename(filename)
 
         # Separate filename and extension
-        name_without_ext, ext = os.path.splitext(base_filename)
+        name_without_ext, _ext = os.path.splitext(base_filename)
 
         # 2. Allow only safe characters (alphanumeric, underscore, hyphen) in the name part
         sanitized_name = re.sub(r"[^a-zA-Z0-9_-]", "_", name_without_ext)
@@ -63,18 +63,17 @@ class PDFMaker:
         absolute_output_dir = os.path.abspath(output_dir)
         absolute_potential_output_path = os.path.abspath(potential_output_path)
 
-        if not absolute_potential_output_path.startswith(
-            absolute_output_dir + os.sep
-        ) and not (
-            absolute_potential_output_path == absolute_output_dir
-            and sanitized_filename != ""
+        if not absolute_potential_output_path.startswith(absolute_output_dir + os.sep) and not (
+            absolute_potential_output_path == absolute_output_dir and sanitized_filename != ""
         ):
             # If path traversal is detected or filename is a directory-like entry,
             # revert to a safe default or raise an error.
             logger.warning(
                 f"Path traversal attempt detected with filename: {filename}. Using a safe default."
             )
-            sanitized_filename = f"meeting_summary_{tempfile.NamedTemporaryFile().name.split('/')[-1]}.pdf"
+            sanitized_filename = (
+                f"meeting_summary_{tempfile.NamedTemporaryFile().name.split('/')[-1]}.pdf"
+            )
             potential_output_path = os.path.join(output_dir, sanitized_filename)
 
         output_path = potential_output_path

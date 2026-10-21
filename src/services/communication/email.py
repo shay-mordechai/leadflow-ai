@@ -117,9 +117,7 @@ class EmailService:
 
     async def send_otp_email(self, to_email: EmailStr, otp_code: str):
         if not self.conf:
-            logger.info(
-                "🛑 [MOCK EMAIL] Credentials are not configured; login email not sent."
-            )
+            logger.info("🛑 [MOCK EMAIL] Credentials are not configured; login email not sent.")
             return
 
         html_content = f"""

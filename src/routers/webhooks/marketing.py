@@ -30,9 +30,7 @@ class IncomingLeadPayload(BaseModel):
     phone_number: str = Field(
         ..., description="Phone number of the lead (preferably with country code)"
     )
-    campaign_name: str | None = Field(
-        None, description="Name of the marketing campaign"
-    )
+    campaign_name: str | None = Field(None, description="Name of the marketing campaign")
     custom_fields: dict[str, Any] | None = Field(
         default_factory=dict,
         description="Additional custom data collected from the lead form",
@@ -43,9 +41,7 @@ class IncomingLeadPayload(BaseModel):
 
 
 async def verify_marketing_api_key(
-    x_marketing_api_key: str = Header(
-        ..., description="API Key for Marketing Integration"
-    ),
+    x_marketing_api_key: str = Header(..., description="API Key for Marketing Integration"),
     db: Session = Depends(get_db),
 ) -> User:
     """
@@ -58,9 +54,7 @@ async def verify_marketing_api_key(
     user = result.scalar_one_or_none()
 
     if not user:
-        logger.warning(
-            "Failed marketing webhook authentication. Invalid API Key provided."
-        )
+        logger.warning("Failed marketing webhook authentication. Invalid API Key provided.")
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Invalid Marketing API Key",
@@ -130,9 +124,7 @@ async def receive_incoming_lead(
         )
 
     # 2. Check if lead already exists for this tenant
-    stmt = select(Lead).where(
-        Lead.user_id == tenant.id, Lead.phone_number == normalized_phone
-    )
+    stmt = select(Lead).where(Lead.user_id == tenant.id, Lead.phone_number == normalized_phone)
     result = db.execute(stmt)
     existing_lead = result.scalar_one_or_none()
 
@@ -205,9 +197,7 @@ async def receive_incoming_lead(
     except Exception as e:
         # We catch exceptions so that a failure to send the WhatsApp message doesn't
         # cause the webhook to return a 500 error to the marketing platform.
-        logger.error(
-            f"Failed to send proactive WhatsApp message to {normalized_phone}: {e!s}"
-        )
+        logger.error(f"Failed to send proactive WhatsApp message to {normalized_phone}: {e!s}")
 
     return {
         "status": "success",

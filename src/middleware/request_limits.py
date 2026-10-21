@@ -37,17 +37,12 @@ class RequestBodyLimitMiddleware:
             return
 
         headers = {key.lower(): value for key, value in scope.get("headers", [])}
-        content_type = (
-            headers.get(b"content-type", b"").split(b";", 1)[0].strip().lower()
-        )
+        content_type = headers.get(b"content-type", b"").split(b";", 1)[0].strip().lower()
         path = scope.get("path", "")
         is_audio_upload = (
-            path.startswith(self.upload_path_prefix)
-            and content_type == b"multipart/form-data"
+            path.startswith(self.upload_path_prefix) and content_type == b"multipart/form-data"
         )
-        body_limit = (
-            self.max_multipart_body_size if is_audio_upload else self.max_body_size
-        )
+        body_limit = self.max_multipart_body_size if is_audio_upload else self.max_body_size
         is_json = content_type == b"application/json" or content_type.endswith(b"+json")
 
         content_length = headers.get(b"content-length")

@@ -60,9 +60,7 @@ async def create_checkout_session(
     if payment_res.get("status") == 1:
         return {"payment_url": payment_res.get("url")}
     else:
-        raise HTTPException(
-            status_code=500, detail="Failed to initialize payment gateway."
-        )
+        raise HTTPException(status_code=500, detail="Failed to initialize payment gateway.")
 
 
 @router.post("/webhook/grow")
@@ -76,9 +74,7 @@ async def grow_payment_webhook(request: Request, db: Session = Depends(get_db)):
         data = await request.form()
 
         payment_status = data.get("status")
-        user_id = data.get(
-            "custom_field_1"
-        )  # We injected this during create_payment_page
+        user_id = data.get("custom_field_1")  # We injected this during create_payment_page
         transaction_id = data.get("transaction_id")
         amount = data.get("sum")
 

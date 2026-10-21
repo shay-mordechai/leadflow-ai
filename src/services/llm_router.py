@@ -33,9 +33,7 @@ class GeminiTieredRouter:
     MODEL_LITE = "gemini-flash-lite-latest"
     MODEL_FLASH = "gemini-flash-latest"
 
-    def __init__(
-        self, gemini_client: GeminiClientProtocol, redis_client: Any = None
-    ) -> None:
+    def __init__(self, gemini_client: GeminiClientProtocol, redis_client: Any = None) -> None:
         self.gemini = gemini_client
         self.redis = redis_client
         # In-memory fallback counter if Redis is not active in local/test environments
@@ -61,15 +59,11 @@ class GeminiTieredRouter:
             current_usage = await self.redis.incrby(key, estimated_tokens)
             if current_usage > max_monthly_tokens:
                 await self.redis.decrby(key, estimated_tokens)
-                raise TenantBudgetExceededError(
-                    f"Tenant {tenant_id} exceeded monthly token quota."
-                )
+                raise TenantBudgetExceededError(f"Tenant {tenant_id} exceeded monthly token quota.")
         else:
             current_usage = self._local_usage.get(key, 0) + estimated_tokens
             if current_usage > max_monthly_tokens:
-                raise TenantBudgetExceededError(
-                    f"Tenant {tenant_id} exceeded monthly token quota."
-                )
+                raise TenantBudgetExceededError(f"Tenant {tenant_id} exceeded monthly token quota.")
             self._local_usage[key] = current_usage
 
     async def route_and_generate(
@@ -86,9 +80,7 @@ class GeminiTieredRouter:
         """
         # Rough token estimation (~4 characters per token)
         estimated_tokens = max(len(prompt) // 4, 50)
-        await self.verify_and_record_budget(
-            tenant_id, estimated_tokens, max_monthly_tokens
-        )
+        await self.verify_and_record_budget(tenant_id, estimated_tokens, max_monthly_tokens)
 
         primary_model, fallback_model = self.select_models(complexity)
 
@@ -101,13 +93,9 @@ class GeminiTieredRouter:
                     "complexity": complexity.value,
                 },
             )
-            return await self.gemini.generate(
-                model=primary_model, prompt=prompt, **kwargs
-            )
+            return await self.gemini.generate(model=primary_model, prompt=prompt, **kwargs)
         except Exception as primary_err:
             logger.warning(
                 f"Primary model {primary_model} failed ({primary_err}). Failing over to {fallback_model}."
             )
-            return await self.gemini.generate(
-                model=fallback_model, prompt=prompt, **kwargs
-            )
+            return await self.gemini.generate(model=fallback_model, prompt=prompt, **kwargs)

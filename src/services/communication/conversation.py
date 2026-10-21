@@ -31,7 +31,9 @@ class ConversationManager:
     def _handle_city_discovery(self, lead: Lead, text: str):
         # In a real scenario, we would use NLP here to extract the city first.
         # For now, we ask explicitly.
-        response = "היי! אשמח לעזור לך. באיזו עיר אתה מתגורר כדי שאוכל להתאים לך את השירות הקרוב ביותר?"
+        response = (
+            "היי! אשמח לעזור לך. באיזו עיר אתה מתגורר כדי שאוכל להתאים לך את השירות הקרוב ביותר?"
+        )
         whatsapp_adapter.send_message(lead.phone_number, response)
 
     def _handle_general_chat(self, lead: Lead, text: str):

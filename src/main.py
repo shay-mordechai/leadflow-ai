@@ -120,16 +120,12 @@ async def request_id_middleware(request: Request, call_next):
 @app.middleware("http")
 async def add_security_headers(request: Request, call_next):
     response = await call_next(request)
-    response.headers["Strict-Transport-Security"] = (
-        "max-age=31536000; includeSubDomains"
-    )
+    response.headers["Strict-Transport-Security"] = "max-age=31536000; includeSubDomains"
     response.headers["X-Content-Type-Options"] = "nosniff"
     response.headers["X-Frame-Options"] = "DENY"
     response.headers["X-XSS-Protection"] = "1; mode=block"
     # HARDENED CSP: API should only return JSON, never execute inline scripts or frames.
-    response.headers["Content-Security-Policy"] = (
-        "default-src 'none'; frame-ancestors 'none';"
-    )
+    response.headers["Content-Security-Policy"] = "default-src 'none'; frame-ancestors 'none';"
     return response
 
 
@@ -225,12 +221,8 @@ app.include_router(invoices.router, prefix="/api/v1/billing", tags=["Billing"])
 
 app.include_router(provisioning.router)
 app.include_router(twilio.router, prefix="/webhooks/twilio", tags=["Webhooks - Twilio"])
-app.include_router(
-    whatsapp.router, prefix="/webhooks/whatsapp", tags=["Webhooks - WhatsApp"]
-)
-app.include_router(
-    meshulam.router, prefix="/webhooks/meshulam", tags=["Webhooks - Meshulam"]
-)
+app.include_router(whatsapp.router, prefix="/webhooks/whatsapp", tags=["Webhooks - WhatsApp"])
+app.include_router(meshulam.router, prefix="/webhooks/meshulam", tags=["Webhooks - Meshulam"])
 app.include_router(marketing.router)
 app.include_router(campaign.router)
 app.include_router(system.router)

@@ -51,7 +51,7 @@ def verify_hash(plain_secret: str, hashed_secret: str) -> bool:
     try:
         safe_secret = _pre_hash(plain_secret)
         return pwd_context.verify(safe_secret, hashed_secret)
-    except Exception as e:  # noqa: BLE001
+    except Exception as e:
         logger.error(f"Hash verification error: {e}")
         return False
 

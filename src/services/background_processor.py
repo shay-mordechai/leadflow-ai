@@ -21,9 +21,7 @@ def process_audio_analysis(session_id: str, user_id: str, file_path: str):
     and then summarize the text via AI.
     """
     db = SessionLocal()
-    session_record = (
-        db.query(CoachingSession).filter(CoachingSession.id == session_id).first()
-    )
+    session_record = db.query(CoachingSession).filter(CoachingSession.id == session_id).first()
 
     if not session_record:
         logger.error(f"Session {session_id} not found in DB.")
@@ -60,9 +58,7 @@ def process_audio_analysis(session_id: str, user_id: str, file_path: str):
         # --- 2. CLOUD SUMMARIZATION (Text Only) ---
         # Now that we have the text, we can safely send the TEXT to Gemini for summarization.
         logger.info("📝 Transcription complete. Generating summary via AI Engine...")
-        summary_text = ai_engine.generate_meeting_summary(
-            transcription_text=transcript_text
-        )
+        summary_text = ai_engine.generate_meeting_summary(transcription_text=transcript_text)
 
         # --- 3. UPDATE DATABASE ---
         session_record.transcript = transcript_text

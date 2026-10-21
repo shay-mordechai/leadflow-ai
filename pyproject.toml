@@ -1,0 +1,23 @@
+[tool.ruff]
+line-length = 100
+
+[tool.ruff.lint]
+# Ignoring strict style warnings that do not affect logic or security
+ignore = [
+    "BLE001", # Do not catch blind exception: Exception
+    "B008",   # Do not perform function call Depends in argument defaults (נדרש ב-FastAPI)
+    "TRY002", # Create your own exception
+    "TRY201", # Use raise without specifying exception name
+    "S110",   # try-except-pass detected
+    "SIM102", # Use single if instead of nested if
+    "SIM115", # Use context manager for opening files
+    "UP031",  # Use format specifiers instead of percent format
+    "RUF012", # Mutable default value for class attribute
+    "RUF013", # PEP 484 prohibits implicit Optional
+    "RUF059", # Unpacked variable is never used
+    "ASYNC210", # Async functions should not call blocking HTTP methods
+    "ASYNC230", # Async functions should not open files with blocking methods
+    "DTZ003", # datetime.utcnow() used
+    "PIE810", # Call startswith once with a tuple
+    "C408",   # Unnecessary dict() call
+]

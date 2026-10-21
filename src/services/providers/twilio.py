@@ -36,7 +36,10 @@ class TwilioProvider:
         return self.client is not None
 
     def search_numbers(
-        self, country_code: str = "IL", area_code: str = None, contains: str = None
+        self,
+        country_code: str = "IL",
+        area_code: str | None = None,
+        contains: str | None = None,
     ) -> list[dict]:
         if not self.is_configured:
             logger.warning("Twilio is not configured. Returning empty list.")
@@ -50,9 +53,9 @@ class TwilioProvider:
             # 1. Try Local Numbers first
             try:
                 # Note: Twilio API sometimes fails on 'local' for certain countries, so we catch it
-                twilio_results = self.client.available_phone_numbers(
-                    country_code
-                ).local.list(**params)
+                twilio_results = self.client.available_phone_numbers(country_code).local.list(
+                    **params
+                )
                 number_type = "local"
             except TwilioRestException:
                 twilio_results = []
@@ -60,9 +63,9 @@ class TwilioProvider:
             # 2. If no local numbers found, try Mobile
             if not twilio_results:
                 try:
-                    twilio_results = self.client.available_phone_numbers(
-                        country_code
-                    ).mobile.list(**params)
+                    twilio_results = self.client.available_phone_numbers(country_code).mobile.list(
+                        **params
+                    )
                     number_type = "mobile"
                 except TwilioRestException:
                     twilio_results = []
@@ -91,7 +94,7 @@ class TwilioProvider:
             logger.error(f"[Twilio] Search Error: {e}")
             return []
 
-    def buy_number(self, phone_number: str, friendly_name: str = None) -> str | None:
+    def buy_number(self, phone_number: str, friendly_name: str | None = None) -> str | None:
         if not self.is_configured:
             return None
         try:
@@ -104,7 +107,7 @@ class TwilioProvider:
             return purchased.sid
         except Exception as e:
             logger.error(f"[Twilio] Purchase Error: {e}")
-            raise e
+            raise
 
 
 # Singleton instance

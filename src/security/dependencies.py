@@ -34,7 +34,7 @@ def get_token(request: Request, token: str = Depends(oauth2_scheme)) -> str:
 
 async def get_current_user(
     token: str = Depends(get_token),
-    db: Session = Depends(get_db),  # noqa: B008
+    db: Session = Depends(get_db),
 ):
     credentials_exception = HTTPException(
         status_code=status.HTTP_401_UNAUTHORIZED,

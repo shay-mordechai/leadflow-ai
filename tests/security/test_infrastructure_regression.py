@@ -51,9 +51,7 @@ def test_production_configuration_accepts_external_secret_without_env_file(
     """Vulnerability: In-Memory Secrets; production configuration must support environment-injected secrets."""
     monkeypatch.chdir(tmp_path)
 
-    validate_config(
-        Settings(APP_ENV="production", SECRET_KEY="secure-production-key-" * 3)
-    )
+    validate_config(Settings(APP_ENV="production", SECRET_KEY="secure-production-key-" * 3))
 
 
 def test_otp_consumption_is_atomic_and_single_use() -> None:
@@ -74,9 +72,7 @@ def test_otp_consumption_is_atomic_and_single_use() -> None:
             hashed_password="unused",
         )
         user.otp_code = "123456"
-        user.otp_expires_at = datetime.now(UTC).replace(tzinfo=None) + timedelta(
-            minutes=5
-        )
+        user.otp_expires_at = datetime.now(UTC).replace(tzinfo=None) + timedelta(minutes=5)
         db.add(user)
         db.commit()
         db.refresh(user)
@@ -191,9 +187,7 @@ def test_rate_limit_rejects_malformed_forwarded_ip(
     monkeypatch.setattr(settings, "TRUSTED_PROXY_IPS", ["127.0.0.1"], raising=False)
 
     assert (
-        get_real_ip(
-            _request("127.0.0.1", [(b"cf-connecting-ip", b"198.51.100.27, 127.0.0.1")])
-        )
+        get_real_ip(_request("127.0.0.1", [(b"cf-connecting-ip", b"198.51.100.27, 127.0.0.1")]))
         == "127.0.0.1"
     )
 
@@ -253,12 +247,7 @@ def test_retention_policy_is_ninety_days_and_deletes_expired_leads(
         assert retention_tasks._purge_expired_leads(db, cutoff) == 1
         assert db.query(Lead).filter(Lead.id == lead_id).first() is None
         assert db.query(Message).filter(Message.lead_id == lead_id).count() == 0
-        assert (
-            db.query(MediaInteraction)
-            .filter(MediaInteraction.lead_id == lead_id)
-            .count()
-            == 0
-        )
+        assert db.query(MediaInteraction).filter(MediaInteraction.lead_id == lead_id).count() == 0
     finally:
         db.close()
         Base.metadata.drop_all(engine)
@@ -288,9 +277,7 @@ def test_ci_workflow_runs_trivy_and_gitleaks() -> None:
     """Vulnerability: CI Supply-Chain and Secret Exposure; workflows must scan source and container inputs."""
     from pathlib import Path
 
-    workflow = (
-        Path(".github/workflows/production.yml").read_text(encoding="utf-8").lower()
-    )
+    workflow = Path(".github/workflows/production.yml").read_text(encoding="utf-8").lower()
     assert "trivy" in workflow
     assert "gitleaks" in workflow
 
@@ -336,9 +323,7 @@ def test_gitleaks_allowlists_are_limited_to_known_false_positives() -> None:
     from pathlib import Path
 
     config = Path(".gitleaks.toml").read_text(encoding="utf-8")
-    dashboard = Path("frontend/app/dashboard/marketer/page.tsx").read_text(
-        encoding="utf-8"
-    )
+    dashboard = Path("frontend/app/dashboard/marketer/page.tsx").read_text(encoding="utf-8")
     assert "[extend]\nuseDefault = true" in config
     assert "5be64ff630c16b659b6e82fafd24e9d59986e175" in config
     assert "frontend/app/dashboard/marketer/page\\.tsx" in config

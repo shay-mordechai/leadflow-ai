@@ -210,9 +210,7 @@ def test_audio_upload_uses_mime_derived_extension_and_contained_path(
     user_id = uuid.uuid4()
     media_root = tmp_path / "audio"
     monkeypatch.setattr(sessions, "UPLOAD_DIR", str(media_root))
-    monkeypatch.setattr(
-        sessions.magic, "from_buffer", lambda _data, mime=True: "audio/wav"
-    )
+    monkeypatch.setattr(sessions.magic, "from_buffer", lambda _data, mime=True: "audio/wav")
     monkeypatch.setattr(sessions.process_meeting_audio, "delay", MagicMock())
 
     class Query:
@@ -328,7 +326,7 @@ async def test_remote_audio_transcriber_rejects_unapproved_content_type(
     monkeypatch.setattr(service, "_transcribe_sync", parser)
 
     class Response:
-        headers = {"content-type": "text/html"}  # noqa: RUF012
+        headers = {"content-type": "text/html"}
 
         async def __aenter__(self) -> Self:
             return self
@@ -376,7 +374,7 @@ async def test_remote_audio_transcriber_enforces_streaming_size_limit(
     monkeypatch.setattr(service, "_transcribe_sync", parser)
 
     class Response:
-        headers = {"content-type": "audio/ogg"}  # noqa: RUF012
+        headers = {"content-type": "audio/ogg"}
 
         async def __aenter__(self) -> Self:
             return self

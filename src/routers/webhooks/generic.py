@@ -31,15 +31,9 @@ async def payment_provider_webhook(
 
     # 1. SECURITY: Verify Internal API Key
     # Ensure settings.INTERNAL_WEBHOOK_SECRET is set to a long, random string in your .env
-    if not x_api_key or not hmac.compare_digest(
-        x_api_key, settings.INTERNAL_WEBHOOK_SECRET
-    ):
-        logger.error(
-            "❌ UNAUTHORIZED: Generic Webhook called with invalid or missing API Key."
-        )
-        raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED, detail="Unauthorized access"
-        )
+    if not x_api_key or not hmac.compare_digest(x_api_key, settings.INTERNAL_WEBHOOK_SECRET):
+        logger.error("❌ UNAUTHORIZED: Generic Webhook called with invalid or missing API Key.")
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Unauthorized access")
 
     logger.info("Received Authenticated Generic Webhook. Processing data...")
 
@@ -53,9 +47,7 @@ async def payment_provider_webhook(
 
     # 3. Check Payment Status
     if payment_status != "success":
-        logger.warning(
-            f"Payment failed or pending for {email}. Status: {payment_status}"
-        )
+        logger.warning(f"Payment failed or pending for {email}. Status: {payment_status}")
         return {"status": "ignored", "reason": "payment_not_successful"}
 
     # 4. Process Upgrade
@@ -66,9 +58,7 @@ async def payment_provider_webhook(
         if user_record.plan_tier != PlanTier.PRO:
             user_record.plan_tier = PlanTier.PRO
             db.commit()
-            logger.info(
-                f"💰 PAYMENT VERIFIED: User {email} upgraded to PRO via Generic Webhook."
-            )
+            logger.info(f"💰 PAYMENT VERIFIED: User {email} upgraded to PRO via Generic Webhook.")
             return {"status": "processed", "user": email, "new_plan": "PRO"}
         else:
             logger.info(f"User {email} is already on PRO plan.")

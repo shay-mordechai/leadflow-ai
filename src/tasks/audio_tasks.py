@@ -66,10 +66,7 @@ def process_audio_message(self, media_url: str, sender_id: str, bot_phone_number
         )
         history.reverse()
         history_str = "\n".join(
-            [
-                f"{'Customer' if m.sender_type == 'user' else 'AI'}: {m.content}"
-                for m in history
-            ]
+            [f"{'Customer' if m.sender_type == 'user' else 'AI'}: {m.content}" for m in history]
         )
 
         system_prompt = f"{agent.system_prompt}\n\nContext History:\n{history_str}"
@@ -119,9 +116,7 @@ def process_meeting_audio(self, session_id: str, user_id: str, file_path: str):
 
     db: Session = SessionLocal()
     try:
-        session_record = (
-            db.query(MeetingSession).filter(MeetingSession.id == session_id).first()
-        )
+        session_record = db.query(MeetingSession).filter(MeetingSession.id == session_id).first()
         if not session_record:
             logger.error(f"Session {session_id} not found in DB.")
             return "Session not found"

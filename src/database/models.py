@@ -95,12 +95,8 @@ class WebhookProvider(str, enum.Enum):
 lead_tag_association = Table(
     "lead_tag_association",
     Base.metadata,
-    Column(
-        "lead_id", GUID(), ForeignKey("leads.id", ondelete="CASCADE"), primary_key=True
-    ),
-    Column(
-        "tag_id", GUID(), ForeignKey("tags.id", ondelete="CASCADE"), primary_key=True
-    ),
+    Column("lead_id", GUID(), ForeignKey("leads.id", ondelete="CASCADE"), primary_key=True),
+    Column("tag_id", GUID(), ForeignKey("tags.id", ondelete="CASCADE"), primary_key=True),
 )
 
 
@@ -166,9 +162,7 @@ class User(Base):
     media_files = relationship(
         "MediaInteraction", back_populates="user", cascade="all, delete-orphan"
     )
-    integrations = relationship(
-        "Integration", back_populates="user", cascade="all, delete-orphan"
-    )
+    integrations = relationship("Integration", back_populates="user", cascade="all, delete-orphan")
     business_profile = relationship(
         "BusinessProfile",
         uselist=False,
@@ -199,9 +193,7 @@ class Tag(Base):
     __tablename__ = "tags"
 
     id = Column(GUID(), primary_key=True, default=uuid.uuid4)
-    user_id = Column(
-        GUID(), ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True
-    )
+    user_id = Column(GUID(), ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True)
     name = Column(String, nullable=False, index=True)
     created_at = Column(DateTime(timezone=True), server_default=func.now())
 
@@ -270,9 +262,7 @@ class Lead(Base):
     __tablename__ = "leads"
 
     id = Column(GUID(), primary_key=True, default=uuid.uuid4)
-    user_id = Column(
-        GUID(), ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True
-    )
+    user_id = Column(GUID(), ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True)
 
     idempotency_key = Column(String, index=True, nullable=True)
 
@@ -282,9 +272,7 @@ class Lead(Base):
     city = Column(String, nullable=True)
 
     source = Column(Enum(LeadSource), default=LeadSource.MANUAL, nullable=False)
-    status = Column(
-        Enum(LeadStatus), default=LeadStatus.NEW, nullable=False, index=True
-    )
+    status = Column(Enum(LeadStatus), default=LeadStatus.NEW, nullable=False, index=True)
 
     bot_active = Column(Boolean, default=True, nullable=False)
     requires_human = Column(Boolean, default=False, nullable=False, index=True)
@@ -320,9 +308,7 @@ class Message(Base):
     __tablename__ = "messages"
 
     id = Column(String(36), primary_key=True, default=lambda: str(uuid.uuid4()))
-    lead_id = Column(
-        GUID(), ForeignKey("leads.id", ondelete="CASCADE"), nullable=False, index=True
-    )
+    lead_id = Column(GUID(), ForeignKey("leads.id", ondelete="CASCADE"), nullable=False, index=True)
     sender_type = Column(String(10), nullable=False)
     content = Column(Text, nullable=False)
     external_id = Column(String, nullable=True, unique=True, index=True)
@@ -353,21 +339,15 @@ class MediaInteraction(Base):
     __tablename__ = "media_interactions"
 
     id = Column(GUID(), primary_key=True, default=uuid.uuid4)
-    user_id = Column(
-        GUID(), ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True
-    )
-    lead_id = Column(
-        GUID(), ForeignKey("leads.id", ondelete="SET NULL"), nullable=True, index=True
-    )
+    user_id = Column(GUID(), ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True)
+    lead_id = Column(GUID(), ForeignKey("leads.id", ondelete="SET NULL"), nullable=True, index=True)
 
     file_path = Column(String, nullable=False)
     message_text = Column(Text, nullable=True)
     media_type = Column(Enum(MediaType), default=MediaType.AUDIO, nullable=False)
 
     processed = Column(Boolean, default=False)
-    status = Column(
-        Enum(ProcessingStatus), default=ProcessingStatus.PENDING, index=True
-    )
+    status = Column(Enum(ProcessingStatus), default=ProcessingStatus.PENDING, index=True)
     transcription_text = Column(Text, nullable=True)
     ai_summary = Column(Text, nullable=True)
     suggested_reply = Column(Text, nullable=True)
@@ -382,9 +362,7 @@ class Integration(Base):
     __tablename__ = "integrations"
 
     id = Column(GUID(), primary_key=True, default=uuid.uuid4)
-    user_id = Column(
-        GUID(), ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True
-    )
+    user_id = Column(GUID(), ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True)
 
     platform_name = Column(String, nullable=False)
     access_token = Column(String, nullable=False)
@@ -398,12 +376,8 @@ class MeetingSession(Base):
     __tablename__ = "meeting_sessions"
 
     id = Column(GUID(), primary_key=True, default=uuid.uuid4)
-    user_id = Column(
-        GUID(), ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True
-    )
-    lead_id = Column(
-        GUID(), ForeignKey("leads.id", ondelete="CASCADE"), nullable=True, index=True
-    )
+    user_id = Column(GUID(), ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True)
+    lead_id = Column(GUID(), ForeignKey("leads.id", ondelete="CASCADE"), nullable=True, index=True)
 
     audio_file_path = Column(String, nullable=False)
     status = Column(Enum(SessionStatus), default=SessionStatus.QUEUED, index=True)
@@ -424,9 +398,7 @@ class PaymentTransaction(Base):
     __tablename__ = "payment_transactions"
 
     id = Column(GUID(), primary_key=True, default=uuid.uuid4)
-    user_id = Column(
-        GUID(), ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True
-    )
+    user_id = Column(GUID(), ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True)
 
     # Meshulam specific transaction ID
     transaction_id = Column(String, unique=True, index=True, nullable=False)

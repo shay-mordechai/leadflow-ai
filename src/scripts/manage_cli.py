@@ -34,9 +34,7 @@ def list_users():
                     u.name,
                     u.email,
                     u.role.value if hasattr(u, "role") and u.role else "CLIENT",
-                    u.plan_tier.value
-                    if hasattr(u, "plan_tier") and u.plan_tier
-                    else "N/A",
+                    u.plan_tier.value if hasattr(u, "plan_tier") and u.plan_tier else "N/A",
                     u.subscription_status.value
                     if hasattr(u, "subscription_status") and u.subscription_status
                     else "N/A",
@@ -124,9 +122,7 @@ def onboard_client(email, biz_name, biz_type, tone, prompt):
         user.subscription_status = SubscriptionStatus.ACTIVE
 
         # 2. Setup/Update Business Profile
-        profile = (
-            db.query(BusinessProfile).filter(BusinessProfile.user_id == user.id).first()
-        )
+        profile = db.query(BusinessProfile).filter(BusinessProfile.user_id == user.id).first()
         if not profile:
             profile = BusinessProfile(user_id=user.id)
             db.add(profile)
@@ -242,27 +238,17 @@ if __name__ == "__main__":
     onboard_parser = subparsers.add_parser(
         "onboard", help="Quickly configure a new client's AI Brain"
     )
-    onboard_parser.add_argument(
-        "--email", required=True, help="Client's registered email"
-    )
+    onboard_parser.add_argument("--email", required=True, help="Client's registered email")
     onboard_parser.add_argument("--name", required=True, help="Business Name")
-    onboard_parser.add_argument(
-        "--type", default="NLP Coaching", help="Business Category"
-    )
-    onboard_parser.add_argument(
-        "--tone", default="Professional & Empathetic", help="AI Tone"
-    )
-    onboard_parser.add_argument(
-        "--prompt", required=True, help="Full System Prompt for the AI"
-    )
+    onboard_parser.add_argument("--type", default="NLP Coaching", help="Business Category")
+    onboard_parser.add_argument("--tone", default="Professional & Empathetic", help="AI Tone")
+    onboard_parser.add_argument("--prompt", required=True, help="Full System Prompt for the AI")
 
     # --- Agency / Partner Commands ---
     approve_parser = subparsers.add_parser(
         "approve-partner", help="Approve a new campaigner/agency"
     )
-    approve_parser.add_argument(
-        "--email", required=True, help="Partner's registered email"
-    )
+    approve_parser.add_argument("--email", required=True, help="Partner's registered email")
 
     assign_parser = subparsers.add_parser(
         "assign-client", help="Assign a client to a campaigner's agency"

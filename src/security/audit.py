@@ -19,9 +19,7 @@ def _sanitize_audit_value(value: Any) -> Any:
         return _CONTROL_CHARACTERS.sub("", _ANSI_ESCAPE.sub("", value))
     if isinstance(value, dict):
         return {
-            _sanitize_audit_value(key)
-            if isinstance(key, str)
-            else key: _sanitize_audit_value(item)
+            _sanitize_audit_value(key) if isinstance(key, str) else key: _sanitize_audit_value(item)
             for key, item in value.items()
         }
     if isinstance(value, list):
@@ -44,9 +42,7 @@ class AuditService:
             safe_action = _sanitize_audit_value(action)
             safe_details = _sanitize_audit_value(details or {})
             safe_user_id = _sanitize_audit_value(str(user_id))
-            new_log = AuditLog(
-                user_id=safe_user_id, action=safe_action, details=safe_details
-            )
+            new_log = AuditLog(user_id=safe_user_id, action=safe_action, details=safe_details)
             db.add(new_log)
             # אנו משתמשים ב-flush במקום commit.
             # כך, מי שקרא לפונקציה (למשל ה-Webhook) אחראי על ה-commit הסופי,
@@ -62,7 +58,7 @@ class AuditService:
                     "details": safe_details,
                 },
             )
-        except Exception as e:  # noqa: BLE001
+        except Exception as e:
             # We use logger.error but don't raise to ensure
             # audit failures don't crash the main business flow
             logger.error(f"Failed to save Audit Log: {e}")

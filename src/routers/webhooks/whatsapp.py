@@ -5,6 +5,7 @@ import hmac
 import json
 import logging
 import time
+from typing import Any
 
 from fastapi import APIRouter, BackgroundTasks, HTTPException, Query, Request, status
 from fastapi.responses import JSONResponse, PlainTextResponse
@@ -110,9 +111,7 @@ async def verify_whatsapp_signature(request: Request) -> None:
 
     if not signature or not signature.startswith("sha256="):
         logger.warning("Missing or malformed X-Hub-Signature-256 from %s", client_host)
-        raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED, detail="Signature missing"
-        )
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Signature missing")
 
     body = await request.body()
     expected_hash = hmac.new(secret.encode("utf-8"), body, hashlib.sha256).hexdigest()
@@ -123,9 +122,7 @@ async def verify_whatsapp_signature(request: Request) -> None:
         expected_hash.encode("ascii"),
     ):
         logger.error("SECURITY ALERT: Invalid WhatsApp signature from %s", client_host)
-        raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid signature"
-        )
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid signature")
 
 
 @router.get("")
@@ -146,26 +143,20 @@ async def verify_webhook(
     raise HTTPException(status_code=403, detail="Verification failed")
 
 
-def _resolve_tenant(
-    db: Session, metadata: dict
-) -> tuple[User | None, PhoneNumber | None]:
+def _resolve_tenant(db: Session, metadata: dict) -> tuple[User | None, PhoneNumber | None]:
     phone_number_id = (metadata.get("phone_number_id") or "").strip()
     display_phone = _digits_only(metadata.get("display_phone_number"))
 
     phone_record = None
     if phone_number_id:
         phone_record = (
-            db.query(PhoneNumber)
-            .filter(PhoneNumber.provider_id == phone_number_id)
-            .first()
+            db.query(PhoneNumber).filter(PhoneNumber.provider_id == phone_number_id).first()
         )
 
     if phone_record is None and display_phone:
         tail = display_phone[-9:] if len(display_phone) >= 9 else display_phone
         if tail:
-            phone_record = (
-                db.query(PhoneNumber).filter(PhoneNumber.number.contains(tail)).first()
-            )
+            phone_record = db.query(PhoneNumber).filter(PhoneNumber.number.contains(tail)).first()
 
     user = None
     if phone_record is not None:
@@ -173,9 +164,7 @@ def _resolve_tenant(
     elif display_phone:
         tail = display_phone[-9:] if len(display_phone) >= 9 else display_phone
         if tail:
-            user = (
-                db.query(User).filter(User.assigned_phone_number.contains(tail)).first()
-            )
+            user = db.query(User).filter(User.assigned_phone_number.contains(tail)).first()
     return user, phone_record
 
 
@@ -261,9 +250,7 @@ async def _handle_inbound_message(
 
     tail_match = f"%{sender_id[-9:]}%" if len(sender_id) >= 9 else f"%{sender_id}%"
     lead_record = (
-        db.query(Lead)
-        .filter(Lead.user_id == user.id, Lead.phone_number.like(tail_match))
-        .first()
+        db.query(Lead).filter(Lead.user_id == user.id, Lead.phone_number.like(tail_match)).first()
     )
 
     if not lead_record:
@@ -311,9 +298,7 @@ async def _handle_inbound_message(
         )
         return "ignored_unsupported_type"
 
-    inbound_message = Message(
-        lead_id=lead_record.id, sender_type="user", content=text_body
-    )
+    inbound_message = Message(lead_id=lead_record.id, sender_type="user", content=text_body)
     db.add(inbound_message)
     db.flush()
 
@@ -322,9 +307,7 @@ async def _handle_inbound_message(
         return "muted"
 
     max_limit = (
-        PRO_MESSAGE_LIMIT
-        if tenant_context["plan_tier"] == PlanTier.PRO
-        else STARTER_MESSAGE_LIMIT
+        PRO_MESSAGE_LIMIT if tenant_context["plan_tier"] == PlanTier.PRO else STARTER_MESSAGE_LIMIT
     )
     if tenant_context["monthly_ai_messages"] >= max_limit:
         logger.warning("User %s exceeded AI message limit.", tenant_context["email"])
@@ -421,9 +404,7 @@ async def _handle_inbound_message(
         if not isinstance(structured_response, WhatsAppAgentResponse):
             if not ai_response.text:
                 raise ValueError("Gemini returned no structured response")
-            structured_response = WhatsAppAgentResponse.model_validate_json(
-                ai_response.text
-            )
+            structured_response = WhatsAppAgentResponse.model_validate_json(ai_response.text)
 
         if structured_response.needs_human_escalation:
             logger.warning("WhatsApp escalation requested for lead %s", sender_id)
@@ -438,11 +419,7 @@ async def _handle_inbound_message(
         if reply_text:
             success = _send_tenant_message(user, phone_record, sender_id, reply_text)
             if success:
-                db.add(
-                    Message(
-                        lead_id=lead_record.id, sender_type="bot", content=reply_text
-                    )
-                )
+                db.add(Message(lead_id=lead_record.id, sender_type="bot", content=reply_text))
                 user.monthly_ai_messages = (user.monthly_ai_messages or 0) + 1
                 db.flush()
                 return "ai_replied"
@@ -469,9 +446,7 @@ def _legacy_process_whatsapp_message(payload: dict[str, Any]) -> None:
         logger.exception("Failed to initialize or run WhatsApp background processing.")
 
 
-async def _process_whatsapp_message(
-    payload: dict[str, Any], client: genai.Client
-) -> None:
+async def _process_whatsapp_message(payload: dict[str, Any], client: genai.Client) -> None:
     """Process a Meta payload after acknowledging the webhook request."""
     db = SessionLocal()
     try:
@@ -493,9 +468,7 @@ async def _process_whatsapp_message(
                 for message in messages:
                     try:
                         with db.begin_nested():
-                            await _handle_inbound_message(
-                                db, metadata, contacts, message, client
-                            )
+                            await _handle_inbound_message(db, metadata, contacts, message, client)
                     except Exception as message_error:
                         logger.exception(
                             "Failed processing WhatsApp message; recording it in the DLQ."
@@ -512,9 +485,7 @@ async def _process_whatsapp_message(
                             )
                             db.commit()
                         except Exception:
-                            logger.exception(
-                                "Could not record WhatsApp event in the DLQ."
-                            )
+                            logger.exception("Could not record WhatsApp event in the DLQ.")
                             db.rollback()
         db.commit()
     except Exception:
@@ -539,17 +510,11 @@ async def handle_whatsapp_webhook(
         logger.warning("Failed to parse incoming WhatsApp webhook JSON: %s", parse_err)
         raise HTTPException(status_code=400, detail="Invalid JSON body")
     if not isinstance(payload, dict):
-        raise HTTPException(
-            status_code=400, detail="Webhook payload must be a JSON object"
-        )
+        raise HTTPException(status_code=400, detail="Webhook payload must be a JSON object")
 
     if not _has_fresh_meta_timestamps(payload):
-        logger.warning(
-            "Rejected Meta webhook with missing, malformed, or stale event timestamp."
-        )
-        raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED, detail="Stale webhook event"
-        )
+        logger.warning("Rejected Meta webhook with missing, malformed, or stale event timestamp.")
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Stale webhook event")
 
     if not background_task_capacity.try_add(
         background_tasks,

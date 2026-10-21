@@ -20,9 +20,7 @@ class UserBase(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     email: EmailStr
-    full_name: str = Field(
-        ..., min_length=2, max_length=50, description="User full name"
-    )
+    full_name: str = Field(..., min_length=2, max_length=50, description="User full name")
     business_name: str | None = Field(None, max_length=100)
     business_type: str = Field(..., max_length=50)
     other_business_type: str | None = Field(None, max_length=50)
@@ -109,9 +107,7 @@ class UserResponse(BaseModel):
         return self
 
     # FIX: Added use_enum_values to ensure PlanTier.PRO is sent as "PRO"
-    model_config = ConfigDict(
-        from_attributes=True, populate_by_name=True, use_enum_values=True
-    )
+    model_config = ConfigDict(from_attributes=True, populate_by_name=True, use_enum_values=True)
 
 
 class AIAgentSchema(BaseModel):
@@ -128,14 +124,10 @@ class AISettingsSchema(BaseModel):
 
     business_name: str = Field(..., description="שם העסק")
     business_type: str = Field(..., description="תחום העיסוק")
-    ai_tone: str = Field(
-        default="Professional", description="סגנון דיבור (רשמי/חברי/מכירתי)"
-    )
+    ai_tone: str = Field(default="Professional", description="סגנון דיבור (רשמי/חברי/מכירתי)")
     products_services: str | None = Field(None, description="ידע עסקי: שירותים ומחירים")
     custom_instructions: str | None = Field(None, description="הנחיות אישיות לבוט")
-    summary_template: str | None = Field(
-        None, description="תבנית סיכום פגישות מותאמת אישית"
-    )
+    summary_template: str | None = Field(None, description="תבנית סיכום פגישות מותאמת אישית")
     ai_agent: AIAgentSchema | None = None
 
 
@@ -146,9 +138,7 @@ class ForgotPasswordRequest(BaseModel):
 class ResetPasswordRequest(BaseModel):
     email: EmailStr
     otp_code: str = Field(..., min_length=6, max_length=6)
-    new_password: str = Field(
-        ..., min_length=12, description="New strong password required"
-    )
+    new_password: str = Field(..., min_length=12, description="New strong password required")
 
     @field_validator("new_password")
     @classmethod

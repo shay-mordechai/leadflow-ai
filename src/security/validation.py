@@ -20,12 +20,10 @@ def create_access_token(data: dict, expires_delta: timedelta | None = None) -> s
     to_encode.setdefault("token_version", 0)
 
     if expires_delta:
-        expire = datetime.utcnow() + expires_delta  # noqa: DTZ003
+        expire = datetime.utcnow() + expires_delta
     else:
         # Default expiration set in config (usually 24 hours)
-        expire = datetime.utcnow() + timedelta(  # noqa: DTZ003
-            minutes=settings.ACCESS_TOKEN_EXPIRE_MINUTES
-        )
+        expire = datetime.utcnow() + timedelta(minutes=settings.ACCESS_TOKEN_EXPIRE_MINUTES)
 
     # Standard JWT claims
     to_encode.update({"exp": expire})

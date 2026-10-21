@@ -34,9 +34,8 @@ def backup_database_to_s3():
 
     try:
         # Generate safe snapshot
-        with sqlite3.connect(db_path) as source:
-            with sqlite3.connect(temp_backup_path) as dest:
-                source.backup(dest)
+        with sqlite3.connect(db_path) as source, sqlite3.connect(temp_backup_path) as dest:
+            source.backup(dest)
 
         logger.info(f"✅ Local snapshot created successfully: {backup_filename}")
 

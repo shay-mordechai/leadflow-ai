@@ -11,9 +11,7 @@ router = APIRouter(prefix="/api/v1/storage", tags=["Storage"])
 
 
 @router.get("/{file_path:path}")
-async def get_local_file(
-    file_path: str, current_user: User = Depends(get_current_user)
-):
+async def get_local_file(file_path: str, current_user: User = Depends(get_current_user)):
     """
     Securely serves locally stored files with strict tenancy isolation.
     Users can only access files residing within their own directory,
@@ -24,14 +22,10 @@ async def get_local_file(
     # SECURITY: Prevent path traversal attacks (Directory Traversal)
     safe_path = os.path.normpath(os.path.join(base_dir, file_path))
     if not safe_path.startswith(os.path.normpath(base_dir)):
-        raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN, detail="Access denied"
-        )
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Access denied")
 
     if not os.path.exists(safe_path) or not os.path.isfile(safe_path):
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND, detail="File not found"
-        )
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="File not found")
 
     # TENANCY & OWNERSHIP VALIDATION:
     # If the user is an ADMIN, grant access to any file.

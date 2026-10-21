@@ -5,13 +5,12 @@ import hmac
 
 import pytest
 from fastapi.testclient import TestClient
-from temp_test_app import app  # Import the temporary test app
 
 import src.database.models  # noqa
 from src.config import settings
 from src.database.models import Base, PhoneNumber, User
 from src.database.session import SessionLocal, engine
-
+from temp_test_app import app  # Import the temporary test app
 
 
 @pytest.fixture(autouse=True, scope="session")
@@ -86,9 +85,7 @@ def test_twilio_webhook_with_valid_signature(client, mocker):
     }
 
     # Generate a valid signature
-    valid_signature = generate_twilio_signature(
-        test_url, form_data, settings.TWILIO_AUTH_TOKEN
-    )
+    valid_signature = generate_twilio_signature(test_url, form_data, settings.TWILIO_AUTH_TOKEN)
 
     headers = {"X-Twilio-Signature": valid_signature}
     response = client.post(test_url, data=form_data, headers=headers)

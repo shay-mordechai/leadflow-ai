@@ -1,5 +1,6 @@
 # src/routers/system.py
 import logging
+import os
 
 import redis
 from fastapi import APIRouter, Depends, status

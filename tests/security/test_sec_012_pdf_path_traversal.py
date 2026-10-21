@@ -27,17 +27,13 @@ def test_pdf_path_traversal_remediation(pdf_maker_instance):
 
     # Test with a path traversal payload
     malicious_filename = "../../../etc/passwd.pdf"
-    output_path = pdf_maker_instance.create_meeting_summary(
-        summary_text, malicious_filename
-    )
+    output_path = pdf_maker_instance.create_meeting_summary(summary_text, malicious_filename)
 
     # Verify that the output path does not contain path traversal components
     # and is within the intended directory.
     assert "storage/pdfs" in output_path
     assert not ".." in output_path
-    assert not "/" in os.path.basename(
-        output_path
-    )  # Ensure no subdirectories in the filename part
+    assert not "/" in os.path.basename(output_path)  # Ensure no subdirectories in the filename part
 
     # Verify that the generated file exists in the storage/pdfs directory
     assert os.path.exists(output_path)
@@ -50,9 +46,7 @@ def test_pdf_path_traversal_remediation(pdf_maker_instance):
 
     # Test with another malicious filename including directory separators
     malicious_filename_2 = "foo/bar/baz.pdf"
-    output_path_2 = pdf_maker_instance.create_meeting_summary(
-        summary_text, malicious_filename_2
-    )
+    output_path_2 = pdf_maker_instance.create_meeting_summary(summary_text, malicious_filename_2)
     assert "storage/pdfs" in output_path_2
     assert not "foo" in output_path_2
     assert not "bar" in output_path_2
@@ -62,9 +56,7 @@ def test_pdf_path_traversal_remediation(pdf_maker_instance):
 
     # Test with a benign filename
     benign_filename = "report_q3_2026.pdf"
-    output_path_3 = pdf_maker_instance.create_meeting_summary(
-        summary_text, benign_filename
-    )
+    output_path_3 = pdf_maker_instance.create_meeting_summary(summary_text, benign_filename)
     assert (
         "storage/pdfs/report_q3_2026.pdf" == output_path_3
     )  # Should retain the original benign name

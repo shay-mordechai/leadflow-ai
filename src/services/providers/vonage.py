@@ -41,9 +41,7 @@ class VonageProvider(PhoneProviderStrategy):
             }
 
             # SECURITY FIX (B113): Added timeout
-            response = requests.get(
-                f"{self.base_url}/search", params=params, timeout=10
-            )
+            response = requests.get(f"{self.base_url}/search", params=params, timeout=10)
             data = response.json()
 
             results = []

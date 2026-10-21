@@ -133,9 +133,7 @@ async def _resolve_tenant(
 
     if phone_number_id:
         phone_record = await db.scalar(
-            select(PhoneNumber)
-            .where(PhoneNumber.provider_id == phone_number_id)
-            .limit(1)
+            select(PhoneNumber).where(PhoneNumber.provider_id == phone_number_id).limit(1)
         )
 
     if phone_record is None and display_phone:
@@ -230,9 +228,7 @@ async def _prepare_message_context(
 
     agent = await db.scalar(select(AIAgent).where(AIAgent.user_id == user.id).limit(1))
     if agent is None or not agent.is_active:
-        logger.info(
-            "AI agent disabled or missing for %s", metadata.get("display_phone_number")
-        )
+        logger.info("AI agent disabled or missing for %s", metadata.get("display_phone_number"))
         return "agent_disabled", {}
 
     sender_tail = sender_id[-9:] if len(sender_id) >= 9 else sender_id
@@ -278,9 +274,7 @@ async def _prepare_message_context(
     if _turn_limit_reached(inbound_turn_count or 0):
         lead.bot_active = False
         lead.requires_human = True
-        logger.warning(
-            "Automated-turn limit reached for lead %s; escalating to a human", lead.id
-        )
+        logger.warning("Automated-turn limit reached for lead %s; escalating to a human", lead.id)
         return "turn_limit_reached", {
             "phone_number_id": (
                 metadata.get("phone_number_id")
@@ -337,9 +331,7 @@ async def _prepare_message_context(
             or user.business_name
             or "העסק שלנו"
         ),
-        products_services=(
-            business_profile.products_services if business_profile else None
-        ),
+        products_services=(business_profile.products_services if business_profile else None),
         custom_instructions=(
             (business_profile.custom_instructions if business_profile else None)
             or agent.system_prompt
@@ -347,9 +339,7 @@ async def _prepare_message_context(
     )
     lead_turn_prompt = PromptBuilder.build_lead_turn_prompt(
         lead_name=sender_name,
-        lead_source=str(
-            lead.source.value if hasattr(lead.source, "value") else lead.source
-        ),
+        lead_source=str(lead.source.value if hasattr(lead.source, "value") else lead.source),
         conversation_history=history,
         latest_message=text_body,
     )
@@ -377,13 +367,9 @@ async def _process_single_message(
 ) -> str:
     try:
         async with db.begin():
-            result, context = await _prepare_message_context(
-                db, metadata, contacts, message
-            )
+            result, context = await _prepare_message_context(db, metadata, contacts, message)
     except IntegrityError:
-        logger.warning(
-            "Concurrent duplicate Meta WhatsApp message id=%s", message.get("id")
-        )
+        logger.warning("Concurrent duplicate Meta WhatsApp message id=%s", message.get("id"))
         return "duplicate"
 
     if result in {"limit_exceeded", "turn_limit_reached"}:
@@ -408,7 +394,7 @@ async def _process_single_message(
         )
         structured_output = response.parsed
         if not isinstance(structured_output, WhatsAppAgentResponse):
-            raise ValueError("Gemini did not return a parsed WhatsAppAgentResponse")
+            raise TypeError("Gemini did not return a parsed WhatsAppAgentResponse")
     except Exception as ai_error:
         logger.error(
             "Gemini inference failed for inbound message id=%s (%s)",
@@ -423,9 +409,7 @@ async def _process_single_message(
         async with db.begin():
             lead = await db.get(Lead, context["lead_id"])
             if lead is None:
-                logger.error(
-                    "Lead %s disappeared before response dispatch", context["lead_id"]
-                )
+                logger.error("Lead %s disappeared before response dispatch", context["lead_id"])
                 post_inference_result = "lead_missing"
             elif lead.bot_active is False:
                 logger.info(
@@ -457,9 +441,7 @@ async def _process_single_message(
             structured_output.reply_text,
         )
     except Exception:
-        logger.exception(
-            "Meta Graph API send failed for inbound message id=%s", message.get("id")
-        )
+        logger.exception("Meta Graph API send failed for inbound message id=%s", message.get("id"))
         await _release_ai_message_credit(db, context["user_id"])
         return "meta_send_failed"
 
@@ -474,9 +456,7 @@ async def _process_single_message(
                 )
             )
     except Exception:
-        logger.exception(
-            "Meta sent reply but database sync failed for lead %s", context["lead_id"]
-        )
+        logger.exception("Meta sent reply but database sync failed for lead %s", context["lead_id"])
         return "database_sync_failed"
 
     logger.info(
@@ -494,32 +474,29 @@ async def process_whatsapp_message(payload: dict[str, Any]) -> None:
         return
 
     try:
-        async with _create_gemini_client().aio as client:
-            async with AsyncSessionLocal() as db:
-                for entry in payload.get("entry", []):
-                    for change in entry.get("changes", []):
-                        try:
-                            value = change["value"]
-                            metadata = value.get("metadata", {})
-                            messages = value.get("messages", [])
-                            contacts = value.get("contacts", [])
-                        except (AttributeError, KeyError, TypeError):
-                            logger.exception("Skipping malformed Meta webhook change")
-                            continue
+        async with _create_gemini_client().aio as client, AsyncSessionLocal() as db:
+            for entry in payload.get("entry", []):
+                for change in entry.get("changes", []):
+                    try:
+                        value = change["value"]
+                        metadata = value.get("metadata", {})
+                        messages = value.get("messages", [])
+                        contacts = value.get("contacts", [])
+                    except (AttributeError, KeyError, TypeError):
+                        logger.exception("Skipping malformed Meta webhook change")
+                        continue
 
-                        for message in messages:
-                            try:
-                                await _process_single_message(
-                                    db,
-                                    metadata,
-                                    contacts,
-                                    message,
-                                    client,
-                                )
-                            except Exception:
-                                logger.exception(
-                                    "Unhandled WhatsApp message processing failure"
-                                )
-                                await db.rollback()
+                    for message in messages:
+                        try:
+                            await _process_single_message(
+                                db,
+                                metadata,
+                                contacts,
+                                message,
+                                client,
+                            )
+                        except Exception:
+                            logger.exception("Unhandled WhatsApp message processing failure")
+                            await db.rollback()
     except Exception:
         logger.exception("WhatsApp background pipeline failed")

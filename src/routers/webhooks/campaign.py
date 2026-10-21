@@ -102,9 +102,7 @@ async def receive_campaign_lead(
     try:
         is_new_lead = await _reserve_lead_idempotency_key(payload.phone_number)
         if not is_new_lead:
-            logger.info(
-                "Ignored duplicate campaign lead within the idempotency window."
-            )
+            logger.info("Ignored duplicate campaign lead within the idempotency window.")
             return {"status": "accepted"}
 
         background_task_capacity.add_reserved(

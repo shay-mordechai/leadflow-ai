@@ -26,9 +26,7 @@ class PartnerRegistrationRequest(BaseModel):
 
 
 @router.post("/register")
-async def register_partner(
-    data: PartnerRegistrationRequest, db: Session = Depends(get_db)
-):
+async def register_partner(data: PartnerRegistrationRequest, db: Session = Depends(get_db)):
     """
     Registers a new Campaigner/Partner into the system.
     Partners are created as inactive by default, requiring Admin approval.
@@ -114,9 +112,7 @@ async def get_partners_performance(
             all_client_leads = db.query(Lead).filter(Lead.user_id.in_(client_ids)).all()
             total_leads = len(all_client_leads)
             qualified_leads = sum(
-                1
-                for l in all_client_leads
-                if l.status == LeadStatus.QUALIFIED or l.ai_rating == 1
+                1 for l in all_client_leads if l.status == LeadStatus.QUALIFIED or l.ai_rating == 1
             )
 
         conversion_rate = 0

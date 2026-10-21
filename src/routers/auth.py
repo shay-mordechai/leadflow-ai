@@ -86,9 +86,7 @@ def create_access_token(data: dict):
 
 
 @router.get("/me", response_model=UserResponse)
-async def read_users_me(
-    user: User = Depends(get_current_user), db: Session = Depends(get_db)
-):
+async def read_users_me(user: User = Depends(get_current_user), db: Session = Depends(get_db)):
     """
     Returns the currently authenticated user's profile.
     Explicit mapping prevents leaking internal database fields.
@@ -290,9 +288,7 @@ async def forgot_password(
     logger.info(f"Password reset requested for user: {email}")
     bg_tasks.add_task(send_password_reset_email, email, otp)
 
-    return {
-        "message": "If an account with that email exists, a password reset code has been sent."
-    }
+    return {"message": "If an account with that email exists, a password reset code has been sent."}
 
 
 @router.post("/reset-password")

@@ -41,9 +41,7 @@ def enforce_trial_expirations():
         )
 
         if expired_users:
-            logger.info(
-                f"📉 Downgrading {len(expired_users)} users with expired trials."
-            )
+            logger.info(f"📉 Downgrading {len(expired_users)} users with expired trials.")
 
         for user in expired_users:
             user.subscription_status = SubscriptionStatus.PAST_DUE

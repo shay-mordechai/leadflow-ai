@@ -27,9 +27,7 @@ class PlivoProvider(PhoneProviderStrategy):
 
         if self.auth_id and self.auth_token and plivo:
             try:
-                self.client = plivo.RestClient(
-                    auth_id=self.auth_id, auth_token=self.auth_token
-                )
+                self.client = plivo.RestClient(auth_id=self.auth_id, auth_token=self.auth_token)
             except Exception:
                 self.client = None
 
@@ -44,7 +42,7 @@ class PlivoProvider(PhoneProviderStrategy):
     def search_numbers(
         self,
         country_code: str,
-        contains: str = None,
+        contains: str | None = None,
         number_type: str = "local",
         limit: int = 5,
     ) -> list[dict]:
@@ -82,9 +80,7 @@ class PlivoProvider(PhoneProviderStrategy):
             logger.error(f"[Plivo] Search Error: {e}")
             return []
 
-    def purchase_number(
-        self, phone_number: str, friendly_name: str = None
-    ) -> str | None:
+    def purchase_number(self, phone_number: str, friendly_name: str | None = None) -> str | None:
         """Implemented purchase_number to match the abstract signature"""
         if not self.is_configured:
             return None

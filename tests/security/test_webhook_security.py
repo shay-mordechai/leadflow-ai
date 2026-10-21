@@ -20,13 +20,7 @@ def test_meta_webhook_timestamp_must_be_within_five_minutes():
     """Webhook Replay Attacks: signed Meta events older than five minutes must be rejected."""
     current_time = 2_000_000_000
     stale_payload = {
-        "entry": [
-            {
-                "changes": [
-                    {"value": {"messages": [{"timestamp": str(current_time - 301)}]}}
-                ]
-            }
-        ]
+        "entry": [{"changes": [{"value": {"messages": [{"timestamp": str(current_time - 301)}]}}]}]
     }
 
     assert not whatsapp._has_fresh_meta_timestamps(
@@ -39,13 +33,7 @@ def test_meta_webhook_accepts_current_timestamp():
     """Webhook Replay Attacks: valid current Meta event timestamps must continue to be accepted."""
     current_time = 2_000_000_000
     fresh_payload = {
-        "entry": [
-            {
-                "changes": [
-                    {"value": {"messages": [{"timestamp": str(current_time - 300)}]}}
-                ]
-            }
-        ]
+        "entry": [{"changes": [{"value": {"messages": [{"timestamp": str(current_time - 300)}]}}]}]
     }
 
     assert whatsapp._has_fresh_meta_timestamps(
@@ -62,15 +50,7 @@ async def test_whatsapp_route_rejects_stale_signed_event(monkeypatch):
         {
             "object": "whatsapp_business_account",
             "entry": [
-                {
-                    "changes": [
-                        {
-                            "value": {
-                                "messages": [{"timestamp": str(current_time - 301)}]
-                            }
-                        }
-                    ]
-                }
+                {"changes": [{"value": {"messages": [{"timestamp": str(current_time - 301)}]}}]}
             ],
         }
     ).encode()

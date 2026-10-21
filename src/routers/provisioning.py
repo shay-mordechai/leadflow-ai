@@ -33,9 +33,7 @@ async def twilio_sms_webhook(request: Request, db: Session = Depends(get_db)):
     # Locate tenant by their assigned phone number
     tenant = db.query(Tenant).filter(Tenant.assigned_phone_number == to_number).first()
     if not tenant:
-        logger.warning(
-            f"Webhook received SMS for unknown destination number {to_number}"
-        )
+        logger.warning(f"Webhook received SMS for unknown destination number {to_number}")
         return {"error": "Unknown destination phone number"}
 
     try:

@@ -83,9 +83,7 @@ Primary Objective: Answer basic inquiries and coordinate follow-up with the busi
         history_lines = []
         for message in conversation_history[-6:]:
             sender = cls._xml_safe(message.get("sender", "unknown"))
-            text = cls._xml_safe(
-                str(message.get("text", ""))[: cls.MAX_INBOUND_MESSAGE_LENGTH]
-            )
+            text = cls._xml_safe(str(message.get("text", ""))[: cls.MAX_INBOUND_MESSAGE_LENGTH])
             history_lines.append(f"<message>{sender}: {text}</message>")
         formatted_history = "\n".join(history_lines)
         bounded_latest_message = latest_message[: cls.MAX_INBOUND_MESSAGE_LENGTH]

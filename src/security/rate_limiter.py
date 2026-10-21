@@ -22,9 +22,7 @@ def get_real_ip(request: Request) -> str:
     for trusted_range in settings.TRUSTED_PROXY_IPS:
         try:
             if peer_ip in ipaddress.ip_network(trusted_range, strict=False):
-                forwarded_ip = ipaddress.ip_address(
-                    request.headers.get("CF-Connecting-IP", "")
-                )
+                forwarded_ip = ipaddress.ip_address(request.headers.get("CF-Connecting-IP", ""))
                 return str(forwarded_ip)
         except ValueError:
             continue
@@ -46,10 +44,8 @@ def init_limiter() -> Limiter:
         limiter_instance = create_limiter(settings.REDIS_URL)
         logger.info("🛡️ Redis Rate Limiter initialized successfully.")
         return limiter_instance
-    except Exception as e:  # noqa: BLE001
-        env = (
-            os.getenv("APP_ENV") or getattr(settings, "APP_ENV", "development")
-        ).lower()
+    except Exception as e:
+        env = (os.getenv("APP_ENV") or getattr(settings, "APP_ENV", "development")).lower()
         if env == "production":
             logger.critical(
                 f"CRITICAL: Redis is required for distributed rate limiting in production (PID {os.getpid()}). Error: {e}"

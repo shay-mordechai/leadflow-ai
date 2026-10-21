@@ -40,11 +40,10 @@ def _is_approved_media_url(media_url: str) -> bool:
     ):
         return False
 
-    return (
-        hostname.endswith(".twilio.com")
-        or hostname in {"graph.facebook.com", "lookaside.fbsbx.com"}
-        or hostname.endswith(".fbcdn.net")
-    )
+    return hostname.endswith((".twilio.com", ".fbcdn.net")) or hostname in {
+        "graph.facebook.com",
+        "lookaside.fbsbx.com",
+    }
 
 
 class WhisperService:
@@ -52,9 +51,7 @@ class WhisperService:
         # We use the 'base' model for a good balance of speed and accuracy on CPU.
         self.model_size = "base"
         self.model = None
-        logger.info(
-            f"Initializing Whisper Service. Model '{self.model_size}' will be lazy-loaded."
-        )
+        logger.info(f"Initializing Whisper Service. Model '{self.model_size}' will be lazy-loaded.")
 
     def _load_model(self):
         """Lazy loading of the model to save memory during startup."""
@@ -88,7 +85,7 @@ class WhisperService:
                 beam_size=5,
                 language="he",
                 vad_filter=True,
-                vad_parameters=dict(min_silence_duration_ms=500),
+                vad_parameters={"min_silence_duration_ms": 500},
             )
 
             logger.info(f"🎙️ Transcription started. Detected language: {info.language}")
@@ -100,15 +97,13 @@ class WhisperService:
                 full_text.append(segment.text)
 
             final_text = " ".join(full_text).strip()
-            logger.info(
-                f"✅ Transcription complete. Length: {len(final_text)} characters."
-            )
+            logger.info(f"✅ Transcription complete. Length: {len(final_text)} characters.")
 
             return final_text
 
         except Exception as e:
             logger.error(f"🔥 Transcription error inside sync worker: {e}")
-            raise e
+            raise
 
     async def transcribe_from_url(self, media_url: str) -> str:
         """
@@ -139,14 +134,10 @@ class WhisperService:
                         if int(declared_length) > MAX_REMOTE_AUDIO_SIZE:
                             raise ValueError("Remote audio exceeds maximum size")
                     except ValueError as error:
-                        raise ValueError(
-                            "Invalid or oversized remote audio length"
-                        ) from error
+                        raise ValueError("Invalid or oversized remote audio length") from error
 
                 total_bytes = 0
-                with tempfile.NamedTemporaryFile(
-                    delete=False, suffix=suffix
-                ) as tmp_file:
+                with tempfile.NamedTemporaryFile(delete=False, suffix=suffix) as tmp_file:
                     tmp_path = tmp_file.name
                     async for chunk in response.aiter_bytes():
                         total_bytes += len(chunk)
@@ -175,10 +166,7 @@ class WhisperService:
         The caller is responsible for deleting the file after processing.
         """
         candidate_path = Path(file_path).resolve()
-        if (
-            not candidate_path.is_relative_to(LOCAL_AUDIO_ROOT)
-            or not candidate_path.is_file()
-        ):
+        if not candidate_path.is_relative_to(LOCAL_AUDIO_ROOT) or not candidate_path.is_file():
             logger.warning(
                 "Rejected local transcription request outside the audio upload directory."
             )
@@ -186,9 +174,7 @@ class WhisperService:
 
         logger.info("🎧 Starting transcription for validated local audio.")
         try:
-            full_text = await asyncio.to_thread(
-                self._transcribe_sync, str(candidate_path)
-            )
+            full_text = await asyncio.to_thread(self._transcribe_sync, str(candidate_path))
             return full_text
         except Exception as e:
             logger.error("❌ Local File Transcription Error (%s)", type(e).__name__)

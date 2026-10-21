@@ -64,9 +64,7 @@ class WhatsAppAdapter:
 
         if not token or not phone_id:
             if self._is_production():
-                logger.error(
-                    "Graph API credentials missing in production; message not sent."
-                )
+                logger.error("Graph API credentials missing in production; message not sent.")
                 return False
             logger.warning(
                 "[DEV MOCK] Meta credentials missing. Would send WhatsApp to %s: %s",
@@ -99,9 +97,7 @@ class WhatsAppAdapter:
                 return False
             data = response.json() if response.content else {}
             message_id = (data.get("messages") or [{}])[0].get("id")
-            logger.info(
-                "Graph WhatsApp message sent to %s (id=%s)", clean_phone, message_id
-            )
+            logger.info("Graph WhatsApp message sent to %s (id=%s)", clean_phone, message_id)
             return True
         except requests.exceptions.RequestException as exc:
             logger.error("Network error sending Graph WhatsApp message: %s", exc)
@@ -125,13 +121,9 @@ class WhatsAppAdapter:
 
         if not token:
             if self._is_production():
-                logger.error(
-                    "Cannot download Meta media in production without META_ACCESS_TOKEN."
-                )
+                logger.error("Cannot download Meta media in production without META_ACCESS_TOKEN.")
             else:
-                logger.warning(
-                    "[DEV MOCK] Cannot download Meta media without credentials."
-                )
+                logger.warning("[DEV MOCK] Cannot download Meta media without credentials.")
             return None
 
         headers = {"Authorization": f"Bearer {token}"}

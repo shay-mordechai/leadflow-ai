@@ -77,9 +77,7 @@ def book_appointment(date_str: str, time_str: str, lead_name: str) -> str:
 
 def qualify_lead(budget: int, timeframe: str) -> str:
     """Saves the lead's budget and timeframe to the database to qualify them."""
-    logger.info(
-        f"🤖 AI AGENT TOOL CALLED: qualify_lead - Budget: {budget}, Timeframe: {timeframe}"
-    )
+    logger.info(f"🤖 AI AGENT TOOL CALLED: qualify_lead - Budget: {budget}, Timeframe: {timeframe}")
     return json.dumps(
         {
             "status": "qualified",
@@ -103,9 +101,7 @@ class AIEngine:
         self.model_name = "gemini-2.5-flash"
         self.client = genai.Client(
             api_key=settings.GOOGLE_API_KEY or None,
-            http_options=types.HttpOptions(
-                timeout=int(AI_REQUEST_TIMEOUT_SECONDS * 1000)
-            ),
+            http_options=types.HttpOptions(timeout=int(AI_REQUEST_TIMEOUT_SECONDS * 1000)),
         )
 
     def _clean_json_text(self, text: str) -> str:
@@ -119,7 +115,7 @@ class AIEngine:
         return text.strip()
 
     def generate_raw_analysis(
-        self, prompt: str, media_path: str = None, mime_type: str = "audio/ogg"
+        self, prompt: str, media_path: str | None = None, mime_type: str = "audio/ogg"
     ) -> dict[str, Any]:
         try:
             content = [prompt]
@@ -174,11 +170,11 @@ class AIEngine:
     async def analyze_interaction(
         self,
         system_prompt: str,
-        text_input: str = None,
-        audio_path: str = None,
+        text_input: str | None = None,
+        audio_path: str | None = None,
         sender_name: str = "Guest",
-        expected_schema: str = None,
-        chat_history: list[dict] = None,
+        expected_schema: str | None = None,
+        chat_history: list[dict] | None = None,
     ) -> dict[str, Any]:
         if text_input is not None:
             text_input = text_input[: PromptBuilder.MAX_INBOUND_MESSAGE_LENGTH]
@@ -186,9 +182,7 @@ class AIEngine:
         # SCENARIO A: Audio/Media or Explicit Schema provided -> Legacy JSON Mode
         if audio_path or expected_schema:
             if audio_path:
-                logger.info(
-                    "Media payload detected. Using standard JSON analysis mode."
-                )
+                logger.info("Media payload detected. Using standard JSON analysis mode.")
             if not expected_schema:
                 expected_schema = """{
                     "intent": "general_inquiry" | "booking" | "support" | "greeting" | "other",
@@ -227,9 +221,7 @@ class AIEngine:
                     "תענה לי בן אדם",
                 ]
                 if any(word in text_lower for word in trigger_words):
-                    logger.warning(
-                        f"🚨 Rule-Based Handoff Triggered for: {sender_name}"
-                    )
+                    logger.warning(f"🚨 Rule-Based Handoff Triggered for: {sender_name}")
                     return {
                         "intent": "escalation",
                         "reply_text": "אני מבין. העברתי את הפנייה שלך, ונציג אנושי יחזור אליך בהקדם.",
@@ -245,9 +237,7 @@ class AIEngine:
                     history_str = json.dumps(chat_history) if chat_history else ""
                     # Hash the combination of persona, history, and exact input
                     hash_input = f"{system_prompt}|{normalized_input}|{history_str}"
-                    cache_key = (
-                        f"ai_cache:{hashlib.sha256(hash_input.encode()).hexdigest()}"
-                    )
+                    cache_key = f"ai_cache:{hashlib.sha256(hash_input.encode()).hexdigest()}"
 
                     try:
                         cached_response = await redis_client.get(cache_key)
@@ -288,9 +278,7 @@ class AIEngine:
                 formatted_history.append(
                     types.Content(
                         role="user",
-                        parts=[
-                            types.Part.from_text(text=f"[{sender_name}]: {text_input}")
-                        ],
+                        parts=[types.Part.from_text(text=f"[{sender_name}]: {text_input}")],
                     )
                 )
                 generation_config = types.GenerateContentConfig(
@@ -302,9 +290,7 @@ class AIEngine:
                     ),
                 )
 
-                logger.info(
-                    "Sending message to AI Agent and awaiting potential tool execution..."
-                )
+                logger.info("Sending message to AI Agent and awaiting potential tool execution...")
                 response = await run_in_threadpool(
                     self.client.models.generate_content,
                     model=self.model_name,

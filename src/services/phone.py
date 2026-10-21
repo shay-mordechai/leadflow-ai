@@ -62,19 +62,15 @@ class TelephonyService:
         self.sw_space = settings.SIGNALWIRE_SPACE_URL
 
         if self.sw_project and self.sw_token and self.sw_space:
-            clean_host = (
-                self.sw_space.replace("https://", "").replace("http://", "").strip("/")
-            )
-            self.sw_base = (
-                f"https://{clean_host}/api/laml/2010-04-01/Accounts/{self.sw_project}"
-            )
+            clean_host = self.sw_space.replace("https://", "").replace("http://", "").strip("/")
+            self.sw_base = f"https://{clean_host}/api/laml/2010-04-01/Accounts/{self.sw_project}"
             self.providers.append("signalwire")
             logger.info("✅ SignalWire Configured")
         else:
             self.sw_base = None
 
     async def search_best_numbers(
-        self, country_code: str, area_code: str = None
+        self, country_code: str, area_code: str | None = None
     ) -> list[dict]:
         """
         Aggregates available numbers from ALL active providers.
@@ -86,9 +82,9 @@ class TelephonyService:
         if self.twilio_client:
             try:
                 logger.info("🔍 Searching Twilio...")
-                numbers = self.twilio_client.available_phone_numbers(
-                    country_code
-                ).local.list(limit=5)
+                numbers = self.twilio_client.available_phone_numbers(country_code).local.list(
+                    limit=5
+                )
                 for n in numbers:
                     results.append(
                         {
@@ -155,9 +151,7 @@ class TelephonyService:
 
         # --- Fallback for Testing ---
         if len(results) == 0:
-            logger.info(
-                "⚠️ No numbers found. Injecting a MOCK number to prevent test failure."
-            )
+            logger.info("⚠️ No numbers found. Injecting a MOCK number to prevent test failure.")
             results.append(
                 {
                     "number": "+972500000000",
@@ -179,9 +173,7 @@ class TelephonyService:
 
             filtered_results.append(res)
 
-        logger.info(
-            f"🏁 Found total {len(filtered_results)} valid numbers across providers."
-        )
+        logger.info(f"🏁 Found total {len(filtered_results)} valid numbers across providers.")
         return filtered_results
 
     async def purchase_number(
@@ -195,10 +187,7 @@ class TelephonyService:
 
         # --- SAFEGUARD: Mock Mode ---
         # If settings explicitly disable real purchases OR the provider is 'mock', just return success!
-        if (
-            not getattr(settings, "ENABLE_REAL_PHONE_PURCHASE", True)
-            or provider == "mock"
-        ):
+        if not getattr(settings, "ENABLE_REAL_PHONE_PURCHASE", True) or provider == "mock":
             logger.info(
                 f"🎭 MOCK PURCHASE: Successfully 'bought' {phone_number}. No real money spent."
             )

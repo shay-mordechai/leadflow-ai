@@ -41,9 +41,7 @@ def _get_or_create_cache_key() -> bytes:
         # Open file descriptor with strict permissions
         flags = os.O_WRONLY | os.O_CREAT | os.O_EXCL
         # stat.S_IRUSR | stat.S_IWUSR equals to 0o600 (Owner Read/Write only)
-        with os.fdopen(
-            os.open(SSM_CACHE_KEY_FILE, flags, stat.S_IRUSR | stat.S_IWUSR), "wb"
-        ) as f:
+        with os.fdopen(os.open(SSM_CACHE_KEY_FILE, flags, stat.S_IRUSR | stat.S_IWUSR), "wb") as f:
             f.write(key)
         return key
 
@@ -51,9 +49,7 @@ def _get_or_create_cache_key() -> bytes:
 def load_aws_configurations():
     # [12-Factor] Bypass AWS SSM unless explicitly enabled via environment variable
     if os.getenv("ENABLE_AWS_SSM", "false").lower() != "true":
-        logger.info(
-            "Cloud-agnostic mode: skipping AWS SSM and using local .env variables."
-        )
+        logger.info("Cloud-agnostic mode: skipping AWS SSM and using local .env variables.")
         return
 
     if os.getenv("APP_ENV") == "development":
@@ -80,7 +76,7 @@ def load_aws_configurations():
                     f"⚡ Loaded secrets from ENCRYPTED local cache (Age: {int(file_age)}s)."
                 )
                 return
-    except Exception as e:  # noqa: BLE001
+    except Exception as e:
         logger.warning(f"Failed to read encrypted SSM cache: {e}")
 
     # 2. Fetch from AWS if no valid cache exists
@@ -104,9 +100,7 @@ def load_aws_configurations():
             ssm_path += "/"
 
         paginator = ssm.get_paginator("get_parameters_by_path")
-        page_iterator = paginator.paginate(
-            Path=ssm_path, Recursive=True, WithDecryption=True
-        )
+        page_iterator = paginator.paginate(Path=ssm_path, Recursive=True, WithDecryption=True)
 
         fetched_secrets = {}
         for page in page_iterator:
@@ -135,7 +129,7 @@ def load_aws_configurations():
                         "wb",
                     ) as f:
                         f.write(encrypted_data)
-                except Exception:  # noqa: BLE001
+                except Exception:
                     # Fallback if file exists and we can't remove it
                     with open(SSM_CACHE_FILE, "wb") as f:
                         f.write(encrypted_data)
@@ -144,14 +138,14 @@ def load_aws_configurations():
                 logger.info(
                     f"✅ Successfully loaded and ENCRYPTED {len(fetched_secrets)} secrets from AWS SSM."
                 )
-            except Exception as ce:  # noqa: BLE001
+            except Exception as ce:
                 logger.warning(f"Could not write encrypted SSM cache file: {ce}")
 
     except requests.exceptions.RequestException:
         logger.info("ℹ️ Local environment detected. Skipping AWS SSM load.")
     except ClientError as e:
         logger.error(f"⛔ AWS SSM Client Error: {e}")
-    except Exception as e:  # noqa: BLE001
+    except Exception as e:
         logger.warning(f"⚠️ Unexpected error loading SSM secrets: {e}")
 
 
@@ -160,16 +154,12 @@ load_aws_configurations()
 
 class Settings(BaseSettings):
     # חיבור הקובץ .env בצורה טבעית למנגנון של Pydantic
-    model_config = SettingsConfigDict(
-        env_file=".env", env_file_encoding="utf-8", extra="ignore"
-    )
+    model_config = SettingsConfigDict(env_file=".env", env_file_encoding="utf-8", extra="ignore")
 
     # --- Core Configuration ---
     APP_NAME: str = "LeadFlow AI"
     APP_ENV: str = Field(
-        default_factory=lambda: os.getenv(
-            "APP_ENV", os.getenv("ENVIRONMENT", "development")
-        )
+        default_factory=lambda: os.getenv("APP_ENV", os.getenv("ENVIRONMENT", "development"))
     )
     SECRET_KEY: str = "temporary_dev_key"
     ALGORITHM: str = "HS256"
@@ -179,9 +169,7 @@ class Settings(BaseSettings):
 
     # --- Database & Queues ---
     DATABASE_URL: str = Field(
-        default_factory=lambda: os.getenv(
-            "DATABASE_URL", "sqlite:////app/data/leads.db"
-        )
+        default_factory=lambda: os.getenv("DATABASE_URL", "sqlite:////app/data/leads.db")
     )
     REDIS_URL: str = Field(
         default_factory=lambda: os.getenv("REDIS_URL", "redis://127.0.0.1:6379/0")
@@ -235,9 +223,7 @@ class Settings(BaseSettings):
 def validate_config(s: Settings):
     if s.APP_ENV == "production":
         if Path(".env").is_file():
-            raise ValueError(
-                "Production configuration must not load secrets from a .env file"
-            )
+            raise ValueError("Production configuration must not load secrets from a .env file")
         if s.SECRET_KEY == "temporary_dev_key" or len(s.SECRET_KEY) < 32:
             raise ValueError(
                 "Production SECRET_KEY must be externally supplied and at least 32 characters"
@@ -249,9 +235,7 @@ def validate_config(s: Settings):
             "WHATSAPP_APP_SECRET is empty; Meta POST signature verification will reject traffic."
         )
     if not (s.META_ACCESS_TOKEN and s.WHATSAPP_PHONE_ID):
-        logger.warning(
-            "META_ACCESS_TOKEN or WHATSAPP_PHONE_ID missing; Graph API sends will fail."
-        )
+        logger.warning("META_ACCESS_TOKEN or WHATSAPP_PHONE_ID missing; Graph API sends will fail.")
 
 
 try:

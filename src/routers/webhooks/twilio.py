@@ -25,12 +25,8 @@ logger = logging.getLogger("TwilioWebhook")
 # New dependency for Twilio signature validation
 async def validate_twilio_signature(request: Request):
     if not settings.TWILIO_AUTH_TOKEN:
-        logger.warning(
-            "TWILIO_AUTH_TOKEN is not configured. Skipping signature validation."
-        )
-        return (
-            True  # Or raise HTTPException if validation is mandatory even without token
-        )
+        logger.warning("TWILIO_AUTH_TOKEN is not configured. Skipping signature validation.")
+        return True  # Or raise HTTPException if validation is mandatory even without token
 
     twilio_signature = request.headers.get("X-Twilio-Signature")
     if not twilio_signature:
@@ -46,9 +42,7 @@ async def validate_twilio_signature(request: Request):
     if request.query_params:
         # Twilio orders query parameters alphabetically before signing
         query_string = urlencode(sorted(request.query_params.items()))
-        url = (
-            f"{str(request.base_url).rstrip('/')}{request.scope['path']}?{query_string}"
-        )
+        url = f"{str(request.base_url).rstrip('/')}{request.scope['path']}?{query_string}"
     else:
         url = f"{str(request.base_url).rstrip('/')}{request.scope['path']}"
 
@@ -101,14 +95,10 @@ async def incoming_sms_message(
         if clean_to == "+97233829709":
             owner = db.query(User).order_by(User.created_at.desc()).first()
             if not owner:
-                return Response(
-                    content=str(MessagingResponse()), media_type="application/xml"
-                )
+                return Response(content=str(MessagingResponse()), media_type="application/xml")
         else:
             logger.warning(f"Destination {clean_to} not found in DB.")
-            return Response(
-                content=str(MessagingResponse()), media_type="application/xml"
-            )
+            return Response(content=str(MessagingResponse()), media_type="application/xml")
     else:
         owner = phone_record.owner
 
@@ -130,9 +120,7 @@ async def incoming_sms_message(
         Task: Parse if this is a broadcast and return JSON only.
         """
 
-        owner_schema = (
-            '{"is_broadcast": boolean, "target_tag": "string", "message": "string"}'
-        )
+        owner_schema = '{"is_broadcast": boolean, "target_tag": "string", "message": "string"}'
         intent = await ai_engine.analyze_interaction(
             system_prompt=owner_prompt,
             text_input=command_text,
@@ -147,23 +135,15 @@ async def incoming_sms_message(
 
             leads_to_msg = query.all()
             for l in leads_to_msg:
-                whatsapp_adapter.send_message(
-                    to_phone=l.phone_number, text=intent.get("message")
-                )
-                db.add(
-                    Message(
-                        lead_id=l.id, sender_type="bot", content=intent.get("message")
-                    )
-                )
+                whatsapp_adapter.send_message(to_phone=l.phone_number, text=intent.get("message"))
+                db.add(Message(lead_id=l.id, sender_type="bot", content=intent.get("message")))
 
             db.commit()
             whatsapp_adapter.send_message(
                 to_phone=owner.personal_whatsapp,
                 text=f"✅ Sent to {len(leads_to_msg)} clients in '{target_tag}'.",
             )
-            return Response(
-                content=str(MessagingResponse()), media_type="application/xml"
-            )
+            return Response(content=str(MessagingResponse()), media_type="application/xml")
 
     # ------------------------------------------------------------------
     # 👤 PHASE B: SALES BRAIN - LEAD INTERACTION
@@ -172,9 +152,7 @@ async def incoming_sms_message(
     # 1. Lead Resolution
     lead_record = (
         db.query(Lead)
-        .filter(
-            Lead.user_id == owner.id, Lead.phone_number.like(f"%{clean_from[-9:]}%")
-        )
+        .filter(Lead.user_id == owner.id, Lead.phone_number.like(f"%{clean_from[-9:]}%"))
         .first()
     )
 
@@ -196,9 +174,7 @@ async def incoming_sms_message(
         process_audio_message.delay(
             media_url=MediaUrl0, sender_id=clean_from, bot_phone_number=clean_to
         )
-        whatsapp_adapter.send_message(
-            to_phone=clean_from, text="מקשיב להודעה הקולית שלך... 🎧"
-        )
+        whatsapp_adapter.send_message(to_phone=clean_from, text="מקשיב להודעה הקולית שלך... 🎧")
         return Response(content=str(MessagingResponse()), media_type="application/xml")
 
     # 3. TEXT ROUTING (STANDARD SYNC PROCESSING)
@@ -223,10 +199,7 @@ async def incoming_sms_message(
     )
     history.reverse()
     history_str = "\n".join(
-        [
-            f"{'Customer' if m.sender_type == 'user' else 'AI'}: {m.content}"
-            for m in history
-        ]
+        [f"{'Customer' if m.sender_type == 'user' else 'AI'}: {m.content}" for m in history]
     )
 
     # Sales Brain Context Construction
@@ -259,9 +232,7 @@ async def incoming_sms_message(
 
     # Handoff Safety Net: AI Flag OR Keyword match
     handoff_keys = ["נציג", "אנושי", "מנהל", "human", "representative", "manager"]
-    if ai_res.get("needs_human_escalation") or any(
-        k in Body.lower() for k in handoff_keys
-    ):
+    if ai_res.get("needs_human_escalation") or any(k in Body.lower() for k in handoff_keys):
         logger.info(f"🚨 Handoff triggered for {clean_from}")
         lead_record.bot_active = False
         lead_record.requires_human = True

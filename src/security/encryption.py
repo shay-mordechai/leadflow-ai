@@ -39,9 +39,7 @@ class PIIProtector:
                     )
                     self._cipher = Fernet(Fernet.generate_key())
                 else:
-                    logger.critical(
-                        "FATAL: ENCRYPTION_KEY is unset in a non-test environment."
-                    )
+                    logger.critical("FATAL: ENCRYPTION_KEY is unset in a non-test environment.")
                     raise RuntimeError(
                         "CRITICAL_SECURITY_CONFIGURATION_ERROR: ENCRYPTION_KEY must be set in non-test environments. "
                         "Generating ephemeral keys in development or production causes irreversible data loss."
@@ -49,7 +47,7 @@ class PIIProtector:
             else:
                 try:
                     self._cipher = Fernet(key)
-                except Exception as e:  # noqa: BLE001
+                except Exception as e:
                     logger.critical(f"Failed to initialize Fernet cipher: {e}")
                     raise ValueError(
                         "INVALID_ENCRYPTION_KEY: Key must be a valid 32-byte url-safe base64-encoded string."
@@ -69,7 +67,7 @@ class PIIProtector:
             cipher = self._get_cipher()
             # Fernet requires bytes input and produces bytes output
             return cipher.encrypt(plaintext.encode("utf-8")).decode("utf-8")
-        except Exception as e:  # noqa: BLE001
+        except Exception as e:
             logger.error(f"Encryption operation failed: {e}")
             return None
 
@@ -84,12 +82,10 @@ class PIIProtector:
         try:
             cipher = self._get_cipher()
             return cipher.decrypt(ciphertext.encode("utf-8")).decode("utf-8")
-        except Exception as e:  # noqa: BLE001
+        except Exception as e:
             # Decryption failure is logged as a critical security issue.
             # A placeholder is returned to prevent unhandled service crashes.
-            logger.error(
-                f"Decryption failed for ciphertext. Key might be rotated or invalid: {e}"
-            )
+            logger.error(f"Decryption failed for ciphertext. Key might be rotated or invalid: {e}")
             return "[DECRYPTION_FAILED]"
 
 

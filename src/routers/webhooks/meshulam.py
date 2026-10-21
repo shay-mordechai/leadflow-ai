@@ -36,18 +36,12 @@ def verify_meshulam_signature(data: dict, api_key: str) -> bool:
     if not received_sig:
         return True
 
-    data_str = (
-        f"{data.get('transactionId', '')}{data.get('sum', '')}{data.get('status', '')}"
-    )
-    expected_sig = hmac.new(
-        api_key.encode(), data_str.encode(), hashlib.sha256
-    ).hexdigest()
+    data_str = f"{data.get('transactionId', '')}{data.get('sum', '')}{data.get('status', '')}"
+    expected_sig = hmac.new(api_key.encode(), data_str.encode(), hashlib.sha256).hexdigest()
     return hmac.compare_digest(expected_sig, received_sig)
 
 
-def generate_invoice_pdf(
-    transaction_id: str, amount: str, user_name: str, user_email: str
-) -> str:
+def generate_invoice_pdf(transaction_id: str, amount: str, user_name: str, user_email: str) -> str:
     pdf = FPDF()
     pdf.add_page()
 
@@ -110,9 +104,7 @@ async def meshulam_payment_notify(request: Request):
     try:
         form_data = await request.form()
         data = dict(form_data)
-        transaction_id = (
-            data.get("transactionId") or data.get("id") or data.get("transaction_id")
-        )
+        transaction_id = data.get("transactionId") or data.get("id") or data.get("transaction_id")
 
         if not transaction_id:
             return {"status": "error", "message": "Transaction ID missing"}
@@ -155,9 +147,7 @@ async def meshulam_payment_notify(request: Request):
                     pass
 
             if not user and customer_email:
-                user = (
-                    db.query(User).filter(User.email == customer_email.lower()).first()
-                )
+                user = db.query(User).filter(User.email == customer_email.lower()).first()
 
             if not user:
                 logger.error(
@@ -207,9 +197,7 @@ async def meshulam_payment_notify(request: Request):
                 )
 
                 try:
-                    await email_service.send_payment_receipt(
-                        to_email=user.email, pdf_path=pdf_path
-                    )
+                    await email_service.send_payment_receipt(to_email=user.email, pdf_path=pdf_path)
                 except Exception as email_err:
                     logger.error(f"Failed to send payment receipt email: {email_err}")
 
@@ -255,8 +243,8 @@ async def meshulam_payment_notify(request: Request):
         finally:
             db.close()
 
-    except HTTPException as he:
-        raise he
+    except HTTPException:
+        raise
     except Exception as e:
         logger.error(f"🔥 Meshulam Webhook Failure: {e}")
         return {"status": "error", "message": str(e)}

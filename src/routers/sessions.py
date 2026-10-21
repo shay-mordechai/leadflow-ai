@@ -79,9 +79,7 @@ async def upload_audio(
         logger.warning(
             f"SECURITY: User {current_user.email} attempted to upload a file exceeding 25MB."
         )
-        raise HTTPException(
-            status_code=413, detail="File too large. Max allowed size is 25MB."
-        )
+        raise HTTPException(status_code=413, detail="File too large. Max allowed size is 25MB.")
 
     mime_type = magic.from_buffer(file_bytes, mime=True)
     if mime_type not in ALLOWED_MIME_TYPES:

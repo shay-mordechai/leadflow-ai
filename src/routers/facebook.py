@@ -16,9 +16,7 @@ logger = logging.getLogger("FacebookIntegration")
 # These should be added to your .env file later
 FB_CLIENT_ID = getattr(settings, "FACEBOOK_CLIENT_ID", "YOUR_APP_ID")
 FB_CLIENT_SECRET = getattr(settings, "FACEBOOK_CLIENT_SECRET", "YOUR_APP_SECRET")
-FB_VERIFY_TOKEN = getattr(
-    settings, "FACEBOOK_WEBHOOK_VERIFY_TOKEN", "my_leads_secure_token_123"
-)
+FB_VERIFY_TOKEN = getattr(settings, "FACEBOOK_WEBHOOK_VERIFY_TOKEN", "my_leads_secure_token_123")
 FB_API_VERSION = "v18.0"
 
 # ============================================================================
@@ -92,9 +90,9 @@ async def facebook_oauth_callback(code: str, state: str, db: Session = Depends(g
 @router.get("/webhook")
 async def verify_facebook_webhook(
     request: Request,
-    hub_mode: str = None,
-    hub_challenge: str = None,
-    hub_verify_token: str = None,
+    hub_mode: str | None = None,
+    hub_challenge: str | None = None,
+    hub_verify_token: str | None = None,
 ):
     """
     REQUIRED FOR META APP REVIEW:
@@ -163,6 +161,4 @@ async def receive_facebook_lead(request: Request, db: Session = Depends(get_db))
 
     except Exception as e:
         logger.error(f"❌ Error processing Facebook Webhook: {e}")
-        return Response(
-            content="ERROR", status_code=status.HTTP_500_INTERNAL_SERVER_ERROR
-        )
+        return Response(content="ERROR", status_code=status.HTTP_500_INTERNAL_SERVER_ERROR)

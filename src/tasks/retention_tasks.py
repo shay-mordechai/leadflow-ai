@@ -70,11 +70,7 @@ def _safe_unlink(file_path: str | None) -> bool:
         return False
 
     candidate = str(file_path).strip()
-    if (
-        candidate.startswith("s3://")
-        or candidate.startswith("http://")
-        or candidate.startswith("https://")
-    ):
+    if candidate.startswith(("s3://", "http://", "https://")):
         logger.info("Skipping remote media path during retention: %s", candidate)
         return False
 
@@ -85,25 +81,18 @@ def _safe_unlink(file_path: str | None) -> bool:
         return False
 
     if _is_protected_path(real_path):
-        logger.warning(
-            "Refusing to delete protected path during retention: %s", real_path
-        )
+        logger.warning("Refusing to delete protected path during retention: %s", real_path)
         return False
 
     if not any(
-        real_path == root or real_path.startswith(root + os.sep)
-        for root in _allowed_roots()
+        real_path == root or real_path.startswith(root + os.sep) for root in _allowed_roots()
     ):
-        logger.warning(
-            "Refusing to delete path outside storage/data roots: %s", real_path
-        )
+        logger.warning("Refusing to delete path outside storage/data roots: %s", real_path)
         return False
 
     try:
         if os.path.isdir(real_path):
-            logger.warning(
-                "Refusing to delete directory during retention: %s", real_path
-            )
+            logger.warning("Refusing to delete directory during retention: %s", real_path)
             return False
         if not os.path.exists(real_path):
             logger.info("Retention file already absent: %s", real_path)
@@ -123,9 +112,7 @@ def _purge_messages(db: Session, cutoff: datetime) -> int:
     deleted = 0
     try:
         deleted = (
-            db.query(Message)
-            .filter(Message.created_at < cutoff)
-            .delete(synchronize_session=False)
+            db.query(Message).filter(Message.created_at < cutoff).delete(synchronize_session=False)
         )
         db.commit()
     except Exception:
@@ -206,29 +193,20 @@ def _purge_expired_leads(db: Session, cutoff: datetime) -> int:
             lead_ids = [
                 row[0]
                 for row in (
-                    db.query(Lead.id)
-                    .filter(Lead.created_at < cutoff)
-                    .limit(BATCH_SIZE)
-                    .all()
+                    db.query(Lead.id).filter(Lead.created_at < cutoff).limit(BATCH_SIZE).all()
                 )
             ]
             if not lead_ids:
                 break
 
             linked_media = (
-                db.query(MediaInteraction)
-                .filter(MediaInteraction.lead_id.in_(lead_ids))
-                .all()
+                db.query(MediaInteraction).filter(MediaInteraction.lead_id.in_(lead_ids)).all()
             )
             for media in linked_media:
                 _safe_unlink(media.file_path)
                 db.delete(media)
 
-            meetings = (
-                db.query(MeetingSession)
-                .filter(MeetingSession.lead_id.in_(lead_ids))
-                .all()
-            )
+            meetings = db.query(MeetingSession).filter(MeetingSession.lead_id.in_(lead_ids)).all()
             for meeting in meetings:
                 _safe_unlink(meeting.audio_file_path)
                 db.delete(meeting)
@@ -237,9 +215,7 @@ def _purge_expired_leads(db: Session, cutoff: datetime) -> int:
                 synchronize_session=False
             )
             db.execute(
-                lead_tag_association.delete().where(
-                    lead_tag_association.c.lead_id.in_(lead_ids)
-                )
+                lead_tag_association.delete().where(lead_tag_association.c.lead_id.in_(lead_ids))
             )
             db.flush()
             count = (
@@ -297,9 +273,7 @@ def purge_expired_tenant_data(self):
     Enforce at least 90 days of retention, then remove expired CRM and conversation data.
     """
     cutoff = _retention_cutoff()
-    logger.info(
-        "Starting retention purge for records older than %s", cutoff.isoformat()
-    )
+    logger.info("Starting retention purge for records older than %s", cutoff.isoformat())
 
     db: Session = SessionLocal()
     stats = {

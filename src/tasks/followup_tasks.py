@@ -76,9 +76,7 @@ def process_dlq_events():
             if not pending_dlq:
                 return "No pending DLQ events."
 
-            logger.info(
-                f"♻️ DLQ Replayer found {len(pending_dlq)} pending events. Reprocessing..."
-            )
+            logger.info(f"♻️ DLQ Replayer found {len(pending_dlq)} pending events. Reprocessing...")
 
             for dlq in pending_dlq:
                 # שימוש ב-nested transaction (savepoint) עבור כל רשומה בנפרד

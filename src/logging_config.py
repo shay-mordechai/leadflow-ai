@@ -14,9 +14,7 @@ def setup_logging():
     log_file = os.path.join(log_dir, "app.log")
 
     # Create formatters
-    formatter = logging.Formatter(
-        "%(asctime)s - %(name)s - %(levelname)s - %(message)s"
-    )
+    formatter = logging.Formatter("%(asctime)s - %(name)s - %(levelname)s - %(message)s")
 
     # 1. File Handler (Rotating)
     file_handler = RotatingFileHandler(

@@ -44,10 +44,7 @@ def test_global_application_installs_body_limit_middleware() -> None:
     """Vulnerability: Large Payloads; the body cap must be active on the production application."""
     from src.main import app
 
-    assert any(
-        middleware.cls is RequestBodyLimitMiddleware
-        for middleware in app.user_middleware
-    )
+    assert any(middleware.cls is RequestBodyLimitMiddleware for middleware in app.user_middleware)
 
 
 def test_json_nesting_depth_is_bounded_before_parsing() -> None:

@@ -28,15 +28,9 @@ class SimulateRequest(BaseModel):
 
 
 @router.get("", response_model=AISettingsSchema)
-def get_settings(
-    db: Session = Depends(get_db), current_user: User = Depends(get_current_user)
-):
+def get_settings(db: Session = Depends(get_db), current_user: User = Depends(get_current_user)):
     """Fetch current Business Profile and AI Agent settings."""
-    profile = (
-        db.query(BusinessProfile)
-        .filter(BusinessProfile.user_id == current_user.id)
-        .first()
-    )
+    profile = db.query(BusinessProfile).filter(BusinessProfile.user_id == current_user.id).first()
     agent = db.query(AIAgent).filter(AIAgent.user_id == current_user.id).first()
 
     # Fallback if no profile exists yet
@@ -83,9 +77,7 @@ def update_settings(
     try:
         # 1. Upsert Business Profile
         profile = (
-            db.query(BusinessProfile)
-            .filter(BusinessProfile.user_id == current_user.id)
-            .first()
+            db.query(BusinessProfile).filter(BusinessProfile.user_id == current_user.id).first()
         )
 
         if not profile:
@@ -226,11 +218,11 @@ def _generate_master_prompt(data: AISettingsSchema) -> str:
     if tone == "רשמי" or tone == "Professional":
         tone_instruction = "דבר בשפה רשמית, מקצועית ומכובדת. השתמש בשפה גבוהה אך ברורה."
     elif tone == "חברי" or tone == "Friendly":
-        tone_instruction = (
-            "דבר בגובה העיניים, היה אמפתי, נחמד, ושזור אימוג'ים במידה הנכונה."
-        )
+        tone_instruction = "דבר בגובה העיניים, היה אמפתי, נחמד, ושזור אימוג'ים במידה הנכונה."
     elif tone == "מכירתי" or tone == "Sales":
-        tone_instruction = "המטרה העיקרית שלך היא להניע לפעולה. הצע הצעות ערך ברורות וצור דחיפות חיובית."
+        tone_instruction = (
+            "המטרה העיקרית שלך היא להניע לפעולה. הצע הצעות ערך ברורות וצור דחיפות חיובית."
+        )
     else:
         tone_instruction = "דבר בצורה טבעית, שירותית ועניינית."
 

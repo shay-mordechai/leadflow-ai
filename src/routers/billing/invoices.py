@@ -122,9 +122,7 @@ def generate_invoice_pdf(
 
 
 @router.get("/my-plan", response_model=SubscriptionInfo)
-async def get_current_plan(
-    user: User = Depends(get_current_user), db: Session = Depends(get_db)
-):
+async def get_current_plan(user: User = Depends(get_current_user), db: Session = Depends(get_db)):
     """
     Retrieves the current subscription status of the authenticated user.
     """
@@ -132,9 +130,7 @@ async def get_current_plan(
 
 
 @router.get("/", response_model=list[InvoiceResponse])
-async def list_user_invoices(
-    user: User = Depends(get_current_user), db: Session = Depends(get_db)
-):
+async def list_user_invoices(user: User = Depends(get_current_user), db: Session = Depends(get_db)):
     """
     Retrieves a history of all generated invoices/receipts.
     Mocked implementation until DB Table 'invoices' is created.
@@ -187,7 +183,5 @@ async def download_invoice_pdf(
     return StreamingResponse(
         pdf_buffer,
         media_type="application/pdf",
-        headers={
-            "Content-Disposition": f"attachment; filename=MyLeads_Invoice_{invoice_id}.pdf"
-        },
+        headers={"Content-Disposition": f"attachment; filename=MyLeads_Invoice_{invoice_id}.pdf"},
     )

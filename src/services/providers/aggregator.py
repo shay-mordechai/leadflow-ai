@@ -35,7 +35,7 @@ class ProviderAggregator:
         self.providers = [p for p in _all_providers if p is not None]
 
     def find_cheapest_number(
-        self, country_code: str = "IL", contains: str = None
+        self, country_code: str = "IL", contains: str | None = None
     ) -> dict | None:
         """
         Aggregates available numbers from all configured providers,
@@ -83,9 +83,7 @@ class ProviderAggregator:
                 elif hasattr(provider, "buy_number"):
                     return provider.buy_number(phone_number, friendly_name)
 
-        logger.error(
-            f"Provider {provider_name} not found or unconfigured for purchase."
-        )
+        logger.error(f"Provider {provider_name} not found or unconfigured for purchase.")
         return None
 
 

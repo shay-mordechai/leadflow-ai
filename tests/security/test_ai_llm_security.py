@@ -79,9 +79,7 @@ def test_context_window_overflow_truncates_latest_message():
         conversation_history=[],
         latest_message=inbound_message,
     )
-    latest_context = (
-        prompt.split("<latest_message>", 1)[1].split("</latest_message>", 1)[0].strip()
-    )
+    latest_context = prompt.split("<latest_message>", 1)[1].split("</latest_message>", 1)[0].strip()
 
     assert len(latest_context) == 1_000
     assert latest_context == inbound_message[:1_000]
@@ -103,9 +101,7 @@ async def test_legacy_ai_engine_truncates_inbound_text_before_prompting():
             expected_schema="{}",
         )
 
-    submitted_message = (
-        captured_prompts[0].split("User Message: ", 1)[1].split("\n", 1)[0]
-    )
+    submitted_message = captured_prompts[0].split("User Message: ", 1)[1].split("\n", 1)[0]
     assert len(submitted_message) == 1_000
 
 
