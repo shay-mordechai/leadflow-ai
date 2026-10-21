@@ -40,20 +40,30 @@ def create_limiter(redis_url: str) -> Limiter:
     )
 
 
-try:
-    limiter = create_limiter(settings.REDIS_URL)
-    logger.info("🛡️ Redis Rate Limiter initialized successfully.")
-except Exception as e:  # noqa: BLE001
-    env = getattr(settings, "ENVIRONMENT", "development").lower()
-    if env == "production":
-        logger.critical(
-            f"CRITICAL: Redis is required for distributed rate limiting in production (PID {os.getpid()}). Error: {e}"
-        )
-        raise RuntimeError(
-            "CRITICAL: Redis is required for distributed rate limiting in production."
-        )
-    else:
-        logger.warning(
-            f"EVENT: RATE_LIMITER_REDIS_FALLBACK | Could not connect Rate Limiter to Redis, falling back to in-memory (PID {os.getpid()}). Error: {e}"
-        )
-        limiter = Limiter(key_func=get_real_ip)
+def init_limiter() -> Limiter:
+    """Initialize rate limiter with production fail-fast check and fallback support."""
+    try:
+        limiter_instance = create_limiter(settings.REDIS_URL)
+        logger.info("🛡️ Redis Rate Limiter initialized successfully.")
+        return limiter_instance
+    except Exception as e:  # noqa: BLE001
+        env = (
+            os.getenv("APP_ENV")
+            or getattr(settings, "APP_ENV", "development")
+        ).lower()
+        if env == "production":
+            logger.critical(
+                f"CRITICAL: Redis is required for distributed rate limiting in production (PID {os.getpid()}). Error: {e}"
+            )
+            raise RuntimeError(
+                "CRITICAL: Redis is required for distributed rate limiting in production."
+            )
+        else:
+            logger.warning(
+                f"EVENT: RATE_LIMITER_REDIS_FALLBACK | Could not connect Rate Limiter to Redis, falling back to in-memory (PID {os.getpid()}). Error: {e}"
+            )
+            return Limiter(key_func=get_real_ip)
+
+
+limiter = init_limiter()
+
