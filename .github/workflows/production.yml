@@ -22,54 +22,6 @@ env:
   IMAGE_NAME: ${{ github.repository_owner }}
 
 jobs:
-  security-and-test-gates:
-    runs-on: ubuntu-latest
-    permissions:
-      contents: read
-    steps:
-      - name: Checkout Code
-        uses: actions/checkout@v4
-        with:
-          fetch-depth: 0
-
-      - name: Setup Python 3.12
-        uses: actions/setup-python@v5
-        with:
-          python-version: '3.12'
-          cache: 'pip'
-
-      - name: Install dependencies and test scanners
-        run: |
-          python -m pip install --upgrade pip
-          pip install -r requirements.txt bandit pip-audit pytest pytest-asyncio
-        
-      - name: Scan repository for leaked secrets
-        uses: gitleaks/gitleaks-action@v2
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-
-      - name: Run Bandit SAST
-        run: bandit -r src/ -ll -ii
-
-      - name: Run Pip Audit SCA
-        run: pip-audit -r requirements.txt
-
-      - name: Run Tests Verification Gate
-        env:
-          ENVIRONMENT: "test"
-          DATABASE_URL: "sqlite+aiosqlite:///:memory:"
-          ENCRYPTION_KEY: "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA="
-        run: pytest tests/ -q
-
-      - name: Scan repository filesystem and dependencies (Trivy)
-        uses: aquasecurity/trivy-action@v0.36.0
-        with:
-          scan-type: fs
-          scan-ref: .
-          ignore-unfixed: true
-          exit-code: "1"
-          severity: CRITICAL,HIGH
-
   detect-changes:
     runs-on: ubuntu-latest
     outputs:
@@ -95,6 +47,67 @@ jobs:
               - 'frontend/**'
             datagate:
               - 'data-gate/**'
+
+  security-and-test-gates:
+    needs: detect-changes
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Scan repository for leaked secrets
+        uses: gitleaks/gitleaks-action@v2
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Scan repository filesystem and dependencies (Trivy)
+        uses: aquasecurity/trivy-action@v0.36.0
+        with:
+          scan-type: fs
+          scan-ref: .
+          ignore-unfixed: true
+          exit-code: "1"
+          severity: CRITICAL,HIGH
+
+      - name: Setup Python 3.12
+        if: needs.detect-changes.outputs.backend == 'true' || github.event_name == 'workflow_dispatch'
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+          cache: 'pip'
+
+      - name: Install dependencies and test scanners
+        if: needs.detect-changes.outputs.backend == 'true' || github.event_name == 'workflow_dispatch'
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt ruff bandit pip-audit pytest pytest-asyncio pytest-mock
+
+      - name: Run Linter (Ruff)
+        if: needs.detect-changes.outputs.backend == 'true' || github.event_name == 'workflow_dispatch'
+        run: |
+          ruff check src tests
+          ruff format --check src tests
+
+      - name: Run Bandit SAST
+        if: needs.detect-changes.outputs.backend == 'true' || github.event_name == 'workflow_dispatch'
+        run: bandit -r src/ -ll -ii
+
+      - name: Run Pip Audit SCA
+        if: needs.detect-changes.outputs.backend == 'true' || github.event_name == 'workflow_dispatch'
+        run: pip-audit -r requirements.txt
+
+      - name: Run Tests Verification Gate
+        if: needs.detect-changes.outputs.backend == 'true' || github.event_name == 'workflow_dispatch'
+        env:
+          PYTHONPATH: "."
+          ENVIRONMENT: "test"
+          DATABASE_URL: "sqlite+aiosqlite:///:memory:"
+          ENCRYPTION_KEY: "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA="
+        run: pytest tests/ -q
 
   build-and-push:
     needs: [ detect-changes, security-and-test-gates ]
