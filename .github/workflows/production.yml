@@ -107,6 +107,7 @@ jobs:
           ENVIRONMENT: "test"
           DATABASE_URL: "sqlite+aiosqlite:///:memory:"
           ENCRYPTION_KEY: "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA="
+          GOOGLE_API_KEY: "dummy_google_api_key_for_tests_only"
         run: pytest tests/ -q
 
   build-and-push:
