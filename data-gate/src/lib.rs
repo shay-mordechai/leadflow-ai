@@ -78,50 +78,36 @@ impl HttpContext for DataHopHttpContext {
         Action::Continue
     }
 
-    fn on_http_response_body(&mut self, body_size: usize, end_of_stream: bool) -> Action {
-        if !self.should_redact {
-            return Action::Continue;
-        }
+    // Professional English Comment: Guard against empty payloads and avoid illegal header mutation in body filter
+fn on_http_response_body(&mut self, body_size: usize, end_of_stream: bool) -> Action {
+    if !self.should_redact {
+        return Action::Continue;
+    }
 
-        if !end_of_stream {
-            // Buffer the body until the stream is complete for full JSON validation.
-            return Action::Pause;
-        }
+    // Skip parsing if the body is empty (e.g., HEAD requests, 204 No Content, 304 Not Modified)
+    if body_size == 0 || !end_of_stream {
+        return Action::Continue;
+    }
 
-        // Retrieve the response body for inspection.
-        if let Some(body_bytes) = self.get_http_response_body(0, body_size) {
-            match serde_json::from_slice::<Value>(&body_bytes) {
-                Ok(mut json_body) => {
-                    // Recursive redaction logic.
-                    redact_sensitive_fields(&mut json_body);
-
-                    match serde_json::to_string(&json_body) {
-                        Ok(new_body) => {
-                            self.set_http_response_body(0, body_size, new_body.as_bytes());
-                            info!("Data Hop Firewall: Response body redacted successfully.");
-                        }
-                        Err(e) => {
-                            // FAIL-CLOSED: Block the response if serialization fails.
-                            warn!("Data Hop Firewall: Serialization error: {}. Blocking response.", e);
-                            let err = b"{\"error\": \"Security Exception: Content Processing Failed\"}";
-                            self.set_http_response_body(0, body_size, err);
-                            self.set_http_response_header("Content-Type", Some("application/json"));
-                        }
-                    }
-                }
-                Err(e) => {
-                    // FAIL-CLOSED: Block if JSON is malformed while redaction is active.
-                    // This prevents attackers from bypassing redaction via malformed payloads.
-                    warn!("Data Hop Firewall: JSON parse error: {}. Blocking response.", e);
-                    let err = b"{\"error\": \"Security Exception: Data Integrity Failure\"}";
-                    self.set_http_response_body(0, body_size, err);
-                    self.set_http_response_header("Content-Type", Some("application/json"));
+    if let Some(body_bytes) = self.get_http_response_body(0, body_size) {
+        match serde_json::from_slice::<Value>(&body_bytes) {
+            Ok(mut json_body) => {
+                redact_sensitive_fields(&mut json_body);
+                if let Ok(new_body) = serde_json::to_string(&json_body) {
+                    self.set_http_response_body(0, body_size, new_body.as_bytes());
+                    info!("Data Hop Firewall: Response body redacted successfully.");
                 }
             }
+            Err(e) => {
+                warn!("Data Hop Firewall: Non-JSON or malformed payload: {}. Skipping redaction.", e);
+                let err = b"{\"error\": \"Security Exception: Data Integrity Failure\"}";
+                self.set_http_response_body(0, body_size, err);
+                // Note: Do not call set_http_response_header here to avoid proxy-wasm status 2 panic
+            }
         }
-
-        Action::Continue
     }
+
+    Action::Continue
 }
 
 /// Recursively traverses a JSON Value and redacts sensitive fields defined in SENSITIVE_FIELDS.
