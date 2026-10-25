@@ -14,6 +14,7 @@ def setup_bridal_e2e(
     name="Bridal Makeup Studio",
     phone="+972500000000",
     marketer_email="marketer@agency.test",
+    # gitleaks:allow
     api_key="mk_live_bridal_test_key_abc123",
 ):
     db = SessionLocal()
