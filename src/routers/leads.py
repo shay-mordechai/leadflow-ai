@@ -2,10 +2,10 @@
 import hashlib
 import logging
 import uuid
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timezone
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, HTTPException, Query, Request, status
+from fastapi import APIRouter, Depends, HTTPException, Query, Request, Response, status
 from pydantic import BaseModel, EmailStr, Field
 
 # Security: Rate Limiting
@@ -18,6 +18,7 @@ from src.database.models import (
     Lead,
     LeadStatus,
     Message,
+    SubscriptionStatus,
     User,
     WebhookDLQ,
     WebhookProvider,
@@ -86,6 +87,7 @@ class BotStatusRequest(BaseModel):
 @limiter.limit("60/minute")
 async def get_my_leads(
     request: Request,
+    response: Response,
     limit: int = Query(50, ge=1, le=100),
     offset: int = Query(0, ge=0),
     db: Session = Depends(get_db),
@@ -94,7 +96,24 @@ async def get_my_leads(
     """
     SECURE ENDPOINT: Returns leads ONLY for the logged-in user.
     Uses Eager Loading to prevent N+1 Database query loops.
+    Enforces 24-hour payment grace period and dynamic DLP tagging (X-Data-TTL: 1).
     """
+    if current_user.subscription_status == SubscriptionStatus.PAST_DUE:
+        if current_user.grace_period_ends_at:
+            now = datetime.now(timezone.utc)
+            grace_end = current_user.grace_period_ends_at
+            if grace_end.tzinfo is None:
+                grace_end = grace_end.replace(tzinfo=timezone.utc)
+
+            if now < grace_end:
+                remaining_seconds = int((grace_end - now).total_seconds())
+                response.headers["X-Subscription-Alert"] = "grace_period_active"
+                response.headers["X-Grace-Period-Remaining"] = str(remaining_seconds)
+            else:
+                response.headers["X-Data-TTL"] = "1"
+        else:
+            response.headers["X-Data-TTL"] = "1"
+
     leads = (
         db.query(Lead)
         .filter(Lead.user_id == current_user.id)

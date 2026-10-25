@@ -3,10 +3,11 @@ import hashlib
 import hmac
 import logging
 import os
-from datetime import datetime
+from datetime import datetime, timedelta, timezone
 
-from fastapi import APIRouter, HTTPException, Request
+from fastapi import APIRouter, Depends, HTTPException, Request, status
 from fpdf import FPDF
+from sqlalchemy.orm import Session
 
 from src.config import settings
 from src.database.models import (
@@ -23,7 +24,8 @@ router = APIRouter(tags=["Webhooks - Meshulam"])
 logger = logging.getLogger("MeshulamWebhook")
 
 
-def get_db_session():
+# Professional Note: Use FastAPI Depends for safe database session management
+def get_db():
     db = SessionLocal()
     try:
         yield db
@@ -32,9 +34,13 @@ def get_db_session():
 
 
 def verify_meshulam_signature(data: dict, api_key: str) -> bool:
+    """
+    Validates HMAC-SHA256 signature to prevent webhook spoofing.
+    Uses constant-time comparison to mitigate timing attacks.
+    """
     received_sig = data.get("signature") or data.get("hash")
     if not received_sig:
-        return True
+        return False
 
     data_str = f"{data.get('transactionId', '')}{data.get('sum', '')}{data.get('status', '')}"
     expected_sig = hmac.new(api_key.encode(), data_str.encode(), hashlib.sha256).hexdigest()
@@ -42,6 +48,9 @@ def verify_meshulam_signature(data: dict, api_key: str) -> bool:
 
 
 def generate_invoice_pdf(transaction_id: str, amount: str, user_name: str, user_email: str) -> str:
+    """
+    Generates a PDF tax invoice/receipt for the successful transaction.
+    """
     pdf = FPDF()
     pdf.add_page()
 
@@ -96,7 +105,7 @@ def generate_invoice_pdf(transaction_id: str, amount: str, user_name: str, user_
 
 
 @router.post("/notify")
-async def meshulam_payment_notify(request: Request):
+async def meshulam_payment_notify(request: Request, db: Session = Depends(get_db)):
     """
     Handles payment notifications from Meshulam (IPN).
     Enforces signature validation, idempotency checks, user mapping, and PDF receipt dispatch.
@@ -107,7 +116,7 @@ async def meshulam_payment_notify(request: Request):
         transaction_id = data.get("transactionId") or data.get("id") or data.get("transaction_id")
 
         if not transaction_id:
-            return {"status": "error", "message": "Transaction ID missing"}
+            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Transaction ID missing")
 
         logger.info(f"Received Meshulam IPN. Transaction ID: {transaction_id}")
 
@@ -115,136 +124,139 @@ async def meshulam_payment_notify(request: Request):
         if settings.MESHULAM_API_KEY and settings.MESHULAM_API_KEY != "MOCK_API_KEY":
             if not verify_meshulam_signature(data, settings.MESHULAM_API_KEY):
                 logger.error(
-                    f"❌ SECURITY ALERT: Invalid Meshulam signature for transaction {transaction_id}"
+                    f"❌ SECURITY ALERT: Invalid or missing Meshulam signature for transaction {transaction_id}"
                 )
-                raise HTTPException(status_code=403, detail="Invalid signature")
+                raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Unauthorized - Invalid signature")
 
         payment_status = str(data.get("status", "")).lower()
         amount = data.get("sum", "0")
         raw_user_id = data.get("customField1") or data.get("custom_field_1")
         customer_email = data.get("email")
 
-        db = next(get_db_session())
-        try:
-            # 2. Idempotency Check: Prevent double processing of the same transaction
-            existing_tx = (
-                db.query(PaymentTransaction)
-                .filter(PaymentTransaction.transaction_id == str(transaction_id))
-                .first()
+        # 2. Idempotency Check: Prevent double processing of the same transaction
+        existing_tx = (
+            db.query(PaymentTransaction)
+            .filter(PaymentTransaction.transaction_id == str(transaction_id))
+            .first()
+        )
+        if existing_tx:
+            logger.info(
+                f"🛡️ Idempotency Shield: Transaction {transaction_id} already processed."
             )
-            if existing_tx:
-                logger.info(
-                    f"🛡️ Idempotency Shield: Transaction {transaction_id} already processed."
-                )
-                return {"status": "ok", "message": "Already processed"}
+            return {"status": "ok", "message": "Already processed"}
 
-            # 3. Resolve User via customField1 (UUID) or fallback to email
-            user = None
-            if raw_user_id:
+        # 3. Resolve User via customField1 (UUID) or fallback to email
+        user = None
+        if raw_user_id:
+            try:
+                user = db.query(User).filter(User.id == raw_user_id).first()
+            except Exception:
+                pass
+
+        if not user and customer_email:
+            user = db.query(User).filter(User.email == customer_email.lower()).first()
+
+        if not user:
+            logger.error(
+                f"Meshulam Webhook: User mapping not found for transaction {transaction_id}"
+            )
+            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="User not found")
+
+        # Safely extract user name to prevent AttributeError
+        user_display_name = getattr(user, "full_name", getattr(user, "name", "Customer"))
+
+        # 4. SUCCESSFUL PAYMENT
+        if payment_status in ["1", "success", "approved"]:
+            # Register transaction token for idempotency
+            new_tx = PaymentTransaction(
+                user_id=user.id,
+                transaction_id=str(transaction_id),
+                amount=int(float(amount or 0)),
+                status="SUCCESS",
+            )
+            db.add(new_tx)
+
+            # Upgrade user state atomically and clear any existing grace period
+            user.plan_tier = PlanTier.PRO
+            user.subscription_status = SubscriptionStatus.ACTIVE
+            user.grace_period_ends_at = None
+            db.flush()
+
+            # Audit log entry
+            audit_log = AuditLog(
+                user_id=str(user.id),
+                action="SUBSCRIPTION_PAID",
+                details={
+                    "transaction_id": transaction_id,
+                    "amount": amount,
+                    "provider": "Meshulam",
+                },
+            )
+            db.add(audit_log)
+            db.commit()
+
+            logger.info(
+                f"✅ SUCCESS: User {user.email} upgraded to PRO via Meshulam Tx {transaction_id}"
+            )
+
+            # Generate PDF Invoice & Dispatch
+            pdf_path = generate_invoice_pdf(
+                transaction_id=str(transaction_id),
+                amount=str(amount),
+                user_name=user_display_name,
+                user_email=user.email,
+            )
+
+            try:
+                await email_service.send_payment_receipt(to_email=user.email, pdf_path=pdf_path)
+            except Exception as email_err:
+                logger.error(f"Failed to send payment receipt email: {email_err}")
+
+            if os.path.exists(pdf_path):
                 try:
-                    user = db.query(User).filter(User.id == raw_user_id).first()
+                    os.remove(pdf_path)
                 except Exception:
                     pass
 
-            if not user and customer_email:
-                user = db.query(User).filter(User.email == customer_email.lower()).first()
+            return {"status": "success", "transaction": transaction_id}
 
-            if not user:
-                logger.error(
-                    f"Meshulam Webhook: User mapping not found for transaction {transaction_id}"
-                )
-                return {"status": "error", "message": "User not found"}
+        # 5. FAILED PAYMENT (DUNNING & GRACE PERIOD)
+        elif payment_status in ["2", "failed", "rejected", "declined", "canceled", "cancelled"]:
+            logger.warning(
+                f"💳 Payment failed for User {user.email}. Initiating Dunning & 24h Grace Period."
+            )
 
-            # 4. SUCCESSFUL PAYMENT
-            if payment_status in ["1", "success", "approved"]:
-                # Register transaction token for idempotency
-                new_tx = PaymentTransaction(
-                    user_id=user.id,
-                    transaction_id=str(transaction_id),
-                    amount=int(float(amount or 0)),
-                    status="SUCCESS",
-                )
-                db.add(new_tx)
+            user.subscription_status = SubscriptionStatus.PAST_DUE
+            
+            # CRITICAL FIX: Only set 24h grace period if they are not already in one
+            if user.grace_period_ends_at is None:
+                user.grace_period_ends_at = datetime.now(timezone.utc) + timedelta(hours=24)
 
-                # Upgrade user state atomically
-                user.plan_tier = PlanTier.PRO
-                user.subscription_status = SubscriptionStatus.ACTIVE
-                db.flush()
+            audit_log = AuditLog(
+                user_id=str(user.id),
+                action="SUBSCRIPTION_PAYMENT_FAILED",
+                details={
+                    "transaction_id": str(transaction_id),
+                    "amount": str(amount),
+                },
+            )
+            db.add(audit_log)
+            db.commit()
 
-                # Audit log entry
-                audit_log = AuditLog(
-                    user_id=str(user.id),
-                    action="SUBSCRIPTION_PAID",
-                    details={
-                        "transaction_id": transaction_id,
-                        "amount": amount,
-                        "provider": "Meshulam",
-                    },
-                )
-                db.add(audit_log)
-                db.commit()
+            try:
+                if hasattr(email_service, "send_dunning_email"):
+                    await email_service.send_dunning_email(
+                        to_email=user.email, user_name=user_display_name
+                    )
+            except Exception as mail_err:
+                logger.error(f"Failed to send dunning email: {mail_err}")
 
-                logger.info(
-                    f"✅ SUCCESS: User {user.email} upgraded to PRO via Meshulam Tx {transaction_id}"
-                )
+            return {"status": "success", "message": "Dunning process initiated"}
 
-                # Generate PDF Invoice & Dispatch
-                pdf_path = generate_invoice_pdf(
-                    transaction_id=str(transaction_id),
-                    amount=str(amount),
-                    user_name=user.name,
-                    user_email=user.email,
-                )
-
-                try:
-                    await email_service.send_payment_receipt(to_email=user.email, pdf_path=pdf_path)
-                except Exception as email_err:
-                    logger.error(f"Failed to send payment receipt email: {email_err}")
-
-                if os.path.exists(pdf_path):
-                    try:
-                        os.remove(pdf_path)
-                    except Exception:
-                        pass
-
-                return {"status": "success", "transaction": transaction_id}
-
-            # 5. FAILED PAYMENT (DUNNING)
-            elif payment_status in ["2", "failed", "rejected", "declined"]:
-                logger.warning(
-                    f"💳 Payment failed for User {user.email}. Initiating Dunning process."
-                )
-
-                user.subscription_status = SubscriptionStatus.PAST_DUE
-
-                audit_log = AuditLog(
-                    user_id=str(user.id),
-                    action="SUBSCRIPTION_PAYMENT_FAILED",
-                    details={
-                        "transaction_id": str(transaction_id),
-                        "amount": str(amount),
-                    },
-                )
-                db.add(audit_log)
-                db.commit()
-
-                try:
-                    if hasattr(email_service, "send_dunning_email"):
-                        await email_service.send_dunning_email(
-                            to_email=user.email, user_name=user.name
-                        )
-                except Exception as mail_err:
-                    logger.error(f"Failed to send dunning email: {mail_err}")
-
-                return {"status": "success", "message": "Dunning process initiated"}
-
-            return {"status": "ignored", "reason": "incomplete_status"}
-
-        finally:
-            db.close()
+        return {"status": "ignored", "reason": "incomplete_status"}
 
     except HTTPException:
         raise
     except Exception as e:
         logger.error(f"🔥 Meshulam Webhook Failure: {e}")
-        return {"status": "error", "message": str(e)}
+        raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail="Webhook processing failed")
