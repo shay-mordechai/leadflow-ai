@@ -132,6 +132,7 @@ class User(Base):
 
     # --- Business & Usage Limits (Tier 2) ---
     monthly_ai_messages = Column(Integer, default=0, nullable=False)
+    grace_period_ends_at = Column(DateTime(timezone=True), nullable=True)
 
     # Security: OTP is encrypted at rest
     _otp_encrypted = Column("otp_code", String, nullable=True)
