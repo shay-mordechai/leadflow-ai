@@ -5,6 +5,7 @@ import { Heebo } from 'next/font/google';
 import ToastProvider from '@/components/ToastProvider';
 import PostHogProvider from '@/components/PostHogProvider'; // NEW: Analytics
 import SupportWidget from '@/components/SupportWidget'; // NEW: Floating WhatsApp Bot
+import { GracePeriodBanner } from '@/components/GracePeriodBanner'; // NEW: Billing Alert Banner
 import "./globals.css";
 
 // Configure Heebo for Hebrew and Latin, with 'swap' for instant loading
@@ -47,6 +48,9 @@ export default function RootLayout({
         {/* Wrap the app with Analytics to track views and user journeys */}
         <PostHogProvider>
             
+          {/* Billing Grace Period Global Banner */}
+          <GracePeriodBanner />
+
           {/* Setting up site-wide pop-up bubbles correctly */}
           <ToastProvider />
           
