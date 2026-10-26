@@ -233,7 +233,7 @@ async def meshulam_payment_notify(request: Request, db: Session = Depends(get_db
 
             # CRITICAL FIX: Only set 24h grace period if they are not already in one
             if user.grace_period_ends_at is None:
-                user.grace_period_ends_at = datetime.now(timezone.utc) + timedelta(hours=24)
+                user.grace_period_ends_at = datetime.now(UTC) + timedelta(hours=24)
 
             audit_log = AuditLog(
                 user_id=str(user.id),

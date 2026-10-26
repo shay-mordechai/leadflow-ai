@@ -2,7 +2,7 @@
 
 import hashlib
 import hmac
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta, timezone
 from unittest.mock import MagicMock
 
 import pytest
@@ -37,7 +37,7 @@ def test_meshulam_signature_verification_missing():
 @pytest.mark.asyncio
 async def test_get_my_leads_grace_period_active(monkeypatch):
     """Test grace period active header assignment when now < grace_period_ends_at."""
-    now = datetime.now(timezone.utc)
+    now = datetime.now(UTC)
     future_time = now + timedelta(hours=12)
 
     user = User(
@@ -66,7 +66,7 @@ async def test_get_my_leads_grace_period_active(monkeypatch):
 @pytest.mark.asyncio
 async def test_get_my_leads_grace_period_expired(monkeypatch):
     """Test X-Data-TTL: 1 header assignment when grace period has expired (now >= grace_period_ends_at)."""
-    now = datetime.now(timezone.utc)
+    now = datetime.now(UTC)
     past_time = now - timedelta(hours=1)
 
     user = User(

@@ -109,10 +109,10 @@ async def get_my_leads(
     """
     if current_user.subscription_status == SubscriptionStatus.PAST_DUE:
         if current_user.grace_period_ends_at:
-            now = datetime.now(timezone.utc)
+            now = datetime.now(UTC)
             grace_end = current_user.grace_period_ends_at
             if grace_end.tzinfo is None:
-                grace_end = grace_end.replace(tzinfo=timezone.utc)
+                grace_end = grace_end.replace(tzinfo=UTC)
 
             if now < grace_end:
                 remaining_seconds = int((grace_end - now).total_seconds())
