@@ -169,7 +169,7 @@ class Settings(BaseSettings):
 
     # --- Database & Queues ---
     DATABASE_URL: str = Field(
-        default_factory=lambda: os.getenv("DATABASE_URL", "sqlite:////app/data/leads.db")
+        default_factory=lambda: os.getenv("DATABASE_URL", "postgresql+asyncpg://leadflow:leadflow_secret@db:5432/leadflow_prod")
     )
     REDIS_URL: str = Field(
         default_factory=lambda: os.getenv("REDIS_URL", "redis://127.0.0.1:6379/0")

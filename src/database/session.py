@@ -101,7 +101,9 @@ else:
     raise ValueError(f"Unsupported async database driver: {async_database_url.drivername}")
 
 async_engine_kwargs = {"pool_pre_ping": True, "pool_recycle": 1800}
-if not async_database_url.drivername.startswith("sqlite+"):
+if async_database_url.drivername.startswith("sqlite"):
+    async_engine_kwargs["connect_args"] = {"check_same_thread": False}
+else:
     async_engine_kwargs.update({"pool_size": 20, "max_overflow": 10, "pool_timeout": 30})
 
 async_engine = create_async_engine(async_database_url, **async_engine_kwargs)
