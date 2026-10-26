@@ -5,7 +5,7 @@ import uuid
 from datetime import UTC, datetime, timezone
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, HTTPException, Query, Request, Response, status
+from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Query, Request, Response, status
 from pydantic import BaseModel, EmailStr, Field
 
 # Security: Rate Limiting
@@ -23,7 +23,7 @@ from src.database.models import (
     WebhookDLQ,
     WebhookProvider,
 )
-from src.database.session import get_db
+from src.database.session import SessionLocal, get_db
 from src.security.dependencies import get_current_user
 from src.services.communication.whatsapp import whatsapp_adapter
 
@@ -238,10 +238,26 @@ async def submit_lead_feedback(
     return {"status": "success", "message": "Feedback recorded. The AI is learning!"}
 
 
+async def _send_welcome_whatsapp_background(lead_id: UUID, phone: str, name: str, user_id: UUID):
+    db = SessionLocal()
+    try:
+        target_user = db.query(User).filter(User.id == user_id).first()
+        clean_phone = "".join(filter(str.isdigit, phone))
+        biz_name = getattr(target_user, "business_name", "העסק שלנו") or "העסק שלנו"
+        intro_text = f"היי {name}, תודה שהשארת פרטים! אני המזכירה הווירטואלית של {biz_name}. איך אפשר לעזור לך היום?"
+        success = whatsapp_adapter.send_message(to_phone=clean_phone, text=intro_text)
+        if success:
+            logger.info(f"🚀 Speed-to-Lead: Proactive message sent to {clean_phone} for lead {lead_id}")
+    except Exception as wa_err:
+        logger.error(f"WhatsApp outreach background failed for lead {lead_id}: {wa_err}")
+    finally:
+        db.close()
+
+
 @router.post("/webhook/{user_id}", status_code=status.HTTP_200_OK)
 @limiter.limit("10/minute")
 async def receive_external_lead(
-    request: Request, user_id: str, lead_data: PagixLead, db: Session = Depends(get_db)
+    request: Request, user_id: str, lead_data: PagixLead, background_tasks: BackgroundTasks, db: Session = Depends(get_db)
 ):
     raw_payload = {}
     try:
@@ -298,15 +314,13 @@ async def receive_external_lead(
             f"✅ New Lead Saved via Webhook: {lead_data.name} for User: {target_user.email}"
         )
 
-        try:
-            clean_phone = "".join(filter(str.isdigit, lead_data.phone))
-            biz_name = getattr(target_user, "business_name", "העסק שלנו") or "העסק שלנו"
-            intro_text = f"היי {lead_data.name}, תודה שהשארת פרטים! אני המזכירה הווירטואלית של {biz_name}. איך אפשר לעזור לך היום?"
-            success = whatsapp_adapter.send_message(to_phone=clean_phone, text=intro_text)
-            if success:
-                logger.info(f"🚀 Speed-to-Lead: Proactive message sent to {clean_phone}")
-        except Exception as wa_err:
-            logger.error(f"WhatsApp outreach failed for lead {new_lead.id}: {wa_err}")
+        background_tasks.add_task(
+            _send_welcome_whatsapp_background,
+            lead_id=new_lead.id,
+            phone=lead_data.phone,
+            name=lead_data.name,
+            user_id=target_user.id,
+        )
 
         return {"status": "success", "lead_id": str(new_lead.id)}
 

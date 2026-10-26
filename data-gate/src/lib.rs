@@ -148,8 +148,15 @@ impl HttpContext for DataHopHttpContext {
     }
 }
 
-/// Recursively traverses a JSON Value and redacts sensitive fields defined in SENSITIVE_FIELDS.
+/// Recursively traverses a JSON Value with depth limiting to prevent stack overflow/wasm panics.
 fn redact_sensitive_fields(value: &mut Value) {
+    redact_recursive_bounded(value, 0, 32);
+}
+
+fn redact_recursive_bounded(value: &mut Value, current_depth: usize, max_depth: usize) {
+    if current_depth > max_depth {
+        return;
+    }
     match value {
         Value::Object(map) => {
             let keys: Vec<String> = map.keys().cloned().collect();
@@ -158,13 +165,13 @@ fn redact_sensitive_fields(value: &mut Value) {
                 if SENSITIVE_FIELDS.iter().any(|&s| s == key_lower.as_str()) {
                     map.insert(key, json!("[REDACTED]"));
                 } else if let Some(val) = map.get_mut(&key) {
-                    redact_sensitive_fields(val);
+                    redact_recursive_bounded(val, current_depth + 1, max_depth);
                 }
             }
         }
         Value::Array(arr) => {
             for val in arr.iter_mut() {
-                redact_sensitive_fields(val);
+                redact_recursive_bounded(val, current_depth + 1, max_depth);
             }
         }
         _ => {}

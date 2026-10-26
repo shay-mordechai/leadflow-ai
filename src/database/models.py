@@ -14,6 +14,7 @@ from sqlalchemy import (
     String,
     Table,
     Text,
+    UniqueConstraint,
     func,
 )
 from sqlalchemy.orm import relationship
@@ -261,6 +262,10 @@ class AIAgent(Base):
 
 class Lead(Base):
     __tablename__ = "leads"
+
+    __table_args__ = (
+        UniqueConstraint("user_id", "idempotency_key", name="uq_user_lead_idempotency"),
+    )
 
     id = Column(GUID(), primary_key=True, default=uuid.uuid4)
     user_id = Column(GUID(), ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True)
