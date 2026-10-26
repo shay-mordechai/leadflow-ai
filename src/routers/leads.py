@@ -2,7 +2,7 @@
 import hashlib
 import logging
 import uuid
-from datetime import UTC, datetime, timezone
+from datetime import UTC, datetime
 from uuid import UUID
 
 from fastapi import (

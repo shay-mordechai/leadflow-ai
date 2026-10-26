@@ -3,7 +3,7 @@ import hashlib
 import hmac
 import logging
 import os
-from datetime import UTC, datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 
 from fastapi import APIRouter, Depends, HTTPException, Request, status
 from fpdf import FPDF
