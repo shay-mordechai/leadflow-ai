@@ -106,6 +106,7 @@ python-dateutil==2.9.0.post0
 python-dotenv==1.2.2
 python-json-logger==4.0.0
 python-magic==0.4.27
+python-jose[cryptography]==3.4.0
 python-multipart==0.0.31
 PyYAML==6.0.3
 redis==5.0.4
