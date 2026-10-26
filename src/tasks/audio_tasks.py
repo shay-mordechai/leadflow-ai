@@ -69,11 +69,19 @@ def process_audio_message(self, media_url: str, sender_id: str, bot_phone_number
             [f"{'Customer' if m.sender_type == 'user' else 'AI'}: {m.content}" for m in history]
         )
 
-        system_prompt = f"{agent.system_prompt}\n\nContext History:\n{history_str}"
+        from src.services.ai.prompt_builder import PromptBuilder
+        biz = lead.user.business_profile
+        custom_inst = f"{agent.system_prompt}\n\nContext History:\n{history_str}".strip()
+        system_instruction = PromptBuilder.build_system_instruction(
+            business_type=biz.business_type if biz else lead.user.business_type or "General",
+            business_name=biz.business_name if biz else lead.user.business_name or "העסק שלנו",
+            products_services=biz.products_services if biz else None,
+            custom_instructions=custom_inst,
+        )
 
         ai_response = asyncio.run(
             ai_engine.analyze_interaction(
-                system_prompt=system_prompt,
+                system_instruction=system_instruction,
                 text_input=transcription_text,
                 sender_name=lead.name,
             )

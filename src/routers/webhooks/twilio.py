@@ -203,26 +203,19 @@ async def incoming_sms_message(
     )
 
     # Sales Brain Context Construction
+    from src.services.ai.prompt_builder import PromptBuilder
     biz = owner.business_profile
-    system_prompt = f"""
-    You are 'Liron', the expert sales assistant for '{owner.business_name}'.
-    Goal: Assist the customer, represent the brand, and drive sales/bookings.
-    
-    Business Knowledge: {biz.products_services if biz else "Professional service provider"}
-    Tone/Style: {biz.ai_tone if biz else "Professional and friendly"}
-    Owner Notes: {biz.custom_instructions if biz else "Answer questions helpfully."}
-    
-    Context History:
-    {history_str}
-    
-    IMPORTANT RULES:
-    1. If the user asks for a real person, human, manager, or representative, set 'needs_human_escalation' to true.
-    2. Be concise and speak ONLY in Hebrew.
-    """
+    custom_inst = f"{biz.custom_instructions if biz else ''}\nContext History:\n{history_str}".strip()
+    system_instruction = PromptBuilder.build_system_instruction(
+        business_type=biz.business_type if biz else owner.business_type or "General",
+        business_name=owner.business_name or "העסק שלנו",
+        products_services=biz.products_services if biz else None,
+        custom_instructions=custom_inst,
+    )
 
     try:
         ai_res = await ai_engine.analyze_interaction(
-            system_prompt=system_prompt, text_input=Body, sender_name=lead_record.name
+            system_instruction=system_instruction, text_input=Body, sender_name=lead_record.name
         )
         reply_text = ai_res.get("reply_text", "תודה על ההודעה, נציג יחזור אליך בהקדם.")
     except Exception as e:

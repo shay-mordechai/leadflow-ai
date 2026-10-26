@@ -169,13 +169,18 @@ class AIEngine:
 
     async def analyze_interaction(
         self,
-        system_prompt: str,
+        system_instruction: str | None = None,
         text_input: str | None = None,
         audio_path: str | None = None,
         sender_name: str = "Guest",
         expected_schema: str | None = None,
         chat_history: list[dict] | None = None,
+        system_prompt: str | None = None,
     ) -> dict[str, Any]:
+        if system_instruction is None:
+            system_instruction = system_prompt or PromptBuilder.build_system_instruction(
+                business_type="General", business_name="Business"
+            )
         if text_input is not None:
             text_input = text_input[: PromptBuilder.MAX_INBOUND_MESSAGE_LENGTH]
 
@@ -191,7 +196,7 @@ class AIEngine:
                 }"""
 
             final_prompt = f"""
-            {system_prompt}
+            {system_instruction}
             Current User Talking to you: {sender_name}
             User Message: {text_input if text_input else "Audio Message (Transcribed separately)"}
             Task: You must respond in the character defined above.
@@ -235,8 +240,8 @@ class AIEngine:
                 if redis_client and text_input:
                     normalized_input = text_input.strip().lower()
                     history_str = json.dumps(chat_history) if chat_history else ""
-                    # Hash the combination of persona, history, and exact input
-                    hash_input = f"{system_prompt}|{normalized_input}|{history_str}"
+                    # Hash the combination of instruction, history, and exact input
+                    hash_input = f"{system_instruction}|{normalized_input}|{history_str}"
                     cache_key = f"ai_cache:{hashlib.sha256(hash_input.encode()).hexdigest()}"
 
                     try:
@@ -248,18 +253,6 @@ class AIEngine:
                             return json.loads(cached_response)
                     except Exception as cache_err:
                         logger.warning(f"Redis cache read error: {cache_err}")
-
-                # Dynamically inject the System Instructions to the Model
-                full_system_instruction = f"""
-                [SYSTEM PERSONA - ADHERE STRICTLY]:
-                {system_prompt}
-                [INSTRUCTIONS]:
-                1. If the user asks about availability, autonomously use the 'check_calendar_availability' tool.
-                2. If the user wants to book, autonomously use the 'book_appointment' tool.
-                3. If you need to qualify a budget/timeframe, autonomously use the 'qualify_lead' tool.
-                4. Always respond naturally, in character, and in the user's language.
-                5. If they are angry, include the EXACT word "[HANDOFF]" in your response so a human can take over.
-                """
 
                 formatted_history = []
                 if chat_history:
@@ -283,7 +276,7 @@ class AIEngine:
                 )
                 generation_config = types.GenerateContentConfig(
                     max_output_tokens=MAX_OUTPUT_TOKENS,
-                    system_instruction=full_system_instruction,
+                    system_instruction=system_instruction,
                     tools=AI_TOOLS,
                     automatic_function_calling=types.AutomaticFunctionCallingConfig(
                         maximum_remote_calls=10

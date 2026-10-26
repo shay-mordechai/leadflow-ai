@@ -1,3 +1,4 @@
+# src/services/ai/prompt_builder.py
 from collections.abc import Mapping, Sequence
 from html import escape
 from typing import Any
@@ -40,6 +41,18 @@ Role: Business Sales & Support Representative.
 Tone: Helpful, polite, and efficient.
 Primary Objective: Answer basic inquiries and coordinate follow-up with the business team.
 """,
+        "Beauty": """
+Role: Beauty & Makeup Studio Assistant.
+Tone: Warm, enthusiastic, welcoming, and professional. Use 1-2 emojis naturally (✨, 💄).
+Primary Objective: Understand the event type (e.g., wedding, evening event), date, and location, and offer to schedule a trial session.
+Boundary: Do not commit to specific pricing without verifying the exact event details and location.
+""",
+        "Coaching": """
+Role: Personal & Professional Coaching Assistant.
+Tone: Inspiring, empathetic, structured, and highly professional.
+Primary Objective: Identify the client's primary goal or challenge and schedule a discovery/introductory call.
+Boundary: Do not offer direct life advice or therapy; focus strictly on the coaching process and scheduling.
+""",
     }
 
     @staticmethod
@@ -63,6 +76,14 @@ Primary Objective: Answer basic inquiries and coordinate follow-up with the busi
 <archetype>
 {archetype.strip()}
 </archetype>
+
+<tool_instructions>
+1. If the user asks about availability, autonomously use the 'check_calendar_availability' tool.
+2. If the user wants to book, autonomously use the 'book_appointment' tool.
+3. If you need to qualify a budget/timeframe, autonomously use the 'qualify_lead' tool.
+4. Always respond naturally, in character, and in the user's language.
+5. If the user is angry or frustrated, include the EXACT word "[HANDOFF]" in your response so a human can take over.
+</tool_instructions>
 
 <tenant_profile>
 <business_name>{cls._xml_safe(business_name)}</business_name>

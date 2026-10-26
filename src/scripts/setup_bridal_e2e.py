@@ -69,7 +69,7 @@ def setup_bridal_e2e(
             prof.business_name = name; prof.products_services = svc; prof.custom_instructions = inst
             print("ℹ️ Business Profile updated.")
 
-        prompt = f"נציג וירטואלי מקצועי ואדיב של {name} (איפור כלות). שירותים: {svc}. הנחיות: {inst}."
+        prompt = inst
         agent = db.query(AIAgent).filter(AIAgent.user_id == o.id).first()
         if not agent:
             agent = AIAgent(
