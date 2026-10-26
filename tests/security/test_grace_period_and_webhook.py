@@ -4,6 +4,7 @@ import hashlib
 import hmac
 from datetime import UTC, datetime, timedelta
 from unittest.mock import MagicMock
+from starlette.requests import Request
 
 import pytest
 
@@ -53,7 +54,16 @@ async def test_get_my_leads_grace_period_active(monkeypatch):
     db_session = MagicMock()
     db_session.query.return_value.filter.return_value.options.return_value.options.return_value.order_by.return_value.offset.return_value.limit.return_value.all.return_value = []
 
-    request = MagicMock()
+    scope = {
+        "type": "http",
+        "method": "GET",
+        "path": "/leads/my",
+        "headers": [],
+        "query_string": b"",
+        "client": ("127.0.0.1", 12345),
+        "server": ("testserver", 80),
+    }
+    request = Request(scope)
     await leads.get_my_leads(
         request=request, response=response, limit=50, offset=0, db=db_session, current_user=user
     )
@@ -82,7 +92,16 @@ async def test_get_my_leads_grace_period_expired(monkeypatch):
     db_session = MagicMock()
     db_session.query.return_value.filter.return_value.options.return_value.options.return_value.order_by.return_value.offset.return_value.limit.return_value.all.return_value = []
 
-    request = MagicMock()
+    scope = {
+        "type": "http",
+        "method": "GET",
+        "path": "/leads/my",
+        "headers": [],
+        "query_string": b"",
+        "client": ("127.0.0.1", 12345),
+        "server": ("testserver", 80),
+    }
+    request = Request(scope)
     await leads.get_my_leads(
         request=request, response=response, limit=50, offset=0, db=db_session, current_user=user
     )
