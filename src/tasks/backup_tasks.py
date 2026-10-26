@@ -3,7 +3,7 @@ import logging
 import os
 import sqlite3
 import tempfile  # New import
-from datetime import datetime
+from datetime import UTC, datetime
 
 from src.config import settings
 from src.services.storage.s3_service import s3_service
@@ -28,7 +28,7 @@ def backup_database_to_s3():
     # 2. Create a temporary safe snapshot
     # We use sqlite3.backup() because simply copying the file while it's in WAL mode
     # and being written to can lead to a corrupted backup.
-    timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+    timestamp = datetime.now(UTC).strftime("%Y%m%d_%H%M%S")
     backup_filename = f"leads_backup_{timestamp}.db"
     temp_backup_path = os.path.join(tempfile.gettempdir(), backup_filename)
 

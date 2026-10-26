@@ -3,7 +3,7 @@ import hashlib
 import hmac
 import logging
 import os
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta, timezone
 
 from fastapi import APIRouter, Depends, HTTPException, Request, status
 from fpdf import FPDF
@@ -65,7 +65,7 @@ def generate_invoice_pdf(transaction_id: str, amount: str, user_name: str, user_
     pdf.ln(10)
 
     pdf.set_font("Arial", size=12)
-    current_date = datetime.now().strftime("%B %d, %Y")
+    current_date = datetime.now(UTC).strftime("%B %d, %Y")
 
     details = [
         f"Date: {current_date}",
