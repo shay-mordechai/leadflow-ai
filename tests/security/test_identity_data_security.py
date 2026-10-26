@@ -13,7 +13,7 @@ from unittest.mock import AsyncMock, MagicMock
 import pytest
 from fastapi import FastAPI, HTTPException, Response
 from fastapi.testclient import TestClient
-from jose import jwt
+import jwt
 from starlette.datastructures import UploadFile
 
 from src.config import settings
@@ -42,7 +42,7 @@ def test_auth_token_has_unique_id_and_fixed_hs256_algorithm() -> None:
     """Vulnerability: Stateless JWT Revocation; tokens need unique identifiers for targeted revocation."""
     token = auth.create_access_token({"sub": "user-123", "email": "user@example.com"})
     header = jwt.get_unverified_header(token)
-    claims = jwt.get_unverified_claims(token)
+    claims = jwt.decode(token, options={"verify_signature": False})
 
     assert header["alg"] == "HS256"
     assert claims.get("jti")
