@@ -4,6 +4,7 @@
 # Sends a POST request to the local marketing webhook simulating an incoming bridal lead from a campaign.
 
 import argparse
+
 import requests
 
 
@@ -42,14 +43,18 @@ def simulate_lead(
         else:
             print("\n⚠️ Webhook returned non-201 status.")
     except requests.exceptions.ConnectionError:
-        print("\n❌ Error: Could not connect to the local server. Is FastAPI running on http://localhost:8000?")
+        print(
+            "\n❌ Error: Could not connect to the local server. Is FastAPI running on http://localhost:8000?"
+        )
     except Exception as e:
         print(f"\n❌ Error during simulation: {e}")
 
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Simulate Incoming Bridal Lead")
-    parser.add_argument("--webhook-url", default="http://localhost:8000/webhooks/marketing/incoming-lead")
+    parser.add_argument(
+        "--webhook-url", default="http://localhost:8000/webhooks/marketing/incoming-lead"
+    )
     parser.add_argument("--api-key", default="mk_live_bridal_test_key_abc123")
     args = parser.parse_args()
 

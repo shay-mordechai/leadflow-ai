@@ -3,9 +3,12 @@ from collections.abc import Mapping, Sequence
 from html import escape
 from pathlib import Path
 from typing import Any
+
 import yaml
 
-_PROMPTS_CONFIG_PATH = Path(__file__).parent.parent.parent / "config" / "prompts" / "system_prompts.yaml"
+_PROMPTS_CONFIG_PATH = (
+    Path(__file__).parent.parent.parent / "config" / "prompts" / "system_prompts.yaml"
+)
 with open(_PROMPTS_CONFIG_PATH, "r", encoding="utf-8") as f:
     _PROMPTS_DATA = yaml.safe_load(f)
 

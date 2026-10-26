@@ -204,8 +204,11 @@ async def incoming_sms_message(
 
     # Sales Brain Context Construction
     from src.services.ai.prompt_builder import PromptBuilder
+
     biz = owner.business_profile
-    custom_inst = f"{biz.custom_instructions if biz else ''}\nContext History:\n{history_str}".strip()
+    custom_inst = (
+        f"{biz.custom_instructions if biz else ''}\nContext History:\n{history_str}".strip()
+    )
     system_instruction = PromptBuilder.build_system_instruction(
         business_type=biz.business_type if biz else owner.business_type or "General",
         business_name=owner.business_name or "העסק שלנו",

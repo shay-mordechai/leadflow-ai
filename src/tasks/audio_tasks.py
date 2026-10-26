@@ -70,6 +70,7 @@ def process_audio_message(self, media_url: str, sender_id: str, bot_phone_number
         )
 
         from src.services.ai.prompt_builder import PromptBuilder
+
         biz = lead.user.business_profile
         custom_inst = f"{agent.system_prompt}\n\nContext History:\n{history_str}".strip()
         system_instruction = PromptBuilder.build_system_instruction(

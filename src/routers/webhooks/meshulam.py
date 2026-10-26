@@ -116,7 +116,9 @@ async def meshulam_payment_notify(request: Request, db: Session = Depends(get_db
         transaction_id = data.get("transactionId") or data.get("id") or data.get("transaction_id")
 
         if not transaction_id:
-            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Transaction ID missing")
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST, detail="Transaction ID missing"
+            )
 
         logger.info(f"Received Meshulam IPN. Transaction ID: {transaction_id}")
 
@@ -126,7 +128,10 @@ async def meshulam_payment_notify(request: Request, db: Session = Depends(get_db
                 logger.error(
                     f"❌ SECURITY ALERT: Invalid or missing Meshulam signature for transaction {transaction_id}"
                 )
-                raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Unauthorized - Invalid signature")
+                raise HTTPException(
+                    status_code=status.HTTP_401_UNAUTHORIZED,
+                    detail="Unauthorized - Invalid signature",
+                )
 
         payment_status = str(data.get("status", "")).lower()
         amount = data.get("sum", "0")
@@ -140,9 +145,7 @@ async def meshulam_payment_notify(request: Request, db: Session = Depends(get_db
             .first()
         )
         if existing_tx:
-            logger.info(
-                f"🛡️ Idempotency Shield: Transaction {transaction_id} already processed."
-            )
+            logger.info(f"🛡️ Idempotency Shield: Transaction {transaction_id} already processed.")
             return {"status": "ok", "message": "Already processed"}
 
         # 3. Resolve User via customField1 (UUID) or fallback to email
@@ -227,7 +230,7 @@ async def meshulam_payment_notify(request: Request, db: Session = Depends(get_db
             )
 
             user.subscription_status = SubscriptionStatus.PAST_DUE
-            
+
             # CRITICAL FIX: Only set 24h grace period if they are not already in one
             if user.grace_period_ends_at is None:
                 user.grace_period_ends_at = datetime.now(timezone.utc) + timedelta(hours=24)
@@ -259,4 +262,6 @@ async def meshulam_payment_notify(request: Request, db: Session = Depends(get_db
         raise
     except Exception as e:
         logger.error(f"🔥 Meshulam Webhook Failure: {e}")
-        raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail="Webhook processing failed")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail="Webhook processing failed"
+        )

@@ -5,7 +5,16 @@ import uuid
 from datetime import UTC, datetime, timezone
 from uuid import UUID
 
-from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Query, Request, Response, status
+from fastapi import (
+    APIRouter,
+    BackgroundTasks,
+    Depends,
+    HTTPException,
+    Query,
+    Request,
+    Response,
+    status,
+)
 from pydantic import BaseModel, EmailStr, Field
 
 # Security: Rate Limiting
@@ -247,7 +256,9 @@ async def _send_welcome_whatsapp_background(lead_id: UUID, phone: str, name: str
         intro_text = f"היי {name}, תודה שהשארת פרטים! אני המזכירה הווירטואלית של {biz_name}. איך אפשר לעזור לך היום?"
         success = whatsapp_adapter.send_message(to_phone=clean_phone, text=intro_text)
         if success:
-            logger.info(f"🚀 Speed-to-Lead: Proactive message sent to {clean_phone} for lead {lead_id}")
+            logger.info(
+                f"🚀 Speed-to-Lead: Proactive message sent to {clean_phone} for lead {lead_id}"
+            )
     except Exception as wa_err:
         logger.error(f"WhatsApp outreach background failed for lead {lead_id}: {wa_err}")
     finally:
@@ -257,7 +268,11 @@ async def _send_welcome_whatsapp_background(lead_id: UUID, phone: str, name: str
 @router.post("/webhook/{user_id}", status_code=status.HTTP_200_OK)
 @limiter.limit("10/minute")
 async def receive_external_lead(
-    request: Request, user_id: str, lead_data: PagixLead, background_tasks: BackgroundTasks, db: Session = Depends(get_db)
+    request: Request,
+    user_id: str,
+    lead_data: PagixLead,
+    background_tasks: BackgroundTasks,
+    db: Session = Depends(get_db),
 ):
     raw_payload = {}
     try:
