@@ -1,8 +1,10 @@
 # src/database/session.py
 import uuid
 
-from sqlalchemy import Column, ForeignKey, create_engine, event
-from sqlalchemy.engine import make_url
+from sqlalchemy import Column, ForeignKey, create_engine, event, text
+import sqlalchemy.exc
+import logging
+from tenacity import retry, stop_after_attempt, wait_fixed, before_log, retry_if_exception_type
 from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
 from sqlalchemy.orm import declarative_base, declared_attr, sessionmaker
 from sqlalchemy.types import CHAR, TypeDecorator
@@ -66,6 +68,22 @@ if ":memory:" in sync_database_url and "cache=shared" not in sync_database_url:
     sync_database_url = (
         sync_database_url + ("&" if "?" in sync_database_url else "?") + "cache=shared"
     )
+
+logger = logging.getLogger("LeadFlowSystem")
+
+
+@retry(
+    stop=stop_after_attempt(5),
+    wait=wait_fixed(2),
+    before=before_log(logger, logging.WARNING),
+    retry=retry_if_exception_type((sqlalchemy.exc.OperationalError, ConnectionRefusedError)),
+    reraise=True,
+)
+async def verify_db_connection() -> None:
+    """Verify database connectivity on startup with tenacity retry mechanism."""
+    async with async_engine.connect() as conn:
+        await conn.execute(text("SELECT 1"))
+    logger.info("✅ Database connection verified successfully.")
 
 engine = create_engine(sync_database_url, connect_args=connect_args, **engine_kwargs)
 

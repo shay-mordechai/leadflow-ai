@@ -27,7 +27,7 @@ request_id_ctx_var: ContextVar[str] = ContextVar("request_id", default="")
 from pythonjsonlogger.json import JsonFormatter
 
 from src.config import settings
-from src.database.session import engine, get_db
+from src.database.session import engine, async_engine, get_db, verify_db_connection
 from src.middleware.request_limits import RequestBodyLimitMiddleware
 
 # --- Router Imports ---
@@ -88,9 +88,11 @@ logger = logging.getLogger("LeadFlowSystem")
 async def lifespan(app: FastAPI):
     logger.info("🚀 Starting System...")
     logger.info("🗄️ Database schema is managed by Alembic migrations.")
+    await verify_db_connection()
     yield
     logger.info("🛑 Shutting down gracefully... Cleaning up resources.")
     engine.dispose()
+    await async_engine.dispose()
 
 
 if getattr(settings, "SENTRY_DSN", None):

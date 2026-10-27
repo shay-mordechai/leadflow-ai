@@ -10,10 +10,10 @@ from types import SimpleNamespace
 from typing import Self
 from unittest.mock import AsyncMock, MagicMock
 
+import jwt
 import pytest
 from fastapi import FastAPI, HTTPException, Response
 from fastapi.testclient import TestClient
-import jwt
 from starlette.datastructures import UploadFile
 
 from src.config import settings
