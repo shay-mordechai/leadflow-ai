@@ -10,7 +10,7 @@ worker_class = "uvicorn.workers.UvicornWorker"
 
 # Resilience settings
 keepalive = 5
-timeout = 120 # Higher timeout for potential slow AI operations if not backgrounded
+timeout = 120  # Higher timeout for potential slow AI operations if not backgrounded
 worker_connections = 1000
 
 # Binding
@@ -19,4 +19,4 @@ bind = "0.0.0.0:8000"
 # Logging
 accesslog = "-"
 errorlog = "-"
-loglevel = "warning" # Reduce log noise in production
+loglevel = "warning"  # Reduce log noise in production

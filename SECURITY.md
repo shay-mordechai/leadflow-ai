@@ -104,7 +104,6 @@ async def get_current_user(token: str = Depends(get_token), db: Session = Depend
     if user is None or payload["token_version"] != (user.token_version or 0):
         raise credentials_exception
     return user
-
 ```
 
 ---
@@ -126,7 +125,6 @@ def decrypt(self, ciphertext: str) -> Optional[str]:
     except Exception as e:
         logger.error(f"Decryption failed. Key might be rotated or invalid: {e}")
         return "[DECRYPTION_FAILED]"
-
 ```
 
 ---
@@ -158,7 +156,6 @@ def get_real_ip(request: Request):
     not the reverse proxy's loopback address.
     """
     return request.headers.get("CF-Connecting-IP", get_remote_address(request))
-
 ```
 
 ---
@@ -200,7 +197,6 @@ def log(db: Session, user_id: str, action: str, details: dict = None):
     except Exception as e:
         logger.error(f"Failed to save Audit Log: {e}")
         # Do not re-raise — audit failure must never crash the API
-
 ```
 
 ---

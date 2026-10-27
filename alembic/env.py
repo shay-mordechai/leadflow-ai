@@ -12,10 +12,17 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(__file__)))
 # 2. Import settings and models
 from src.config import settings
 from src.database.session import Base
+
 # IMPORTANT: Import ALL models here so they are registered with Base.metadata before migration
 from src.database.models import (
-    User, Lead, BusinessProfile, PhoneNumber, 
-    AIAgent, MediaInteraction, Integration, MeetingSession
+    User,
+    Lead,
+    BusinessProfile,
+    PhoneNumber,
+    AIAgent,
+    MediaInteraction,
+    Integration,
+    MeetingSession,
 )
 
 config = context.config
@@ -26,6 +33,7 @@ if config.config_file_name is not None:
 
 # 4. Connect app models to Alembic
 target_metadata = Base.metadata
+
 
 def run_migrations_offline() -> None:
     """Run migrations in 'offline' mode."""
@@ -40,14 +48,15 @@ def run_migrations_offline() -> None:
     with context.begin_transaction():
         context.run_migrations()
 
+
 def run_migrations_online() -> None:
     """Run migrations in 'online' mode."""
-    
+
     # Override the URL in the ini file with the real URL from our codebase
     configuration = config.get_section(config.config_ini_section)
     if configuration is not None:
         configuration["sqlalchemy.url"] = str(settings.DATABASE_URL)
-    
+
     connectable = engine_from_config(
         configuration,
         prefix="sqlalchemy.",
@@ -56,17 +65,18 @@ def run_migrations_online() -> None:
 
     with connectable.connect() as connection:
         context.configure(
-            connection=connection, 
+            connection=connection,
             target_metadata=target_metadata,
-            compare_type=True,          # Detects changes like String -> Text
-            compare_server_default=True, # Detects changes in default values
+            compare_type=True,  # Detects changes like String -> Text
+            compare_server_default=True,  # Detects changes in default values
             # --- TIER 2 RELIABILITY: SQLite Batch Mode ---
             # This allows SQLite to handle ALTER TABLE operations by recreating tables
-            render_as_batch=True 
+            render_as_batch=True,
         )
 
         with context.begin_transaction():
             context.run_migrations()
+
 
 if context.is_offline_mode():
     run_migrations_offline()
