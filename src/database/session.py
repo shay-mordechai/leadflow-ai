@@ -1,13 +1,14 @@
 # src/database/session.py
+import logging
 import uuid
 
-from sqlalchemy import Column, ForeignKey, create_engine, event, text
 import sqlalchemy.exc
-import logging
-from tenacity import retry, stop_after_attempt, wait_fixed, before_log, retry_if_exception_type
+from sqlalchemy import Column, ForeignKey, create_engine, event, text
+from sqlalchemy.engine import make_url
 from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
 from sqlalchemy.orm import declarative_base, declared_attr, sessionmaker
 from sqlalchemy.types import CHAR, TypeDecorator
+from tenacity import before_log, retry, retry_if_exception_type, stop_after_attempt, wait_fixed
 
 from src.config import settings
 

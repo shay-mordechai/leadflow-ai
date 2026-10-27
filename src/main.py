@@ -27,7 +27,7 @@ request_id_ctx_var: ContextVar[str] = ContextVar("request_id", default="")
 from pythonjsonlogger.json import JsonFormatter
 
 from src.config import settings
-from src.database.session import engine, async_engine, get_db, verify_db_connection
+from src.database.session import async_engine, engine, get_db, verify_db_connection
 from src.middleware.request_limits import RequestBodyLimitMiddleware
 
 # --- Router Imports ---
