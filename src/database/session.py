@@ -86,6 +86,7 @@ async def verify_db_connection() -> None:
         await conn.execute(text("SELECT 1"))
     logger.info("✅ Database connection verified successfully.")
 
+
 engine = create_engine(sync_database_url, connect_args=connect_args, **engine_kwargs)
 
 if is_sqlite:
