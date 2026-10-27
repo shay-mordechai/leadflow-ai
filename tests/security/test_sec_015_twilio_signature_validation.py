@@ -4,18 +4,22 @@ import hashlib
 import hmac
 
 import pytest
+from fastapi import FastAPI
 from fastapi.testclient import TestClient
 
-import src.database.models  # noqa
+import src.database.models  # noqa: F401
 from src.config import settings
 from src.database.models import Base, PhoneNumber, User
 from src.database.session import SessionLocal, engine
-from temp_test_app import app  # Import the temporary test app
+from src.routers.webhooks import twilio as twilio_webhook_router
+
+# Initialize the FastAPI test application inline to avoid external untracked files
+app = FastAPI()
+app.include_router(twilio_webhook_router.router)
 
 
 @pytest.fixture(autouse=True, scope="session")
 def setup_db():
-    import src.database.models  # noqa
 
     Base.metadata.create_all(bind=engine)
     yield
