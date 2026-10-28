@@ -13,6 +13,7 @@ from twilio.twiml.messaging_response import MessagingResponse
 from src.config import settings
 from src.database.models import Lead, LeadSource, Message, PhoneNumber, Tag, User
 from src.database.session import get_db
+from src.security.pii import mask_body, mask_phone
 from src.services.ai.engine import ai_engine
 from src.services.ai.whisper import whisper_service
 from src.services.communication.whatsapp import whatsapp_adapter
@@ -80,7 +81,9 @@ async def incoming_sms_message(
     MediaContentType0: str = Form(None),
     db: Session = Depends(get_db),
 ):
-    print(f"\n[TWILIO WEBHOOK] Incoming message from {From} to {To}: {Body}")
+    logger.info(
+        f"[TWILIO WEBHOOK] Incoming message from {mask_phone(From)} to {mask_phone(To)}: {mask_body(Body)}"
+    )
     clean_to = To.replace("whatsapp:", "").strip()
     clean_from = From.replace("whatsapp:", "").strip()
 

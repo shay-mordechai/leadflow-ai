@@ -111,7 +111,7 @@ async def verify_whatsapp_signature(request: Request) -> None:
 
     if not signature or not signature.startswith("sha256="):
         logger.warning("Missing or malformed X-Hub-Signature-256 from %s", client_host)
-        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Signature missing")
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Signature missing")
 
     body = await request.body()
     expected_hash = hmac.new(secret.encode("utf-8"), body, hashlib.sha256).hexdigest()
@@ -122,7 +122,7 @@ async def verify_whatsapp_signature(request: Request) -> None:
         expected_hash.encode("ascii"),
     ):
         logger.error("SECURITY ALERT: Invalid WhatsApp signature from %s", client_host)
-        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid signature")
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Invalid signature")
 
 
 @router.get("")

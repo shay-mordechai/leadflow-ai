@@ -15,7 +15,7 @@ from src.routers.webhooks import twilio as twilio_webhook_router
 
 # Initialize the FastAPI test application inline to avoid external untracked files
 app = FastAPI()
-app.include_router(twilio_webhook_router.router)
+app.include_router(twilio_webhook_router.router, prefix="/webhooks/twilio")
 
 
 @pytest.fixture(autouse=True, scope="session")

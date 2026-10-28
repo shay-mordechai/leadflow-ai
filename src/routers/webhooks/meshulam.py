@@ -129,8 +129,8 @@ async def meshulam_payment_notify(request: Request, db: Session = Depends(get_db
                     f"❌ SECURITY ALERT: Invalid or missing Meshulam signature for transaction {transaction_id}"
                 )
                 raise HTTPException(
-                    status_code=status.HTTP_401_UNAUTHORIZED,
-                    detail="Unauthorized - Invalid signature",
+                    status_code=status.HTTP_403_FORBIDDEN,
+                    detail="Invalid Meshulam Signature",
                 )
 
         payment_status = str(data.get("status", "")).lower()
