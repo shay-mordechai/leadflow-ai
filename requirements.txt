@@ -54,7 +54,7 @@ fsspec==2026.6.0
 google-ai-generativelanguage==0.6.15
 google-api-core==2.25.2
 google-api-python-client==2.189.0
-google-auth==2.49.0.dev0
+google-auth>=2.62.0
 google-auth-httplib2==0.3.0
 google-genai==1.75.0
 googleapis-common-protos==1.72.0
@@ -135,7 +135,7 @@ rsa==4.9.1
 ruamel.yaml==0.19.1
 s3transfer==0.16.0
 sentry-sdk==2.53.0
-setuptools==83.0.0
+setuptools>=84.1.0
 shellingham==1.5.4
 six==1.17.0
 slowapi==0.1.9
