@@ -47,7 +47,6 @@ from src.routers import (
 from src.routers import settings as settings_router
 from src.routers.billing import checkout, invoices
 from src.routers.webhooks import campaign, marketing, meshulam, twilio, whatsapp
-from src.routers import benchmark
 
 # --- Services ---
 from src.services.communication.email import email_service
