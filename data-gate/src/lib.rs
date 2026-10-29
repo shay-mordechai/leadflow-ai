@@ -159,12 +159,11 @@ fn redact_recursive_bounded(value: &mut Value, current_depth: usize, max_depth: 
     }
     match value {
         Value::Object(map) => {
-            let keys: Vec<String> = map.keys().cloned().collect();
-            for key in keys {
-                let key_lower = key.to_lowercase();
-                if SENSITIVE_FIELDS.iter().any(|&s| s == key_lower.as_str()) {
-                    map.insert(key, json!("[REDACTED]"));
-                } else if let Some(val) = map.get_mut(&key) {
+            for (key, val) in map.iter_mut() {
+                // Redact sensitive fields by replacing their values with "[REDACTED]"
+                if SENSITIVE_FIELDS.iter().any(|&s| s.eq_ignore_ascii_case(key)) {
+                    *val = json!("[REDACTED]");
+                } else {
                     redact_recursive_bounded(val, current_depth + 1, max_depth);
                 }
             }
