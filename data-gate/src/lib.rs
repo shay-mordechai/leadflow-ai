@@ -104,10 +104,7 @@ impl HttpContext for DataHopHttpContext {
         // Check if the backend explicitly requested redaction via header
         if let Some(ttl) = self.get_http_response_header("X-Data-TTL") {
             if ttl == "1" {
-                info!("Data Hop Firewall: TTL restriction detected (TTL=1). Enabling redaction.");
                 self.should_redact = true;
-                
-                // Remove headers to prevent leakage and avoid Content-Length mismatches
                 self.set_http_response_header("X-Data-TTL", None);
                 self.set_http_response_header("Content-Length", None);
             }

@@ -1,4 +1,3 @@
-# Dockerfile
 # Optimized Dockerfile for FastAPI with AI processing capabilities (Whisper).
 # Uses a non-root user and slim base for enhanced security and reduced footprint.
 
@@ -11,15 +10,14 @@ ENV CURRENT_IMAGE_SHA=${CURRENT_IMAGE_SHA}
 ENV PYTHONDONTWRITEBYTECODE=1
 ENV PYTHONUNBUFFERED=1
 ENV PYTHONPATH=/app
-
-# Set HuggingFace Cache directory to a writable location for the non-root user
-# This is critical for faster-whisper to download models without permission errors
 ENV HF_HOME=/app/data/huggingface_cache
+
+# SECURITY: Create user FIRST before adding any files
+RUN useradd -m -u 1000 leadflowuser
 
 WORKDIR /app
 
 # Install system dependencies
-# Includes ffmpeg and libraries for audio processing (PyAV/faster-whisper)
 RUN apt-get update && apt-get install -y --no-install-recommends \
     ffmpeg \
     libmagic1 \
@@ -35,31 +33,26 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     libswresample-dev \
     && rm -rf /var/lib/apt/lists/*
 
-# Install Python dependencies
-COPY requirements.txt .
+# Install Python dependencies separately to cache the layer
+COPY --chown=leadflowuser:leadflowuser requirements.txt .
+RUN pip install --no-cache-dir torch torchvision torchaudio --index-url https://download.pytorch.org/whl/cpu \
+    && pip install --no-cache-dir -r requirements.txt
 
-# SECURITY & SIZE OPTIMIZATION: 
-# Using --no-cache-dir for all installations to keep the image lean.
-RUN pip install --no-cache-dir torch torchvision torchaudio --index-url https://download.pytorch.org/whl/cpu
-RUN pip install --no-cache-dir -r requirements.txt
+# Copy the rest of the application directly as the non-root user
+# This avoids the expensive 'chown -R' layer that causes disk space exhaustion
+COPY --chown=leadflowuser:leadflowuser . .
 
-# Copy the rest of the application code
-COPY . .
+# FIX: Pre-create required storage directories
+RUN mkdir -p storage/audio storage/kyc data/huggingface_cache models \
+    && chown -R leadflowuser:leadflowuser storage data models
 
-# FIX: Pre-create ALL required storage directories (including kyc) to prevent PermissionError
-RUN mkdir -p storage/audio storage/kyc data/huggingface_cache models
-
-# SECURITY: Run as a non-privileged user. 
-# Prevents container breakout attacks and follows the Principle of Least Privilege.
-RUN useradd -m leadflowuser && chown -R leadflowuser:leadflowuser /app
+# Switch to the non-privileged user
 USER leadflowuser
 
 # Expose the port for FastAPI
 EXPOSE 8000
 
-# Gunicorn is configured with 1 worker for SQLite concurrency safety.
-# Timeout is set to 120s to allow AI models (Whisper/Gemini) time to process.
-# Logs are piped directly to the container engine.
+# Gunicorn configuration
 CMD ["gunicorn", "src.main:app", \
     "--workers", "1", \
     "--worker-class", "uvicorn.workers.UvicornWorker", \
