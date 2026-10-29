@@ -1,4 +1,4 @@
-# SECURITY.md — MyLeads AI
+# SECURITY.md — MyLeads AI (LeadFlow)
 
 **Classification:** Public (Post-Remediation)
 **Last Audit:** October 2026
@@ -10,70 +10,80 @@
 
 This document maps the security layers built into MyLeads AI — an AI-powered SaaS lead management platform. Security was designed as part of the architecture from day one, not bolted on as an afterthought.
 
-Every finding in this document is based on self-directed code review, active threat modeling, and hands-on vulnerability research — including responsible disclosure of security flaws in external AI platforms.
+Every finding in this document is based on self-directed code review, active threat modeling, container runtime inspection, and hands-on vulnerability research — including responsible disclosure of security flaws in external platforms.
 
 ---
 
-## 1. Network Architecture — "Ghost Server" (Zero Attack Surface)
+## 1. Network Architecture & Container Hardening — "Ghost Server"
 
-**Threat:** Automated bot scanning, direct IP DDoS, port enumeration.
+**Threat:** Automated bot scanning, direct IP DDoS, port enumeration, and container privilege escalation.
 
 **Implementation:**
-- The Hetzner Cloud server blocks all inbound ports (`0.0.0.0/0` fully empty). The server does not listen to the public internet.
-- All ingress traffic is exclusively routed through a **Cloudflare Tunnel** — an outbound-only encrypted connection initiated by the `cloudflared` container. This neutralizes Direct IP Scanning and network-layer DDoS entirely.
-- SSH access requires hardware-key authentication via **Cloudflare Identity-Aware Proxy (IAP)**.
-- The application stack runs as **Rootless Podman** on RHEL 10.1 — significantly reducing the blast radius of any container compromise.
+- **Zero Inbound Attack Surface:** The Hetzner Cloud server blocks all public inbound ports (`0.0.0.0/0` fully closed). The server does not listen directly to the public internet.
+- **Cloudflare Zero Trust Tunnel:** All ingress traffic is routed exclusively through an outbound-only encrypted connection initiated by the `cloudflared` daemon, neutralizing direct IP scanning and network-layer DDoS.
+- **Hardware-Key SSH:** Administrative SSH access requires FIDO2/WebAuthn hardware-key authentication via **Cloudflare Identity-Aware Proxy (IAP)**.
+- **Rootless Podman & Systemd Quadlets:** The entire stack executes under **Rootless Podman** (`rootless=true`) managed via user-level Systemd Quadlets (`systemctl --user`), eliminating root daemon attack surfaces.
+- **Container Runtime Hardening (Verified via `podman inspect`):**
+  - **No New Privileges:** Every container (`leadflow-backend`, `leadflow-frontend`, `leadflow-data-gate`, `leadflow-db`, `leadflow-redis`) enforces `sec_opt=[no-new-privileges]`, blocking setuid/setgid privilege escalation inside the container namespace.
+  - **Unprivileged UIDs:** Application workloads run as non-root users (`user=leadflowuser` in Backend, `user=nextjs` in Frontend) with `privileged=false`.
+  - **Resource & Cgroup Bounds:** The backend enforces a hard kernel memory ceiling of `1.5 GiB` (`mem=1610612736`) to contain memory-leak or resource-exhaustion blast radii.
+  - **Loopback & Bridge Isolation:** Internal services bind exclusively to `127.0.0.1` (`PostgreSQL` on `5432`, `Redis` on `6379`) and communicate over an isolated bridge network (`leadflow-network`) with `STRICT_DNS` and `V4_ONLY` resolution.
 
 ---
 
 ## 2. Secrets Management — In-Memory Bootstrapping (SSRF/LFI Mitigation)
 
-**Threat:** An attacker exploiting SSRF or LFI targets `.env` files to exfiltrate API keys and credentials.
+**Threat:** An attacker exploiting SSRF or LFI targets `.env` files on disk to exfiltrate API keys and database credentials.
 
 **Implementation:**
-- Static `.env` files **do not exist** in the production environment. At server startup, `src/config.py` calls **AWS SSM Parameter Store** directly via `boto3` and loads all secrets into memory only (In-Memory, never written to disk).
-- Zero secret artifacts on disk — attacker's maneuvering surface approaches zero.
-- **IMDSv2** (Token-based Metadata Service) enforced to block basic SSRF attacks against the AWS Metadata endpoint.
+- Static `.env` files **do not exist** in the production deployment. At server startup, `src/config.py` queries **AWS SSM Parameter Store** directly via `boto3` and loads all secrets exclusively into process memory (never written to disk).
+- Zero secret artifacts on the filesystem reduce post-exploitation credential harvesting to near zero.
+- **IMDSv2** (Token-based Metadata Service) is enforced to block unauthenticated SSRF token theft against cloud metadata endpoints.
 
 ---
 
 ## 3. MFA — Single-Use OTP & Replay Attack Prevention
 
-**Threat:** OTP reuse within the validity window (Replay Attack); weak OTP generation (CWE-338).
+**Threat:** OTP reuse within the validity window (Replay Attack); weak PRNG OTP generation (CWE-338).
 
 **Implementation:**
 
 Atomic operation sequence:
-1. **Charge the payment:** User submits OTP.
-2. **Lock the register:** On match, the OTP is **immediately deleted from the DB and `db.commit()` is called** before any other operation.
-3. **Issue the receipt:** Only after the OTP is invalidated in the DB is the JWT issued.
+1. **Charge the payment:** User submits the OTP.
+2. **Lock the register:** On match, the OTP is **immediately deleted from the DB and `db.commit()` is called** before any subsequent logic.
+3. **Issue the receipt:** Only after the OTP deletion transaction commits is the JWT generated and returned.
 
-- **Cryptographic correctness:** OTP generated using `secrets` (OS CSPRNG) instead of the vulnerable `random` module (CWE-338).
-- Delete-before-issue eliminates the Race Condition window between token issuance and OTP deletion.
-- **Token Versioning (`token_version`):** Each user has a `token_version` counter in the database. When a password is reset or a critical security event occurs, this version is incremented, invalidating all older JWTs for that user (forcing re-login).
-- **Redis JWT Revocation:** Logged-out or compromised tokens are immediately added to a Redis-backed blocklist, preventing their reuse until their natural expiration.
+- **Cryptographic Correctness:** OTPs are generated using Python's `secrets` module (OS CSPRNG) rather than the predictable `random` module (CWE-338).
+- **Race-Condition Elimination:** Delete-before-issue closes the TOCTOU (Time-of-Check to Time-of-Use) window between token issuance and OTP invalidation.
+- **Token Versioning (`token_version`):** Each user record maintains an integer `token_version` counter. On password reset or security events, this counter increments, immediately invalidating all previously issued JWTs for that user.
+- **Redis JWT Revocation:** Logged-out or revoked tokens (`jti`) are written to a Redis blocklist until their natural `exp` timestamp expires.
 
 ---
 
-## 4. WASM DLP Firewall — Information Disclosure Prevention (CWE-209)
+## 4. Envoy Rust/Wasm DLP Firewall — Egress PII Redaction & Error Masking (CWE-209 / CWE-359)
 
-**Threat:** Stack traces exposing internal paths, server versions, and keys in error responses.
+**Threat:** Accidental leakage of sensitive PII in API responses or stack traces exposing internal file paths, library versions, and logic in `5xx` error responses.
 
-**Implementation:**
-- A custom **WebAssembly (WASM)** filter written in **Rust**, running directly inside an **Envoy Proxy** sidecar container.
-- **Fail-Closed architecture:** The filter intercepts errors Out-of-Process. Any `5xx` response is cut, the stack trace is stripped, and the client receives a sanitized generic JSON: `{"error": "Internal Security Proxy Intervention"}`.
+**Implementation (`data-gate/src/lib.rs`):**
+- A custom **WebAssembly (Wasm)** filter (`data_hop_firewall.wasm`) written in **Rust** (`proxy-wasm` v0.2.4) runs inline inside the **Envoy Proxy** (`v1.28`) container on port `10000`.
+- **Header-Triggered Structural PII Redaction:**
+  - When upstream FastAPI handlers set the internal response header `X-Data-TTL: 1` (normalized to `x-data-ttl: 1` by Envoy), `on_http_response_headers` activates redaction mode for that stream and strips both `x-data-ttl` and `content-length` from the outbound headers.
+  - In `on_http_response_body`, the filter parses the JSON response buffer and scrubs designated top-level PII keys (`phone`, `email`, `name`), replacing their values with `"[REDACTED]"` before bytes leave the network edge.
+- **Fail-Closed Error Masking:** Unhandled `5xx` upstream responses are intercepted out-of-process; raw stack traces are stripped and replaced with a generic JSON payload: `{"error": "Internal Security Proxy Intervention"}`.
+- **Empirical Latency Verification (`wrk`):** Staggered load testing (`tests/benchmarks/run_latency_bench.sh`) across 2.1 KB JSON payloads confirmed that the Rust/Wasm filter introduces negligible latency overhead (bounded within normal run-to-run proxy jitter of `< 3 ms` median delta) while Envoy's connection pooling reduces tail `P99` latency compared to direct backend access.
+- **Current Scope & Defense-in-Depth Roadmap:** The current Wasm filter performs deterministic, schema-based top-level key redaction (`serde_json::Value` map lookup). To protect unstructured conversational strings (e.g., phone numbers written inside a free-text `note` field) and deeply nested sub-objects, recursive JSON AST traversal and non-backtracking regex scrubbing are tracked in the engineering roadmap.
 
-**Why not eBPF?** eBPF is excellent for observability but is Read-Only on data payloads. The kernel verifier does not permit dynamic mutation of Layer 7 payloads at runtime — making Envoy WASM the correct architectural choice.
+**Why Envoy Wasm instead of eBPF?** eBPF is designed for kernel-level observability and packet filtering, but the eBPF verifier prohibits arbitrary dynamic mutation and length-changing re-serialization of Layer-7 HTTP payloads. Envoy + `proxy-wasm` provides memory-safe, sandboxed Layer-7 stream manipulation.
 
 ---
 
 ## 5. Access Control & IDOR Prevention
 
-**Threat:** Attacker modifies `user_id` in a URL or payload to access another user's data (Insecure Direct Object Reference).
+**Threat:** Attacker modifies `user_id` or `tenant_id` in a URL or JSON body to access another tenant's data (Insecure Direct Object Reference).
 
 **Implementation (`src/security/dependencies.py`):**
-- The API does not trust any client-supplied identifier. `get_current_user` decodes the JWT, extracts the `email` from the cryptographic claims, and fetches the user directly from the DB.
-- All protected endpoints require this dependency — requests are structurally blocked at the routing layer before reaching business logic.
+- The API never trusts client-supplied identity parameters. `get_current_user` validates the JWT signature, verifies `jti` (revocation check), `token_version`, and `exp`, extracts the authenticated identity from the cryptographic claims, and loads the user record from PostgreSQL.
+- Protected routers enforce this dependency at the FastAPI routing layer prior to executing business logic.
 
 ```python
 # src/security/dependencies.py
@@ -104,19 +114,20 @@ async def get_current_user(token: str = Depends(get_token), db: Session = Depend
     if user is None or payload["token_version"] != (user.token_version or 0):
         raise credentials_exception
     return user
+
 ```
 
 ---
 
 ## 6. PII Encryption at Rest
 
-**Threat:** A database breach exposes customer phone numbers and AI conversation transcripts.
+**Threat:** A database snapshot compromise exposes customer phone numbers and AI conversation transcripts.
 
 **Implementation (`src/security/encryption.py`):**
 
-* Symmetric encryption using **Fernet (AES-128 CBC)** via the `cryptography` library.
-* **Lazy Initialization:** The cipher is not instantiated until the `ENCRYPTION_KEY` is loaded from AWS SSM — prevents cryptographic operations with a missing or incomplete key.
-* **Fail-Safe Decryption:** Decryption failure (key rotation / corrupted ciphertext) does not crash the application — logs a security audit event and returns `[DECRYPTION_FAILED]` as a safe placeholder.
+* Application-layer symmetric encryption using **Fernet (AES-128-CBC + HMAC-SHA256)** via the `cryptography` library.
+* **Lazy Initialization:** The cipher is instantiated only after `ENCRYPTION_KEY` is fetched into memory, preventing cryptographic operations with uninitialized keys.
+* **Fail-Safe Decryption:** Decryption errors (e.g., during key rotation or corrupted ciphertext) log a structured security event and return `"[DECRYPTION_FAILED]"` rather than crashing the worker process.
 
 ```python
 def decrypt(self, ciphertext: str) -> Optional[str]:
@@ -125,28 +136,29 @@ def decrypt(self, ciphertext: str) -> Optional[str]:
     except Exception as e:
         logger.error(f"Decryption failed. Key might be rotated or invalid: {e}")
         return "[DECRYPTION_FAILED]"
+
 ```
 
 ---
 
 ## 7. Out-of-Band Management & CLI-Only Administration
 
-**Threat:** An exposed admin panel is a primary target for web exploits.
+**Threat:** Exposed web administrative panels serve as high-value targets for privilege escalation and credential stuffing.
 
 **Implementation:**
 
-* Admin actions are **fully disabled in the web UI** and moved to a unified CLI tool (`manage_cli.py`) accessible only via SSH.
-* **Global Exception Handler:** Intercepts all 500 errors globally, strips stack traces, renders a localized generic message to the client, and dispatches a detailed HTML crash report to `ADMIN_EMAIL` out-of-band.
+* Administrative mutations are **disabled in the public web UI** and restricted to an isolated CLI tool (`manage_cli.py`) executable only via hardware-authenticated SSH.
+* **Global Exception Handler:** Intercepts unhandled `500 Internal Server Errors`, returns a sanitized response to the client, and dispatches detailed crash diagnostics out-of-band to `ADMIN_EMAIL`.
 
 ---
 
 ## 8. Proxy-Aware Rate Limiting (DoS & Brute Force Prevention)
 
-**Threat:** A standard rate limiter behind Cloudflare throttles the tunnel's loopback IP (`127.0.0.1`) — causing a Global DoS affecting all legitimate users.
+**Threat:** Standard rate limiters behind a reverse proxy or tunnel throttle the proxy's loopback IP (`127.0.0.1`), causing a self-inflicted Global DoS for all legitimate users.
 
 **Implementation (`src/security/rate_limiter.py`):**
 
-* Custom `get_real_ip` function extracts the `CF-Connecting-IP` header injected by Cloudflare's edge — directing the rate limiter at the actual attacker IP, not the proxy. This ensures trusted proxy IP validation and fails closed if the expected headers are missing or malformed.
+* Custom `get_real_ip` resolver extracts the `CF-Connecting-IP` header injected by Cloudflare's authenticated edge, ensuring rate limits track the actual client IP rather than the Envoy or `cloudflared` loopback interface.
 
 ```python
 def get_real_ip(request: Request):
@@ -156,36 +168,39 @@ def get_real_ip(request: Request):
     not the reverse proxy's loopback address.
     """
     return request.headers.get("CF-Connecting-IP", get_remote_address(request))
+
 ```
 
 ---
 
 ## 9. PDF Generation — SSRF & Path Traversal Mitigation
 
-**Threat:** HTML-to-PDF engines (e.g., `wkhtmltopdf`) execute network requests based on user-supplied content, enabling `file:///etc/passwd` or AWS metadata exfiltration embedded in generated documents.
+**Threat:** HTML-to-PDF engines (e.g., `wkhtmltopdf`) parse `<script>`, `<iframe>`, or `<img>` tags and execute server-side network requests, enabling `file:///etc/passwd` LFI or cloud metadata SSRF.
 
 **Implementation:**
 
-* Uses **FPDF**, which renders plain text cells only — no HTML parsing, no network calls. SSRF risk = zero by design.
+* Uses **`fpdf2`** (`>=2.8.8`), which constructs PDF primitives directly from plain text strings without an HTML/DOM parser or network client. SSRF via PDF rendering is eliminated by design.
 
 **Remediation: Path Traversal (SEC-012)**
 
-*   **Description:** Previously, `os.path.join(output_dir, filename)` was used without sufficient filename sanitization, allowing potential Path Traversal if the caller controlled the filename.
-*   **Implemented Fix:**
-    1.  **Filename Sanitization:** The caller-supplied filename is now strictly sanitized. It strips all directory components (`os.path.basename`), replaces unsafe characters (non-alphanumeric, underscore, hyphen) with underscores (`re.sub`), and enforces a `.pdf` extension.
-    2.  **Strict Path Verification:** The resolved output path is rigorously checked to ensure it remains strictly within the intended target output directory (`storage/pdfs`). Any attempt to traverse outside this directory is detected and neutralized, resulting in the use of a safe, randomly generated filename instead.
+* **Description:** Previously, `os.path.join(output_dir, filename)` was called without strict filename canonicalization.
+* **Implemented Fix:**
+1. **Filename Sanitization:** Strips directory components via `os.path.basename`, replaces non-alphanumeric characters (except `_` and `-`) with underscores via `re.sub`, and enforces a `.pdf` suffix.
+2. **Canonical Path Verification:** Resolves the absolute target path and verifies it resides strictly inside `storage/pdfs`. Any traversal attempt falls back to a cryptographically random UUID filename.
+
+
 
 ---
 
 ## 10. Audit Logging & Security Monitoring (OWASP A09)
 
-**Threat:** Absence of logging allows attackers to operate undetected (OWASP A09:2021 — Security Logging and Monitoring Failures).
+**Threat:** Absence of tamper-evident logging allows attackers to probe or pivot undetected (OWASP A09:2021).
 
 **Implementation (`src/security/audit.py`):**
 
-* Dual-write pattern: every security event is written to the DB **and** emitted as a **Structured JSON log** — ready for ingestion by AWS CloudWatch, ELK, or Splunk.
-* **Fail-Safe:** DB write failure falls back to `logger.error` without raising — an attacker cannot trigger Application DoS by exhausting the audit table.
-- **Log Injection Sanitization:** All user-supplied inputs destined for logs are sanitized upstream using strict allow-lists and encoding to prevent log injection attacks (CWE-117).
+* **Dual-Write Pattern:** Every sensitive event is persisted to the `AuditLog` database table **and** emitted via `python-json-logger` (`JsonFormatter`) as a structured JSON log line with `request_id` correlation.
+* **Fail-Safe Execution:** Database write exceptions fall back to `logger.error` without raising, preventing attackers from causing an Application DoS via audit storage exhaustion.
+* **Log Injection Sanitization (CWE-117):** User-supplied strings are sanitized and JSON-encoded to prevent newline/CRLF log forging.
 
 ```python
 @staticmethod
@@ -197,117 +212,138 @@ def log(db: Session, user_id: str, action: str, details: dict = None):
     except Exception as e:
         logger.error(f"Failed to save Audit Log: {e}")
         # Do not re-raise — audit failure must never crash the API
+
 ```
 
 ---
 
-## 11. Webhook Spoofing (Twilio)
+## 11. Webhook Spoofing Prevention (Twilio HMAC-SHA1)
 
-**Threat:** `src/routers/webhooks/twilio.py` previously accepted the `From` parameter from Form Data without cryptographic signature validation, allowing an attacker to forge `From` to impersonate the business owner and trigger Admin Command Mode.
+**Threat:** Unauthenticated form submissions to `src/routers/webhooks/twilio.py` forging the `From` parameter to impersonate the business owner.
 
 **Remediation: Twilio Webhook Signature Validation (SEC-015)**
 
-*   **Description:** An attacker could previously forge `From` requests to the Twilio webhook, impersonating the business owner and potentially sending mass broadcasts at the platform's expense.
-*   **Implemented Fix:**
-    1.  **Cryptographic Validation:** A `validate_twilio_signature` dependency has been implemented. It retrieves the `X-Twilio-Signature` header and `TWILIO_AUTH_TOKEN` from settings.
-    2.  **HMAC-SHA1 Comparison:** The dependency reconstructs the signed payload (URL + sorted POST parameters) as per Twilio's specification, calculates the HMAC-SHA1 signature, and performs a constant-time comparison with the received signature.
-    3.  **Fail-Closed Principle:** The webhook fails closed, rejecting requests with HTTP 403 Forbidden if the `X-Twilio-Signature` header is missing or invalid, preventing unauthorized access and spoofing.
-
-## 12. CI/CD Pipeline RCE Prevention (Zero-Trust Pull CD)
-
-**Threat:** A compromised GitHub Actions workflow or compromised dependency executes arbitrary bash commands on the production server (Remote Code Execution - הרצת קוד מרחוק) via exposed SSH keys.
-
-**Implementation:**
-
-* **Pull-Based CD:** The production server does not accept direct deployment commands (No Push).
-* **HMAC-Signed Trigger:** GitHub sends a lightweight Webhook signed with HMAC-SHA256. The server validates the signature before independently pulling (`podman pull`) the latest image from GHCR (GitHub Container Registry).
-* **Air-Gapped Runtime:** The server's runtime environment remains completely isolated from the CI/CD pipeline's execution context.
-- **Static Analysis Security Testing (SAST) & Software Composition Analysis (SCA):** The CI pipeline includes `Gitleaks` for secret detection, `Trivy` for container image and filesystem vulnerability scanning, `Bandit` for Python SAST, and `pip-audit` for Python dependency vulnerability scanning. These are configured as mandatory gates (`exit-code: "1"`) for critical and high-severity findings.
+1. **Cryptographic Validation:** The `validate_twilio_signature` dependency extracts `X-Twilio-Signature` and validates it against `TWILIO_AUTH_TOKEN`.
+2. **Constant-Time HMAC-SHA1:** Reconstructs the canonical payload (full URL + sorted POST parameters), computes the HMAC-SHA1 digest, and verifies it using `hmac.compare_digest` to prevent timing side-channel attacks.
+3. **Fail-Closed Principle:** Requests with missing or invalid signatures are immediately rejected with `HTTP 403 Forbidden`.
 
 ---
 
-## 13. Meta WhatsApp Webhook Security (HMAC Validation)
+## 12. CI/CD Pipeline RCE Prevention & Supply-Chain Security
 
-**Threat:** An attacker discovers the webhook endpoint and injects fake messages to manipulate the AI, spam the system, or cause Application DoS (Denial of Service - מניעת שירות).
+**Threat:** A compromised GitHub Actions runner or malicious third-party package executes arbitrary commands on the production server (RCE) or introduces vulnerable dependencies into container images.
 
 **Implementation:**
 
-* All incoming payloads from Meta are validated against the `X-Hub-Signature-256` header.
-* The server calculates the HMAC-SHA256 hash using the `WHATSAPP_APP_SECRET` and the raw request body, instantly dropping any request that lacks cryptographic proof of origin.
-- **5-Minute Replay Attack Prevention:** Incoming webhooks include a Unix timestamp in the `X-Hub-Signature-256` payload. The server rejects any request where the timestamp is older than 5 minutes, mitigating replay attacks.
+* **Pull-Based CD (Air-Gapped Runtime):** The production server does not expose SSH or deployment sockets to GitHub Actions. Instead, CI publishes verified images to `ghcr.io`, and a lightweight HMAC-SHA256 webhook triggers a hardcoded local pull and Systemd service restart (`podman pull && systemctl --user restart`).
+* **Mandatory CI/CD Security & Quality Gates (`exit-code: 1`):**
+* **Code Quality & Linting:** `ruff check src tests` and `ruff format --check src tests`.
+* **Secret Scanning:** `Gitleaks` scans commit history for accidental credential commits.
+* **Python SAST:** `Bandit` scans application source code for insecure patterns.
+* **Supply-Chain SCA (`pip-audit`):** Audits `requirements.txt` against the Python Advisory Database on every build, enforcing patched versions across transitive dependencies (including `aiohttp`, `certifi>=2026.10.19`, `filelock>=4.2.1`, and `fpdf2>=2.8.8`).
+* **Container Vulnerability Scanning:** `Trivy` scans built container images for OS and library CVEs before registry push.
+
+
 
 ---
 
-## 14. AI Prompt Injection & Jailbreak Defense (Hierarchical Context Injection)
+## 13. Meta WhatsApp Webhook Security (HMAC-SHA256 & Replay Defense)
 
-**Threat:** A user sends a malicious WhatsApp message (e.g., "Ignore previous instructions") to bypass system guardrails, extract system prompts, or force unauthorized actions (Prompt Injection - הזרקת פקודות).
+**Threat:** Forged webhook payloads or replayed legitimate captures used to manipulate AI state or exhaust LLM quotas.
+
+**Implementation:**
+
+* **HMAC-SHA256 Verification:** Validates the raw request body against `X-Hub-Signature-256` using `WHATSAPP_APP_SECRET` and constant-time digest comparison.
+* **5-Minute Replay Window:** Extracts the event timestamp and drops any webhook payload older than 300 seconds, neutralizing capture-and-replay attacks.
+
+---
+
+## 14. AI Prompt Injection & Jailbreak Defense (Hierarchical Context Isolation)
+
+**Threat:** Untrusted WhatsApp messages attempting "Ignore previous instructions" attacks to leak system prompts or bypass tenant business boundaries.
 
 **Implementation (`src/services/ai/prompt_builder.py`):**
 
-* **XML Delimiters:** System rules and business context are isolated from untrusted user inputs using strict XML tags (e.g., `<system>`, `<latest_user_message>`).
-* **Volatility Ordering (Caching):** Static guardrails and tenant business rules are placed at the top layer (100% Cached), while dynamic user input is strictly placed at the bottom layer.
-* **Structured Outputs:** The LLM is restricted by the `google-genai` API to only return valid JSON matching the `WhatsAppAgentResponse` Pydantic schema, neutralizing free-text manipulation.
-- **Conversation Turn Cap:** AI conversations are capped at 15 turns (user and AI messages combined) to limit the attack surface for persistent prompt injection and control resource consumption.
+* **XML Boundary Delimiters:** Untrusted user inputs are strictly encapsulated within XML tags (`<system>`, `<latest_user_message>`) with explicit system instructions treating tag contents as inert data.
+* **Volatility Ordering:** Immutable security guardrails and tenant rules are positioned at the top of the context window, isolating dynamic user input at the bottom.
+* **Schema-Constrained Output:** `google-genai` responses are strictly bound to the `WhatsAppAgentResponse` Pydantic schema, preventing free-text policy bypasses.
+* **15-Turn Conversation Cap:** Sessions are bounded to a maximum of 15 turns to prevent multi-turn context manipulation and bound token consumption.
 
 ---
 
-## 15. Campaign Lead API Security (Sanitization & Idempotency)
+## 15. Campaign Lead API Security (Sanitization & Atomic Idempotency)
 
-**Threat:** External marketing automations (Zapier/Make) sending unvalidated payloads, leading to Meta WABA bans (due to spam) or billing exhaustion from duplicate/malicious leads.
+**Threat:** External marketing integrations (Zapier/Make) submitting malformed payloads or duplicate retry bursts that exhaust billing quotas or trigger Meta WABA spam flags.
 
 **Implementation (`src/routers/webhooks/campaign.py`):**
 
-* **Authentication:** Enforced `X-Tenant-Key` header validation for all inbound campaign requests.
-* **Strict Sanitization (ניקוי קלט):** Phone numbers are strictly validated against E.164 regex formatting. Text fields (names, notes) are strictly truncated to short limits to prevent injection payloads.
-* **Idempotency (מניעת כפילויות) & Atomic Quota Reservation:** Employs Redis `SET NX` (set if not exists) for atomic, distributed idempotency keys, preventing duplicate outbound WhatsApp initialization for the same lead within a 24-hour window. This also enables atomic reservation of communication quotas, protecting the Meta Quality Rating and preventing billing exhaustion.
+* **Tenant Key Authentication:** Requires a valid `X-Tenant-Key` header.
+* **Strict Input Sanitization:** Phone numbers are validated against E.164 regex patterns, and free-text fields (`name`, `note`) are length-capped.
+* **Atomic Redis Idempotency (`SET NX`):** Uses distributed Redis locks with a 24-hour TTL to guarantee single-execution semantics per lead and atomically reserve outbound messaging quotas.
+
+---
 
 ## 16. Immutable Deployments & Off-Site State Correlation (Disaster Recovery)
 
-**Threat:** Silent data corruption, server physical failure, or schema-mismatch crashing the application after a code deployment.
-
-**Implementation:**
-- **Off-Site Backups (Zero Egress):** `scripts/backup_to_r2.sh` runs `pg_dump` inside the running Podman backend, compresses the SQL stream, and uploads it to **Cloudflare R2** using the AWS CLI S3-compatible endpoint. Configure `R2_BUCKET`, `R2_ENDPOINT_URL`, and AWS CLI credentials; optionally set `DB_CONTAINER_NAME` and `R2_PREFIX`.
-- **State-Correlation (Image ID Tracking):** The script records the running container's exact Podman image ID in names of the form `db_backup_<UTC timestamp>_image_<sha256 digest>.sql.gz`.
-- **24/7 Compatibility Monitoring:** `/health/db-sync-status` compares `EXPECTED_DB_REVISION` and `CURRENT_IMAGE_SHA` from the container environment with the live `alembic_version` revision. It returns HTTP 503 unless all deployment metadata is present and the database revision matches. Set both values during immutable-image deployment.
-
----
-
-## 17. Application, Media & Data Lifecycle Defenses
-
-**Threat:** Resource exhaustion attacks (DoS), data exfiltration, uncontrolled data growth, and insecure handling of sensitive media.
+**Threat:** Silent data corruption, host hardware failure, or Alembic schema drift causing post-deployment crash loops.
 
 **Implementation:**
 
-- **Streaming Body Cap (1 MiB):** All incoming request bodies are capped at 1 MiB. This prevents resource exhaustion attacks by limiting the size of data an attacker can send to the API.
-- **JSON Depth Limit (64 Levels):** Incoming JSON payloads are restricted to a maximum depth of 64 nested levels. This mitigates JSON parsing-based DoS attacks that exploit deeply nested structures.
-- **Background Task Cap (200 Tasks):** The Celery task queue is configured with a hard limit of 200 concurrent or pending tasks. This ensures stability and prevents an attacker from overwhelming background workers.
-- **BCrypt Threadpool Offloading:** Computationally intensive password hashing with BCrypt is offloaded to a dedicated threadpool. This prevents blocking the main event loop and ensures API responsiveness during authentication.
-- **Remote/Local Audio SSRF & MIME Protections:**
-    - Remote audio fetching for transcription (`src/services/ai/whisper.py`) explicitly validates URLs against a whitelist of trusted domains and disallows `file://` schemes, preventing SSRF.
-    - Downloaded audio files are subjected to strict MIME type validation (`python-magic`) to ensure they are indeed audio files, preventing arbitrary file uploads or processing of malicious content.
-- **90-Day GDPR Data Retention Task:** A scheduled Celery task (`src/tasks/retention_tasks.py`) automatically purges personally identifiable information (PII) and sensitive conversation data older than 90 days, ensuring GDPR compliance and minimizing data retention risk.
-- **Core Dump Disablement (`--ulimit core=0`):** Production containers are launched with `--ulimit core=0`. This disables core dumps, preventing sensitive memory contents from being written to disk in the event of a crash, enhancing data confidentiality.
+* **Zero-Egress Off-Site Backups:** `scripts/backup_to_r2.sh` streams compressed `pg_dump` snapshots directly to **Cloudflare R2** via S3-compatible APIs.
+* **Image-to-Database State Correlation:** Backup artifacts embed the active Podman image digest (`db_backup_<UTC timestamp>_image_<sha256>.sql.gz`), ensuring backups can always be restored alongside the exact container binary that produced them.
+* **Live Schema Sync Verification:** `/health/db-sync-status` compares `EXPECTED_DB_REVISION` and `CURRENT_IMAGE_SHA` against the live PostgreSQL `alembic_version` table, returning `HTTP 503` if schema drift is detected.
 
 ---
 
-### Updated Defense-in-Depth Summary Table
+## 17. ASGI Streaming Limits, HTTP Hardening & Data Lifecycle Defenses
+
+**Threat:** Memory exhaustion (OOM) via oversized or chunked payloads, CPU exhaustion via deeply nested JSON deserialization, and long-term PII retention exposure.
+
+**Implementation:**
+
+* **ASGI Streaming Body & JSON Depth Middleware (`src/middleware/request_limits.py`):**
+* **Dual-Tier Payload Caps:** Enforces a strict **1 MiB** (`1,048,576` bytes) cap on standard HTTP requests and a **26 MiB** cap exclusively for `multipart/form-data` audio uploads on `/api/v1/sessions/upload/`.
+* **Pre-Flight & Streaming Enforcement (Verified `HTTP 413`):** Validates `Content-Length` headers immediately (returning `HTTP 400` on negative/malformed values and `HTTP 413` when exceeding the limit) and wraps the ASGI `receive()` channel to count streamed bytes chunk-by-chunk, aborting oversized chunked transfers in real time before memory allocation completes.
+* **Zero-Allocation JSON Nesting State Machine (64 Levels):** For `application/json` streams, the middleware inspects raw bytes on the fly—tracking string literals (`0x22`), escape characters (`0x5C`), and opening/closing brackets (`0x7B`, `0x5B`, `0x7D`, `0x5D`). If nesting exceeds **64 levels**, the request is immediately rejected with `HTTP 400 ("JSON nesting depth exceeds limit")` prior to invoking `json.loads()`.
+
+
+* **Strict HTTP Security Response Headers:** Every backend response enforces:
+* `Strict-Transport-Security: max-age=31536000; includeSubDomains`
+* `Content-Security-Policy: default-src 'none'; frame-ancestors 'none';`
+* `X-Content-Type-Options: nosniff`
+* `X-Frame-Options: DENY`
+* `X-XSS-Protection: 1; mode=block`
+* `X-Request-ID: <UUIDv4>` (end-to-end request tracing)
+
+
+* **Worker & Event-Loop Protection:**
+* **Background Task Cap:** Bounded to 200 concurrent/pending background tasks to prevent queue memory exhaustion.
+* **BCrypt Threadpool Offloading:** CPU-bound password hashing runs in a dedicated threadpool so the main asyncio event loop cannot be blocked during authentication bursts.
+
+
+* **Audio SSRF & MIME Validation (`src/services/ai/whisper.py`):** Remote media URLs are validated against an explicit domain allow-list (blocking `file://` and internal IPs), and downloaded payloads are verified via `python-magic` MIME inspection before transcription.
+* **90-Day GDPR Retention & Core Dump Disablement:** Scheduled retention tasks (`src/tasks/retention_tasks.py`) purge expired PII after 90 days, and production containers run with `--ulimit core=0` to prevent memory dumps from writing sensitive runtime state to disk.
+
+---
+
+### Defense-in-Depth Summary Table
 
 | Security Layer | Mitigation Strategy |
-|---|---|
-| 1. Network Architecture | Cloudflare Tunnel, Zero Attack Surface, Rootless Podman |
-| 2. Secrets Management | AWS SSM In-Memory Bootstrapping, IMDSv2 Enforcement |
-| 3. MFA & Replay Prevention | Single-Use OTP, Token Versioning, Redis JWT Revocation, CSPRNG |
-| 4. WASM DLP Firewall | Envoy Proxy Out-of-Process Error Stripping (WASM/Rust) |
-| 5. Access Control & IDOR | JWT Claims-Based User Resolution, Policy Enforcement |
-| 6. PII Encryption at Rest | Fernet (AES-128 CBC) with Lazy Init & Fail-Safe Decryption |
-| 7. Out-of-Band Management | CLI-Only Admin, Global Exception Handler, OOB Crash Reports |
-| 8. Proxy-Aware Rate Limiting | Cloudflare `CF-Connecting-IP` Trusted Proxy IP Validation |
-| 9. PDF Generation | FPDF (Plain Text Only), Filename Sanitization, Path Verification |
-| 10. Audit Logging | Dual-Write to DB & JSON Logs, Log Injection Sanitization, Fail-Safe |
-| 11. Webhook Spoofing | Twilio HMAC-SHA1 Signature Validation, Fail-Closed |
-| 12. CI/CD Pipeline | Pull-Based CD, HMAC-Signed Triggers, SAST/SCA Gates (Gitleaks, Trivy, Bandit, pip-audit) |
-| 13. Meta WhatsApp Webhook | HMAC-SHA256 Validation, 5-Minute Replay Attack Prevention |
-| 14. AI Prompt Injection | XML Delimiters, Volatility Ordering, Structured Outputs, 15-Turn Cap |
-| 15. Campaign Lead API | `X-Tenant-Key` Auth, Strict Sanitization, Redis `SET NX` Idempotency & Atomic Quota Reservation |
-| 16. Immutable Deployments | Off-Site Cloudflare R2 Backups, Image ID Tracking, DB Revision Monitoring |
-| 17. Application, Media & Data Lifecycle | 1 MiB Body Cap, 64-Level JSON Depth, 200 Task Cap, BCrypt Threadpool, Audio SSRF/MIME, GDPR Retention, `--ulimit core=0` |
+| --- | --- |
+| **1. Network & Container Runtime** | Cloudflare Tunnel, Zero Inbound Ports, Rootless Podman Quadlets, `no-new-privileges`, `1.5 GiB` Backend Memory Cap |
+| **2. Secrets Management** | AWS SSM In-Memory Bootstrapping, Zero `.env` on Disk, IMDSv2 Enforcement |
+| **3. MFA & Replay Prevention** | Single-Use CSPRNG OTP (Delete-Before-Issue), `token_version` Counter, Redis `jti` Blocklist |
+| **4. Envoy Rust/Wasm DLP Firewall** | Header-Triggered (`x-data-ttl: 1`) Egress JSON PII Redaction (`phone`, `email`, `name`) & `5xx` Error Masking |
+| **5. Access Control & IDOR** | Cryptographic JWT Claim Resolution (`get_current_user`), Strict Version & Expiry Checks |
+| **6. PII Encryption at Rest** | Fernet (AES-128-CBC + HMAC-SHA256) with Lazy Init & Fail-Safe Decryption |
+| **7. Out-of-Band Management** | CLI-Only Admin (`manage_cli.py`), Global `500` Exception Masking, OOB Crash Alerts |
+| **8. Proxy-Aware Rate Limiting** | Cloudflare `CF-Connecting-IP` Client Resolution |
+| **9. PDF Generation** | `fpdf2` (`>=2.8.8`, Plain-Text Primitives Only), Regex Filename Sanitization, Canonical Path Verification |
+| **10. Audit Logging** | Dual-Write (PostgreSQL + `JsonFormatter` Logs), CWE-117 Sanitization, Fail-Safe Execution |
+| **11. Twilio Webhook Security** | Constant-Time HMAC-SHA1 `X-Twilio-Signature` Validation, Fail-Closed (`HTTP 403`) |
+| **12. CI/CD & Supply-Chain Security** | Pull-Based CD, HMAC Triggers, Mandatory Gates (`Ruff`, `Gitleaks`, `Bandit`, `pip-audit`, `Trivy`) |
+| **13. Meta WhatsApp Webhook** | HMAC-SHA256 `X-Hub-Signature-256` Validation, 5-Minute Replay Window |
+| **14. AI Prompt Injection** | XML Delimiters, Volatility Ordering, Pydantic Structured Outputs, 15-Turn Cap |
+| **15. Campaign Lead API** | `X-Tenant-Key` Auth, E.164 Regex Sanitization, Redis `SET NX` Idempotency & Atomic Quota Reservation |
+| **16. Immutable Disaster Recovery** | Cloudflare R2 Encrypted Backups, Image SHA Correlation, `/health/db-sync-status` Alembic Gating |
+| **17. ASGI Limits & HTTP Hardening** | Streaming `1 MiB`/`26 MiB` Body Cap (`HTTP 413`), 64-Level JSON Byte State Machine (`HTTP 400`), Strict CSP/HSTS Headers, `--ulimit core=0` |
