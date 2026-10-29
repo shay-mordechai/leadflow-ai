@@ -33,6 +33,7 @@ from src.middleware.request_limits import RequestBodyLimitMiddleware
 # --- Router Imports ---
 from src.routers import (
     auth,
+    benchmark,
     facebook,
     health,
     leads,
