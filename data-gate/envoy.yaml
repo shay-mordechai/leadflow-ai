@@ -57,7 +57,7 @@ static_resources:
               - endpoint:
                   address:
                     socket_address:
-                      address: 127.0.0.1
+                      address: leadflow-backend
                       port_value: 8000
 
     - name: leadflow_frontend
