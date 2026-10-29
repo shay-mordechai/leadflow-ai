@@ -1,0 +1,3 @@
+wrk.method = "POST"
+wrk.headers["Content-Type"] = "application/json"
+wrk.body = [==[{"leads": [{"name": "Dana Cohen", "phone": "052-123-4567", "email": "dana@example.com", "note": "call me tomorrow"}]}]==]

@@ -1,7 +1,6 @@
 #!/usr/bin/env bash
 set -e
 
-# מעבר לתיקיית הבנצ'מרק בריפו
 cd "$(dirname "$0")"
 
 CONTAINER_NAME="leadflow-data-gate-nofilter"
@@ -12,9 +11,10 @@ cleanup() {
     echo "=== Cleaning up benchmark containers ==="
     podman rm -f "$CONTAINER_NAME" 2>/dev/null || true
 }
-
-# ודא ניקוי במקרה של יציאה או שגיאה
 trap cleanup EXIT
+
+# Remove any leftover container before starting
+podman rm -f "$CONTAINER_NAME" 2>/dev/null || true
 
 echo "=== Spawning temporary Envoy Baseline container (no-filter) ==="
 podman run --name "$CONTAINER_NAME" \
@@ -26,11 +26,22 @@ podman run --name "$CONTAINER_NAME" \
   "$IMAGE_NAME" \
   /usr/local/bin/envoy -c /etc/envoy/envoy.yaml --service-cluster proxy
 
-# המתנה קצרה לוודא שה-Envoy המדמה עלה בהצלחה
-sleep 2
+echo "Waiting for baseline Envoy (port 10001) to listen..."
+for i in {1..20}; do
+  if curl -s -X POST http://127.0.0.1:10001/bench/echo -H 'Content-Type: application/json' -d '{"ping":"pong"}' >/dev/null 2>&1; then
+    echo "Baseline Envoy is ready!"
+    break
+  fi
+  if [ "$i" -eq 20 ]; then
+    echo "ERROR: Baseline Envoy failed to become ready. Container logs:"
+    podman logs "$CONTAINER_NAME"
+    exit 1
+  fi
+  sleep 0.5
+done
 
-# 1. יצור סקריפטי Lua ל-Payloads בשלושה גדלים
-cat << 'EOF' > gen_lua.py
+# 1. Generate Lua scripts for 3 payload sizes
+cat << 'PYEOF' > gen_lua.py
 import json, sys
 name, n = sys.argv[1], int(sys.argv[2])
 item = {"name": "Dana Cohen", "phone": "052-123-4567", "email": "dana@example.com", "note": "call me tomorrow"}
@@ -40,18 +51,18 @@ open(f"post_{name}.lua", "w").write(
     'wrk.headers["Content-Type"] = "application/json"\n'
     'wrk.body = [==[' + body + ']==]\n')
 print(f"Generated post_{name}.lua ({len(body)} bytes)")
-EOF
+PYEOF
 
 python3 gen_lua.py small 1
 python3 gen_lua.py medium 20
 python3 gen_lua.py large 200
 
-# 2. הגדרת כתובות הגישה
+# 2. Target URLs
 export URL_DIRECT=http://127.0.0.1:8000
 export URL_FILTER=http://127.0.0.1:10000
 export URL_NOFILTER=http://127.0.0.1:10001
 
-# 3. בדיקת נכונות (Sanity Check)
+# 3. Sanity Check
 echo "=== Running Sanity Check ==="
 BODY='{"phone":"052-123-4567","email":"dana@example.com"}'
 for u in $URL_DIRECT $URL_NOFILTER $URL_FILTER; do
@@ -59,9 +70,9 @@ for u in $URL_DIRECT $URL_NOFILTER $URL_FILTER; do
   curl -s -X POST "$u/bench/echo" -H 'Content-Type: application/json' -d "$BODY"; echo
 done
 
-# 4. הרצת בנצ'מרק מדורג (5 ריצות לכל קונפיגורציה)
-PAYLOAD=${PAYLOAD:-medium}; DUR=30s; RUNS=5
-echo "=== Starting Benchmark (Payload: $PAYLOAD, Runs: $RUNS) ==="
+# 4. Run Staggered Benchmark (5 runs per configuration)
+PAYLOAD=${PAYLOAD:-medium}; DUR=${DUR:-30s}; RUNS=${RUNS:-5}
+echo "=== Starting Benchmark (Payload: $PAYLOAD, Duration: $DUR, Runs: $RUNS) ==="
 
 echo "cfg,run,p50_ms,p99_ms,rps,non2xx" > results.csv
 for i in $(seq $RUNS); do
@@ -71,25 +82,26 @@ for i in $(seq $RUNS); do
       nofilter) u=$URL_NOFILTER;;
       filter) u=$URL_FILTER;;
     esac
-    
-    out=$(podman run --rm --network host -v "$PWD/post_${PAYLOAD}.lua:/post.lua:ro,Z" \
-      docker.io/williamyeh/wrk -t2 -c20 -d"$DUR" --latency -s /post.lua "$u/bench/echo")
-      
+
+    echo "  -> Run $i/$RUNS [$cfg]..."
+    out=$(~/.local/bin/wrk -t2 -c20 -d"$DUR" --latency -s "$PWD/post_${PAYLOAD}.lua" "$u/bench/echo")
+
     p50=$(echo "$out" | awk '$1=="50%"{print $2}')
     p99=$(echo "$out" | awk '$1=="99%"{print $2}')
     rps=$(echo "$out" | awk '/Requests\/sec/{print $2}')
     bad=$(echo "$out" | awk '/Non-2xx/{print $NF}')
-    
+
     to_ms() {
       awk -v v="$1" 'BEGIN{n=v+0; u=v; gsub(/[0-9.]+/,"",u); if(u=="us")n/=1000; else if(u=="s")n*=1000; printf "%.3f",n}';
     }
-    
+
     echo "$cfg,$i,$(to_ms $p50),$(to_ms $p99),$rps,${bad:-0}" >> results.csv
-    sleep 3
+    sleep 2
   done
 done
 
-# 5. הצגת סיכום חציונים סופי
+# 5. Output Final Medians
+echo ""
 echo "=== Summary (Median across runs) ==="
 for cfg in direct nofilter filter; do
   for col in 3 4 5; do
