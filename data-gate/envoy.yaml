@@ -25,7 +25,12 @@ static_resources:
                           route: { cluster: leadflow_backend }
                         - match: { prefix: "/docs" }
                           route: { cluster: leadflow_backend }
-                          
+                        - match: { prefix: "/openapi.json" }
+                          route: { cluster: leadflow_backend }
+                        - match: { prefix: "/bench" }
+                          route: { cluster: leadflow_backend }
+                        - match: { prefix: "/" }
+                          route: { cluster: leadflow_frontend }
                 http_filters:
                   - name: envoy.filters.http.wasm
                     typed_config:
@@ -59,7 +64,7 @@ static_resources:
 
     - name: leadflow_frontend
       connect_timeout: 0.25s
-      type: STRICT_DNS
+      type: STATIC
       lb_policy: ROUND_ROBIN
       load_assignment:
         cluster_name: leadflow_frontend

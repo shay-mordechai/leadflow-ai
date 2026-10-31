@@ -29,8 +29,6 @@ static_resources:
                           route: { cluster: leadflow_backend }
                         - match: { prefix: "/bench" }
                           route: { cluster: leadflow_backend }
-                        - match: { prefix: "/bench" }
-                          route: { cluster: leadflow_backend }
                         - match: { prefix: "/" }
                           route: { cluster: leadflow_frontend }
                 http_filters:
@@ -41,8 +39,7 @@ static_resources:
   clusters:
     - name: leadflow_backend
       connect_timeout: 0.25s
-      type: STRICT_DNS
-      dns_lookup_family: V4_ONLY
+      type: STATIC
       lb_policy: ROUND_ROBIN
       load_assignment:
         cluster_name: leadflow_backend
@@ -51,12 +48,12 @@ static_resources:
               - endpoint:
                   address:
                     socket_address:
-                      address: leadflow-backend
+                      address: 127.0.0.1
                       port_value: 8000
 
     - name: leadflow_frontend
       connect_timeout: 0.25s
-      type: STRICT_DNS
+      type: STATIC
       lb_policy: ROUND_ROBIN
       load_assignment:
         cluster_name: leadflow_frontend
