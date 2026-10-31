@@ -16,7 +16,7 @@ attrs==25.4.0
 Authlib==1.9.1
 av==16.1.0
 bcrypt==4.0.1
-billiard==4.3.0
+billiard==4.3.1
 bleach==6.4.0
 blinker==1.9.0
 boolean.py==5.0
