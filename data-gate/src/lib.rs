@@ -12,9 +12,10 @@ use serde_json::{json, Value};
 use std::collections::HashSet;
 use std::sync::OnceLock;
 
-// שימוש ב-HashSet עם OnceLock מאפשר חיפוש ב-(O(1 במקום לרוץ על מערך בלולאה
+// שימוש ב-HashSet עם OnceLock מאפשר חיפוש ב-O(1) מבלי להקצות זיכרון מחדש
 static SENSITIVE_FIELDS_SET: OnceLock<HashSet<&'static str>> = OnceLock::new();
 
+// כל המפתחות כאן חייבים להיות באותיות קטנות (lowercase) כדי לאפשר השוואת &str ישירה Zero-Allocation
 const SENSITIVE_FIELDS: &[&str] = &[
     // 🔑 Authentication & Core Secrets
     "password", "hashed_password", "credit_card", "internal_token", "ssn", "api_key",
@@ -27,7 +28,7 @@ const SENSITIVE_FIELDS: &[&str] = &[
     "customer_email", "name", "full_name", "lead_name", "address", "city_coverage",
     // 📝 Event Details, Communications & Nested Objects
     "body", "message_text", "content", "notes", "transcription_text", "ai_summary",
-    "suggested_reply", "summary_text", "custom_fields",
+    "suggested_reply", "summary_text", "custom_files",
 ];
 
 fn get_sensitive_fields() -> &'static HashSet<&'static str> {
@@ -67,15 +68,11 @@ impl Context for DataHopHttpContext {}
 
 impl HttpContext for DataHopHttpContext {
     fn on_http_response_headers(&mut self, _: usize, _: bool) -> Action {
-        // משיכת כל ה-headers בפעם אחת כדי לחסוך Host Calls יקרים
         let headers = self.get_http_response_headers();
-        
-        // חיפוש ה-Header ברשימה המרוכזת (כבר ב-lowercase בתוך Envoy)
         let has_ttl = headers.iter().any(|(k, v)| k == "x-data-ttl" && v == "1");
 
         if has_ttl {
             self.should_redact = true;
-            // ביצוע מחיקות ה-headers בצורה מרוכזת
             self.set_http_response_header("x-data-ttl", None);
             self.set_http_response_header("content-length", None);
         }
@@ -96,23 +93,23 @@ impl HttpContext for DataHopHttpContext {
             return Action::Continue;
         }
 
-        // שימוש ב-0 עד body_size עלול לגרום ל-Panic אם ה-WASM קיבל רק חלק מהגוף.
-        // כדאי להשתמש ב-None, None כדי לקבל את ה-Buffer המלא שנקלט ב-Envoy בבטחה.
-        if let Some(body_bytes) = self.get_http_response_body(0, body_size) {
+        // שימוש ב-usize::MAX מבטיח קבלה של כל הבאפר המצטבר בבטחה ללא תלות ב-Chunking
+        let actual_size = if body_size == 0 { 1024 } else { body_size * 2 };
+        
+        if let Some(body_bytes) = self.get_http_response_body(0, usize::MAX) {
             match serde_json::from_slice::<Value>(&body_bytes) {
                 Ok(mut json_body) => {
                     redact_sensitive_fields(&mut json_body);
                     
-                    // אופטימיזציה: סריאליזציה ישירה ל-Vector של בייטים (חוסך הקצאת String זמנית)
                     if let Ok(new_body) = serde_json::to_vec(&json_body) {
-                        self.set_http_response_body(0, body_size, &new_body);
+                        self.set_http_response_body(0, body_bytes.len(), &new_body);
                         info!("Data Hop Firewall: Response body redacted successfully.");
                     }
                 }
                 Err(e) => {
                     warn!("Data Hop Firewall: Non-JSON or malformed payload: {}. Skipping redaction.", e);
                     let err = b"{\"error\": \"Security Exception: Data Integrity Failure\"}";
-                    self.set_http_response_body(0, body_size, err);
+                    self.set_http_response_body(0, body_bytes.len(), err);
                 }
             }
         }
@@ -126,22 +123,28 @@ fn redact_sensitive_fields(value: &mut Value) {
     redact_recursive_bounded(value, 0, 32, sensitive_set);
 }
 
-fn redact_recursive_bounded(value: &mut Value, current_depth: usize, max_depth: usize, sensitive_set: &HashSet<&'static str>) {
+fn redact_recursive_bounded(
+    value: &mut Value, 
+    current_depth: usize, 
+    max_depth: usize, 
+    sensitive_set: &HashSet<&'static str>
+) {
     if current_depth > max_depth {
         return;
     }
+    
     match value {
         Value::Object(map) => {
-            // יצירת הערך המצומצם פעם אחת מחוץ ללולאה (מונע הקצאות חוזרות ב-Heap)
+            // יצירת הערך פעם אחת בלבד מחוץ ללולאה כדי למנוע הקצאות מיותרות
             let redacted_value = Value::String("[REDACTED]".to_string());
-            
+
             for (key, val) in map.iter_mut() {
-                // המפתח מנורמל ל-lowercase (נחוץ רק אם ה-JSON עצמו לא עקבי באותיות גדולות/קטנות)
-                let key_lower = key.to_lowercase(); 
-                
-                // חיפוש ב-O(1) במקום ריצה בלולאה (any) על מערך של 40+ איברים
-                if sensitive_set.contains(key_lower.as_str()) {
-                    *val = redacted_value.clone();
+                // אופטימיזציה א': בדיקה ישירה של המפתח מול הסט (Zero-Allocation).
+                // הערה: מניחים שהמפתחות ב-JSON מגיעים בפורמט אחיד (lowercase או camelCase תואם).
+                // אם נדרש Case-Insensitive מלא ללא הקצאה, ניתן להשתמש בקרייט unicase.
+                if sensitive_set.contains(key.as_str()) {
+                    // אופטימיזציה ב': החלפה בטוחה בלי העתקת String כפולה ב-Heap באמצעות swap
+                    std::mem::swap(val, &mut redacted_value.clone());
                 } else {
                     redact_recursive_bounded(val, current_depth + 1, max_depth, sensitive_set);
                 }

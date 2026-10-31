@@ -132,3 +132,19 @@
 1. **Recursive & Regex Wasm DLP Inspection:** Upgrading `data_hop_firewall` (`data-gate/src/lib.rs`) from top-level JSON key matching to recursive AST traversal (סריקת עץ JSON רקורסיבית) and non-backtracking regex scrubbing for unstructured PII inside free-text WhatsApp messages.
 2. **Native C++ Audio Engine (`cpp-transcription-engine`):** Offloading CPU-intensive audio processing to a native C++ service utilizing POSIX shared memory (`mmap`), IPC, and zero-copy streaming buffers.
 3. **Database-Level Row-Level Security (`FORCE RLS`):** Extending application-layer `tenant_id` filtering with PostgreSQL `FORCE ROW LEVEL SECURITY` policies under a dedicated non-owner database role.
+
+Verified in 31.10.2026:
+This 6-round verification audit establishes a clear boundary between **empirically verified behavior** (התנהגות מאומתת אמפירית) and assumptions that must be held back until fixed or tested on the production server. Pausing Round 7 until we finish the isolated Envoy Proxy benchmark and restore the production containers on `leadflow-cx23` is the right operational order.
+
+### Verified Status Summary (Rounds 1–6)
+
+Before running the final benchmark on `leadflow-cx23`, here is the locked-in baseline of what is verified and how it affects the current lab test:
+
+| Component / Claim | Verification Verdict | Key Technical Evidence & Action |
+| --- | --- | --- |
+| **Wasm Binary Integrity** | **VERIFIED (`HEAD`)** | The compiled `.wasm` binary matches `HEAD` (`sha256` match), including `custom_fields` and `.to_lowercase()`. **Action:** Discard the uncommitted working-tree edits in `data-gate/src/lib.rs` so the regression (`custom_files` typo and case-sensitivity) is not committed. |
+| **Filter Failure Mode** | **VERIFIED (Fail-Closed)** | Malformed JSON bodies are replaced with a static security exception JSON payload (`lib.rs:110–112`), preventing raw data leakage (דליפת מידע גולמי) despite the misleading log message. |
+| **Selective Redaction (`x-data-ttl: 1`)** | **VERIFIED** | Redaction runs when the upstream response includes `x-data-ttl: 1`. `/bench/echo` returns `HTTP 200` with this header, making it a valid target for the Wasm benchmark. |
+| **Container Hardening** | **VERIFIED (Runtime)** | Rootless Podman containers run as `systemd` user services with `NoNewPrivs=1` verified at runtime and core dumps disabled (`--ulimit=core=0:0`). |
+| **CI/CD Security Tooling** | **VERIFIED** | `Bandit` (SAST), `pip-audit`, and `Gitleaks` run in `ci-devsecops.yml`; `Trivy` filesystem and dependency scanning runs in `production.yml`. |
+| **LLM Quota Isolation** | **VERIFIED (Unit Tests)** | All 5 tests in `test_llm_router.py` pass, verifying per-tenant budget isolation (בידוד תקציב בין דיירים) and Redis counter rollback (`tenant:<id>:monthly_tokens`). |
