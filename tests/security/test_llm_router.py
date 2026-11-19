@@ -1,3 +1,5 @@
+from types import SimpleNamespace
+from typing import Any
 from unittest.mock import AsyncMock
 
 import pytest
@@ -10,14 +12,16 @@ from src.services.llm_router import (
 
 
 class DummyGeminiClient:
-    """Mock implementation of the Gemini client for deterministic unit testing."""
+    """Mock implementation of the Gemini SDK client for deterministic unit testing."""
 
     def __init__(self) -> None:
-        self.calls: list[tuple[str, str]] = []
+        self.calls: list[tuple[str, Any]] = []
         self.should_fail_model: str | None = None
+        # GeminiTieredRouter invokes client.models.generate_content via run_in_threadpool
+        self.models = SimpleNamespace(generate_content=self._generate_content)
 
-    async def generate(self, model: str, prompt: str, **kwargs) -> str:
-        self.calls.append((model, prompt))
+    def _generate_content(self, model: str, contents: Any, **kwargs: Any) -> str:
+        self.calls.append((model, contents))
         if self.should_fail_model == model:
             raise RuntimeError(f"Simulated upstream API timeout for {model}")
         return f"response_from_{model}"

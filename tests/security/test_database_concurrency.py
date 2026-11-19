@@ -12,6 +12,8 @@ from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
 from src.database import session as database_session
 from src.database.models import Lead, User
 from src.routers.sessions import upload_audio
+from src.services.ai.harness import agent_harness
+from src.services.ai.memory import ConversationMemoryService
 from src.services.communication import whatsapp_pipeline
 
 
@@ -37,8 +39,15 @@ async def _run_pipeline_with_transaction_probe(monkeypatch) -> tuple[str, list[b
                 "ready",
                 {
                     "user_id": uuid4(),
-                    "lead_turn_prompt": "safe prompt",
-                    "system_instruction": "safe system instruction",
+                    "tenant_id": "tenant-id",
+                    "lead_id": "lead-id",
+                    "business_type": "General",
+                    "business_name": "Test Business",
+                    "products_services": None,
+                    "custom_instructions": "safe system instruction",
+                    "lead_name": "Guest",
+                    "lead_source": "whatsapp",
+                    "latest_message": "safe prompt",
                 },
             )
         ),
@@ -48,19 +57,24 @@ async def _run_pipeline_with_transaction_probe(monkeypatch) -> tuple[str, list[b
         "_release_ai_message_credit",
         AsyncMock(return_value=True),
     )
+    monkeypatch.setattr(
+        ConversationMemoryService,
+        "get_lead_memory",
+        AsyncMock(return_value={"recent_history": []}),
+    )
 
-    async def generate_content(**_: object):
+    async def execute_turn(**_: object):
         transaction_states_during_ai.append(transaction_state["active"])
         raise RuntimeError("simulated Gemini response")
 
-    client = MagicMock()
-    client.models.generate_content = AsyncMock(side_effect=generate_content)
+    monkeypatch.setattr(agent_harness, "execute_turn", execute_turn)
+
     result = await whatsapp_pipeline._process_single_message(
         database,
         {},
         [],
         {"id": "transaction-probe"},
-        client,
+        MagicMock(),
     )
     return result, transaction_states_during_ai
 

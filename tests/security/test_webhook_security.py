@@ -12,7 +12,8 @@ from fastapi import BackgroundTasks, HTTPException
 from starlette.requests import Request
 
 from src.routers.webhooks import campaign, whatsapp
-from src.schemas.ai_response import WhatsAppAgentResponse
+from src.services.ai.harness import agent_harness
+from src.services.ai.memory import ConversationMemoryService
 from src.services.communication import whatsapp_pipeline
 
 
@@ -169,11 +170,17 @@ async def _run_whatsapp_pipeline_with_send_result(monkeypatch, send_result):
                 "ready",
                 {
                     "user_id": "tenant-id",
+                    "tenant_id": "tenant-id",
                     "lead_id": "lead-id",
                     "sender_id": "972501234567",
                     "phone_number_id": "business-number",
-                    "lead_turn_prompt": "safe prompt",
-                    "system_instruction": "safe system",
+                    "business_type": "General",
+                    "business_name": "Test Business",
+                    "products_services": None,
+                    "custom_instructions": "safe system",
+                    "lead_name": "Guest",
+                    "lead_source": "whatsapp",
+                    "latest_message": "safe prompt",
                 },
             )
         ),
@@ -183,17 +190,24 @@ async def _run_whatsapp_pipeline_with_send_result(monkeypatch, send_result):
         "_release_ai_message_credit",
         AsyncMock(return_value=True),
     )
-    model_client = MagicMock()
-    model_client.models.generate_content = AsyncMock(
-        return_value=MagicMock(
-            parsed=WhatsAppAgentResponse(
-                reply_text="Thanks for contacting us.",
-                lead_intent="INQUIRY",
-                lead_qualification_score=20,
-                needs_human_escalation=False,
-            )
-        )
+    monkeypatch.setattr(
+        ConversationMemoryService,
+        "get_lead_memory",
+        AsyncMock(return_value={"recent_history": []}),
     )
+    monkeypatch.setattr(
+        agent_harness,
+        "execute_turn",
+        AsyncMock(
+            return_value={
+                "reply_text": "Thanks for contacting us.",
+                "lead_intent": "INQUIRY",
+                "lead_qualification_score": 20,
+                "needs_human_escalation": False,
+            }
+        ),
+    )
+
     if isinstance(send_result, Exception):
         send_message = AsyncMock(side_effect=send_result)
     else:
@@ -205,7 +219,7 @@ async def _run_whatsapp_pipeline_with_send_result(monkeypatch, send_result):
         {},
         [],
         {"id": "inbound-message"},
-        model_client,
+        MagicMock(),
     )
     return result, database.add, send_message
 

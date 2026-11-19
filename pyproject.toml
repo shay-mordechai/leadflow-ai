@@ -21,3 +21,10 @@ ignore = [
     "PIE810", # Call startswith once with a tuple
     "C408",   # Unnecessary dict() call
 ]
+
+[tool.pytest.ini_options]
+pythonpath = ["."]
+asyncio_mode = "strict"
+filterwarnings = [
+    "ignore::DeprecationWarning",
+]
