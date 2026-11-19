@@ -463,3 +463,54 @@ class PendingApproval(Base):
 
     lead = relationship("Lead")
     user = relationship("User")
+
+
+class KnowledgeDocument(Base):
+    """
+    Represents an uploaded tenant knowledge document (PDF, Markdown, or TXT).
+    """
+
+    __tablename__ = "knowledge_documents"
+
+    id = Column(GUID(), primary_key=True, default=uuid.uuid4)
+    user_id = Column(GUID(), ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True)
+    filename = Column(String, nullable=False)
+    content_type = Column(String, nullable=False)
+    status = Column(String, default="INDEXED", index=True, nullable=False)
+    chunk_count = Column(Integer, default=0, nullable=False)
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
+
+    user = relationship("User")
+    chunks = relationship(
+        "KnowledgeChunk",
+        back_populates="document",
+        cascade="all, delete-orphan",
+    )
+
+
+class KnowledgeChunk(Base):
+    """
+    Represents a semantic chunk of text extracted from a knowledge document,
+    including embedding vectors for semantic search and metadata.
+    """
+
+    __tablename__ = "knowledge_chunks"
+
+    id = Column(GUID(), primary_key=True, default=uuid.uuid4)
+    user_id = Column(GUID(), ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True)
+    document_id = Column(
+        GUID(),
+        ForeignKey(
+            "knowledge_documents.id", ondelete="CASCADE", name="fk_knowledge_chunks_document_id"
+        ),
+        nullable=False,
+        index=True,
+    )
+    chunk_index = Column(Integer, nullable=False)
+    section_title = Column(String, nullable=True)
+    content = Column(Text, nullable=False)
+    embedding_json = Column(JSON, nullable=True)  # Portable JSON vector storage for SQLite tests
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
+
+    document = relationship("KnowledgeDocument", back_populates="chunks")
+    user = relationship("User")
