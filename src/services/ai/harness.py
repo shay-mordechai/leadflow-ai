@@ -60,9 +60,12 @@ class AgentHarness:
         latest_message: str,
         kb_version: int = 1,
         complexity: TaskComplexity = TaskComplexity.STANDARD,
+        db: Any | None = None,
+        lead_id: Any | None = None,
     ) -> dict[str, Any]:
         """
-        Executes a complete AI turn with full security guardrails, caching, and routing.
+        Executes a complete AI turn with full security guardrails, caching, routing,
+        and tenant-scoped tools.
         """
         sanitized = inspect_and_wrap_input(latest_message)
         if sanitized.is_flagged:
@@ -78,11 +81,24 @@ class AgentHarness:
 
         effective_text = sanitized.clean_text
 
+        tools = []
+        tool_names = []
+        if db is not None and lead_id is not None:
+            try:
+                from src.services.ai.tools import build_tenant_tools
+
+                tools, tool_names = build_tenant_tools(db, tenant_id, lead_id)
+            except Exception as tool_err:
+                logger.warning(
+                    f"Failed to build tenant tools (proceeding without tools): {tool_err}"
+                )
+
         system_instruction = PromptBuilder.build_system_instruction(
             business_type=business_type,
             business_name=business_name,
             products_services=products_services,
             custom_instructions=custom_instructions,
+            enabled_tools=tool_names,
         )
 
         lead_turn_prompt = PromptBuilder.build_lead_turn_prompt(
@@ -93,7 +109,7 @@ class AgentHarness:
         )
 
         cache_key = None
-        if len(conversation_history) == 0 and self.router.redis is not None:
+        if len(conversation_history) == 0 and not tools and self.router.redis is not None:
             try:
                 sys_hash = hashlib.sha256(system_instruction.encode("utf-8")).hexdigest()
                 norm_input = effective_text.strip().lower()
@@ -145,6 +161,7 @@ class AgentHarness:
                 complexity=complexity,
                 response_schema=WhatsAppAgentResponse,
                 system_instruction=system_instruction,
+                tools=tools if tools else None,
                 chat_history=formatted_history,
             )
             latency_ms = (time.time() - start_time) * 1000

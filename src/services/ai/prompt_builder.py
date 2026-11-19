@@ -40,12 +40,14 @@ class PromptBuilder:
 
         tool_instructions_block = ""
         if enabled_tools:
-            tool_instructions_block = """<tool_instructions>
-1. If the user asks about availability, autonomously use the 'check_calendar_availability' tool.
-2. If the user wants to book, autonomously use the 'book_appointment' tool.
-3. If you need to qualify a budget/timeframe, autonomously use the 'qualify_lead' tool.
+            tools_list_str = ", ".join(enabled_tools)
+            tool_instructions_block = f"""<tool_instructions>
+You have access to the following verified tenant tools: {tools_list_str}.
+1. Use 'check_calendar_availability' to inspect schedule slots.
+2. Use 'propose_appointment_booking' to submit booking requests for business owner approval.
+3. Use 'qualify_lead' to record budget and timeframe once discussed.
 4. Always respond naturally, in character, and in the user's language.
-5. If the user is angry or frustrated, set needs_human_escalation=true and include the EXACT word "[HANDOFF]" in your response.
+5. If the user is angry or frustrated, set needs_human_escalation=true and include the exact word "[HANDOFF]".
 </tool_instructions>"""
         else:
             tool_instructions_block = """<tool_instructions>

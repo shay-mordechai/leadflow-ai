@@ -3,6 +3,7 @@ import hashlib
 import logging
 import uuid
 from datetime import UTC, datetime
+from typing import Any, Literal
 from uuid import UUID
 
 from fastapi import (
@@ -24,9 +25,11 @@ from sqlalchemy.orm import Session, selectinload
 
 # FIXED: Added 'Message' to imports for Manual Message logging
 from src.database.models import (
+    AuditLog,
     Lead,
     LeadStatus,
     Message,
+    PendingApproval,
     SubscriptionStatus,
     User,
     WebhookDLQ,
@@ -400,3 +403,133 @@ async def submit_lead_ai_feedback(
         f"📝 AI Feedback recorded for lead {lead_id} (rating: {feedback.rating}) by tenant {current_user.email}"
     )
     return {"status": "success", "message": "Feedback recorded successfully"}
+
+
+# --- HITL Approval Endpoints (Phase 3) ---
+class PendingApprovalResponse(BaseModel):
+    id: UUID
+    lead_id: UUID
+    action_type: str
+    draft_reply: str
+    action_payload: dict[str, Any] | None = None
+    status: str
+    created_at: datetime
+
+    model_config = {"from_attributes": True}
+
+
+class ApprovalDecisionRequest(BaseModel):
+    decision: Literal["APPROVE", "REJECT", "EDIT"] = Field(
+        ..., description="Decision: APPROVE, REJECT, or EDIT"
+    )
+    edited_reply: str | None = Field(
+        default=None, max_length=600, description="Optional edited reply text if EDIT"
+    )
+
+
+@router.get("/approvals", response_model=list[PendingApprovalResponse])
+@limiter.limit("60/minute")
+async def get_pending_approvals(
+    request: Request,
+    response: Response,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """
+    Returns all pending HITL approval items for the logged-in tenant.
+    Enforces strict multi-tenant isolation by filtering exclusively by current_user.id.
+    """
+    response.headers["X-Data-TTL"] = "1"
+    approvals = (
+        db.query(PendingApproval)
+        .filter(PendingApproval.user_id == current_user.id, PendingApproval.status == "PENDING")
+        .order_by(PendingApproval.created_at.desc())
+        .all()
+    )
+    return approvals
+
+
+@router.post("/approvals/{approval_id}/decision", status_code=status.HTTP_200_OK)
+@limiter.limit("30/minute")
+async def resolve_pending_approval(
+    request: Request,
+    approval_id: UUID,
+    decision_req: ApprovalDecisionRequest,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """
+    Resolves a pending HITL approval item (APPROVE, REJECT, or EDIT).
+    Enforces strict multi-tenant isolation.
+    """
+    approval = (
+        db.query(PendingApproval)
+        .filter(
+            PendingApproval.id == approval_id,
+            PendingApproval.user_id == current_user.id,
+        )
+        .first()
+    )
+    if not approval:
+        raise HTTPException(status_code=404, detail="Pending approval not found")
+
+    if approval.status != "PENDING":
+        raise HTTPException(status_code=400, detail="Approval request is already resolved")
+
+    now = datetime.now(UTC)
+    approval.resolved_at = now
+
+    final_text = (
+        decision_req.edited_reply
+        if decision_req.decision == "EDIT" and decision_req.edited_reply
+        else approval.draft_reply
+    )
+
+    if decision_req.decision == "APPROVE":
+        approval.status = "APPROVED"
+    elif decision_req.decision == "EDIT":
+        approval.status = "EDITED"
+        approval.draft_reply = final_text
+    elif decision_req.decision == "REJECT":
+        approval.status = "REJECTED"
+    else:
+        raise HTTPException(status_code=400, detail="Invalid decision type")
+
+    # Update Lead state if approved or edited
+    lead = (
+        db.query(Lead).filter(Lead.id == approval.lead_id, Lead.user_id == current_user.id).first()
+    )
+    if lead:
+        if decision_req.decision in ("APPROVE", "EDIT"):
+            lead.requires_human = False
+            lead.bot_active = True
+            # Record outbound message
+            db.add(
+                Message(
+                    lead_id=lead.id,
+                    sender_type="bot",
+                    content=final_text,
+                )
+            )
+            try:
+                # Dispatch message via WhatsApp adapter if phone exists
+                if lead.phone_number:
+                    from src.services.communication.whatsapp import whatsapp_adapter
+
+                    whatsapp_adapter.send_message(lead.phone_number, final_text)
+            except Exception as wa_err:
+                logger.warning(f"Failed to dispatch approved WhatsApp message: {wa_err}")
+
+    db.add(
+        AuditLog(
+            user_id=str(current_user.id),
+            action=f"HITL_APPROVAL_{decision_req.decision}",
+            details={"approval_id": str(approval_id), "lead_id": str(approval.lead_id)},
+        )
+    )
+    db.commit()
+
+    logger.info(
+        f"✅ HITL Approval {approval_id} resolved as {decision_req.decision} by tenant {current_user.email}"
+    )
+    return {"status": "success", "decision": decision_req.decision, "resolved_at": now.isoformat()}
