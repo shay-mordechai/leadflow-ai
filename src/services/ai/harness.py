@@ -101,15 +101,35 @@ class AgentHarness:
             enabled_tools=tool_names,
         )
 
+        retrieved_chunks = []
+        if db is not None:
+            try:
+                from src.services.rag.retriever import retrieve_relevant_chunks
+
+                retrieved_chunks = await retrieve_relevant_chunks(
+                    db, tenant_id, effective_text, top_k=4, min_score=0.25
+                )
+            except Exception as rag_err:
+                logger.warning(f"Failed to retrieve tenant knowledge chunks: {rag_err}")
+
         lead_turn_prompt = PromptBuilder.build_lead_turn_prompt(
             lead_name=lead_name,
             lead_source=lead_source,
             conversation_history=conversation_history,
             latest_message=effective_text,
+            conversation_summary=None,
+            extracted_state=None,
+            retrieved_chunks=retrieved_chunks,
         )
 
+        # Disable caching if tools or retrieved RAG knowledge are active
         cache_key = None
-        if len(conversation_history) == 0 and not tools and self.router.redis is not None:
+        if (
+            len(conversation_history) == 0
+            and not tools
+            and not retrieved_chunks
+            and self.router.redis is not None
+        ):
             try:
                 sys_hash = hashlib.sha256(system_instruction.encode("utf-8")).hexdigest()
                 norm_input = effective_text.strip().lower()

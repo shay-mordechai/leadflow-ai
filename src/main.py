@@ -37,6 +37,7 @@ from src.routers import (
     facebook,
     health,
     insights,
+    knowledge,
     leads,
     partners,
     phones,
@@ -233,6 +234,7 @@ app.include_router(system.router)
 app.include_router(storage.router)
 app.include_router(health.router)
 app.include_router(insights.router)
+app.include_router(knowledge.router)
 app.include_router(benchmark.router)
 
 

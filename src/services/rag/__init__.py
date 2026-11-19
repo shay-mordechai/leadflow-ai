@@ -1,0 +1,4 @@
+# src/services/rag/__init__.py
+from src.services.rag.retriever import retrieve_relevant_chunks
+
+__all__ = ["retrieve_relevant_chunks"]
