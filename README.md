@@ -8,9 +8,241 @@
 - Runtime isolation & ASGI DoS mitigation
 - Empirical performance benchmarking & production reliability
 
-*Last Engineering Review: October 2026*
+*Last Engineering Review: November 2026*
 
 ---
+
+---
+## Part 1: Current Active Workflows (29 Total)
+
+Here is the complete catalog of all 29 active workflows currently implemented in your codebase. Due to output length constraints (מגבלות אורך פלט), I have included the exact file paths and descriptions for all of them, along with the **core architectural code snippets** for the most critical ones.
+
+### Group 1: Identity & Multi-Tenancy
+
+**1. Registration Workflow**
+
+* **Path:** `/src/routers/auth.py`
+* **Description:** Creates a new tenant, hashes the password securely via threadpool, and enforces the default STARTER tier.
+
+```python
+@router.post("/register", status_code=201)
+@limiter.limit("5/minute")
+async def register(data: UserCreate, db: Session = Depends(get_db)):
+    if db.query(User).filter(User.email == data.email.lower()).first():
+        raise HTTPException(status_code=400, detail="Email exists")
+    secure_hash = await run_in_threadpool(get_hash, data.password)
+    new_user = User(email=data.email.lower(), hashed_password=secure_hash, plan_tier=PlanTier.STARTER)
+    db.add(new_user)
+    db.commit()
+    return {"status": "success"}
+
+```
+
+**2. Login & Token Issuance**
+
+* **Path:** `/src/routers/auth.py`, `/src/security/rate_limiter.py`
+* **Description:** Authenticates credentials under Redis Rate Limiting (הגבלת קצב) and issues a JWT containing `tenant_id` and RBAC roles.
+
+**3. Dashboard Management**
+
+* **Path:** `/src/routers/leads.py`, `/src/routers/settings.py`
+* **Description:** Fetches leads and updates AI configurations (`system_instruction`) with strict `tenant_id` isolation.
+
+---
+
+### Group 2: External Webhooks & Lead Ingestion (קליטת לידים מ-Webhooks)
+
+**4. Landing Page Lead Ingestion**
+
+* **Path:** `/src/routers/webhooks/campaign.py`
+* **Description:** Receives POST requests, validates the Tenant Key, checks for Idempotency (מניעת כפילויות) in Redis, and pushes a Celery task.
+
+```python
+@router.post("/webhooks/leads/inbound")
+async def receive_campaign_lead(payload: InboundLeadPayload, bg_tasks: BackgroundTasks, _: None = Depends(verify_tenant_key)):
+    is_new = await _reserve_lead_idempotency_key(payload.phone_number)
+    if not is_new:
+        return {"status": "accepted"} # Ignored duplicate
+    background_task_capacity.add_reserved(bg_tasks, trigger_outbound_ai_agent, payload)
+    return {"status": "accepted"}
+
+```
+
+**5. Partners & Facebook OAuth**
+
+* **Path:** `/src/routers/facebook.py`, `/src/routers/partners.py`
+* **Description:** Handles Facebook OAuth 2.0 flow, exposes conversion analytics (`/api/v1/partners/performance`), and ingests Meta Lead Ads directly.
+
+**6. Meshulam & Grow Payments**
+
+* **Path:** `/src/routers/webhooks/meshulam.py`
+* **Description:** Verifies payment HMAC signatures, upgrades tenant to PRO, and increases the Redis token quota.
+
+```python
+def verify_meshulam_signature(data: dict, api_key: str) -> bool:
+    received_sig = data.get("signature")
+    data_str = f"{data.get('transactionId')}{data.get('sum')}{data.get('status')}"
+    expected_sig = hmac.new(api_key.encode(), data_str.encode(), hashlib.sha256).hexdigest()
+    return hmac.compare_digest(expected_sig, received_sig)
+
+```
+
+---
+
+### Group 3: Core AI & Messaging Engine
+
+**7. Outbound Lead Follow-up**
+
+* **Path:** `/src/tasks/followup_tasks.py`
+* **Description:** A Celery worker fetches the lead, atomically checks token quota in Redis, and sends a Meta-approved template message via WhatsApp.
+
+**8. Two-Way WhatsApp Chat**
+
+* **Path:** `/src/routers/webhooks/whatsapp.py`
+* **Description:** Validates Meta's `X-Hub-Signature-256`, runs Guardrails (סינון הזרקות), pushes to Celery, and immediately returns `200 OK`.
+
+**9. AI Response Caching**
+
+* **Path:** `/src/services/ai/engine.py`
+* **Description:** Checks Redis for identical questions under the same `system_instruction` in the last 24h to save LLM tokens.
+
+**10. Quota Rollback**
+
+* **Path:** `/src/services/ai/engine.py`
+* **Description:** A compensation mechanism (מנגנון פיצוי) that refunds tokens to the tenant's Redis counter if the LLM crashes.
+
+**11. Audio Transcription**
+
+* **Path:** `/src/tasks/audio_tasks.py`, `/src/services/ai/whisper.py`
+* **Description:** Async task that downloads WhatsApp `.ogg` files, runs them through Whisper, and passes the transcribed text to the AI agent.
+
+**12. Virtual CMO Marketing Insights**
+
+* **Path:** `/src/routers/insights.py`
+* **Description:** The newly added workflow! Aggregates `summary_text` from the past 6 months to generate strategic marketing recommendations based on lead demands.
+
+---
+
+### Group 4: Telecom & File Storage
+
+**13. Business Number Provisioning**
+
+* **Path:** `/src/routers/provisioning.py`
+* **Description:** Uses Least-Cost Routing (LCR) APIs (Twilio/Meta) to purchase `+972` numbers and link them to the `tenant_id`.
+
+**14. KYC Document Upload**
+
+* **Path:** `/src/routers/phones.py`, `/src/services/storage/s3_service.py`
+* **Description:** Securely uploads encrypted ID documents (JPG/PDF) to an S3 `kyc/` bucket for telecom regulatory approval.
+
+**15. Local Media Storage**
+
+* **Path:** `/src/routers/storage.py`
+* **Description:** Serves files while strictly preventing Path Traversal vulnerabilities (חולשת מעבר נתיבים).
+
+```python
+@router.get("/{file_path:path}")
+async def get_local_file(file_path: str, current_user: User = Depends(get_current_user)):
+    base_dir = getattr(settings, "STORAGE_BASE_PATH", "/app/storage")
+    safe_path = os.path.normpath(os.path.join(base_dir, file_path))
+    if not safe_path.startswith(base_dir) or str(current_user.id) not in safe_path:
+        raise HTTPException(status_code=403, detail="Unauthorized Access")
+    return FileResponse(safe_path)
+
+```
+
+---
+
+### Group 5: Background Jobs (Celery Beat & Async Tasks)
+
+**16. Scheduled Follow-ups**
+
+* **Path:** `/src/worker.py`, `/src/tasks/followup_tasks.py`
+* **Description:** Triggers automated follow-up messages for unresponsive leads (לידים שלא הגיבו).
+
+**17. Trial & Subscription Enforcement**
+
+* **Path:** `/src/tasks/billing_tasks.py`
+* **Description:** Daily cron job that identifies expired 14-day trials and sets `bot_active = False`.
+
+**18. GDPR Data Retention**
+
+* **Path:** `/src/tasks/retention_tasks.py`
+* **Description:** Clears old logs and media files after their TTL expires (e.g., 90 days), while shielding protected databases.
+
+**19. Secure S3 Database Backup**
+
+* **Path:** `/src/tasks/backup_tasks.py`
+* **Description:** Creates safe snapshots of PostgreSQL in WAL mode and uploads them to S3.
+
+**20. Dead Letter Queue / DLQ Replayer**
+
+* **Path:** `/src/tasks/followup_tasks.py` (DLQ Logic)
+* **Description:** Automatically retries failed webhook events up to 5 times.
+
+---
+
+### Group 6: Infrastructure & Middleware
+
+**21. Database Sync Health**
+
+* **Path:** `/src/routers/health.py`
+* **Description:** Validates that the active Alembic migration matches `EXPECTED_DB_REVISION`.
+
+```python
+@router.get("/health/db-sync-status")
+def database_sync_status(db: Session = Depends(get_db)):
+    expected = os.getenv("EXPECTED_DB_REVISION")
+    actual = db.execute(text("SELECT version_num FROM alembic_version")).scalar_one_or_none()
+    return JSONResponse(status_code=200 if actual == expected else 503, content={"synced": actual == expected})
+
+```
+
+**22. Request Limits Middleware**
+
+* **Path:** `/src/middleware/request_limits.py`
+* **Description:** Blocks DoS memory-exhaustion by limiting JSON payloads to 1 MiB and audio to 26 MiB.
+
+**23. CI/CD Pipeline**
+
+* **Path:** `/.github/workflows/production.yml`
+* **Description:** Runs PyTest, security scanners (Trivy, Bandit), and deploys Podman containers with `NoNewPrivs=1`.
+
+**24. Application Lifespan**
+
+* **Path:** `/src/main.py`
+* **Description:** Handles safe DB connection pooling (חיבוריות) on startup and graceful teardown on shutdown.
+
+**25. Distributed Tracing**
+
+* **Path:** `/src/main.py`
+* **Description:** Injects an `X-Request-ID` into every incoming request for distributed logging across microservices.
+
+**26. Structured JSON Logging**
+
+* **Path:** `/src/main.py`
+* **Description:** Overrides Uvicorn logs to output pure JSON, injecting the `tenant_id` and `X-Request-ID`.
+
+**27. Global Security Headers**
+
+* **Path:** `/src/main.py`
+* **Description:** Middleware that injects `HSTS`, `X-Content-Type-Options`, and `CSP` into every HTTP response.
+
+**28. Egress DLP Trigger**
+
+* **Path:** `/src/main.py`, `/src/routers/benchmark.py`
+* **Description:** Adds `X-Data-TTL: 1` headers to sensitive API routes to trigger the Envoy WebAssembly (Wasm) filter to redact PII (צנזור מידע אישי).
+
+**29. Global Exception Handler & Alerts**
+
+* **Path:** `/src/main.py`
+* **Description:** Catches all unhandled crashes, prevents API hangs, and triggers Sentry & email alerts to the DevOps team.
+
+---
+
+---
+
+
 
 ## 1. Project Overview & Product Thesis
 
