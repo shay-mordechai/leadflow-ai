@@ -437,3 +437,29 @@ class AuditLog(Base):
     details = Column(JSON, nullable=True)
 
     created_at = Column(DateTime(timezone=True), server_default=func.now(), index=True)
+
+
+class PendingApproval(Base):
+    """
+    Holds AI-generated high-risk actions awaiting business owner (tenant) verification (HITL).
+    """
+
+    __tablename__ = "pending_approvals"
+
+    id = Column(GUID(), primary_key=True, default=uuid.uuid4)
+    user_id = Column(GUID(), ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True)
+    lead_id = Column(
+        GUID(),
+        ForeignKey("leads.id", ondelete="CASCADE", name="fk_pending_approvals_lead_id"),
+        nullable=False,
+        index=True,
+    )
+    action_type = Column(String, nullable=False)
+    draft_reply = Column(Text, nullable=False)
+    action_payload = Column(JSON, nullable=True)
+    status = Column(String, default="PENDING", index=True, nullable=False)
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
+    resolved_at = Column(DateTime(timezone=True), nullable=True)
+
+    lead = relationship("Lead")
+    user = relationship("User")
