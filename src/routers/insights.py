@@ -5,7 +5,7 @@ from datetime import UTC, datetime, timedelta
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.orm import Session
 
-from src.database.models import Lead, LeadStatus, User
+from src.database.models import KnowledgeDocument, Lead, LeadStatus, PendingApproval, User
 from src.database.session import get_db
 from src.security.dependencies import get_current_user
 
@@ -109,4 +109,81 @@ async def get_virtual_cmo_insights(
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail="An error occurred while generating marketing insights.",
+        )
+
+
+@router.get("/pilot-kpis")
+async def get_pilot_kpis(
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    """
+    Pilot KPI Observability Endpoint:
+    Returns real-time database-backed pilot metrics for the logged-in tenant:
+    - Total leads and qualification rate
+    - Pending HITL approvals count and resolution breakdown
+    - AI satisfaction rate (thumbs up/down)
+    - Knowledge base stats (indexed docs and chunks)
+    Enforces strict multi-tenant isolation by filtering exclusively by current_user.id.
+    """
+    try:
+        tenant_id = str(current_user.id)
+
+        # 1. Leads & Qualification
+        leads = db.query(Lead).filter(Lead.user_id == current_user.id).all()
+        total_leads = len(leads)
+        qualified_leads = sum(1 for l in leads if l.status == LeadStatus.QUALIFIED)
+        qualification_rate = (
+            round((qualified_leads / total_leads * 100), 1) if total_leads > 0 else 0.0
+        )
+
+        # 2. HITL Pending Approvals & Resolutions
+        pending_approvals_count = (
+            db.query(PendingApproval)
+            .filter(PendingApproval.user_id == current_user.id, PendingApproval.status == "PENDING")
+            .count()
+        )
+
+        all_approvals = (
+            db.query(PendingApproval).filter(PendingApproval.user_id == current_user.id).all()
+        )
+        approval_resolution_stats = {"APPROVED": 0, "EDITED": 0, "REJECTED": 0}
+        for app in all_approvals:
+            if app.status in approval_resolution_stats:
+                approval_resolution_stats[app.status] += 1
+
+        # 3. AI Feedback Summary (Thumbs Up vs Down)
+        thumbs_up = sum(1 for l in leads if l.ai_rating == 1)
+        thumbs_down = sum(1 for l in leads if l.ai_rating == -1)
+        total_rated = thumbs_up + thumbs_down
+        satisfaction_rate = round((thumbs_up / total_rated * 100), 1) if total_rated > 0 else 100.0
+
+        # 4. Knowledge Base Stats
+        docs = db.query(KnowledgeDocument).filter(KnowledgeDocument.user_id == tenant_id).all()
+        indexed_docs = sum(1 for d in docs if d.status == "INDEXED")
+        total_chunks = sum(d.chunk_count for d in docs)
+
+        return {
+            "status": "success",
+            "total_leads": total_leads,
+            "qualified_leads": qualified_leads,
+            "qualification_rate_percentage": qualification_rate,
+            "pending_approvals_count": pending_approvals_count,
+            "approval_resolution_stats": approval_resolution_stats,
+            "ai_feedback_summary": {
+                "thumbs_up": thumbs_up,
+                "thumbs_down": thumbs_down,
+                "satisfaction_rate_percentage": satisfaction_rate,
+            },
+            "knowledge_base_stats": {
+                "indexed_documents": indexed_docs,
+                "total_chunks": total_chunks,
+            },
+        }
+
+    except Exception as e:
+        logger.error(f"Failed to fetch pilot KPIs for tenant {current_user.email}: {e!s}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="An error occurred while fetching pilot KPIs.",
         )
