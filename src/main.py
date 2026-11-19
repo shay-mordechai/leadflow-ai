@@ -36,6 +36,7 @@ from src.routers import (
     benchmark,
     facebook,
     health,
+    insights,
     leads,
     partners,
     phones,
@@ -231,6 +232,7 @@ app.include_router(campaign.router)
 app.include_router(system.router)
 app.include_router(storage.router)
 app.include_router(health.router)
+app.include_router(insights.router)
 app.include_router(benchmark.router)
 
 

@@ -364,3 +364,39 @@ async def receive_external_lead(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail="Error processing lead.",
         )
+
+
+# --- Feedback Endpoint (Phase 2) ---
+class LeadFeedbackRequest(BaseModel):
+    rating: int = Field(..., description="1 for positive feedback, -1 for negative feedback")
+    note: str | None = Field(default=None, max_length=500, description="Optional feedback note")
+
+
+@router.post("/{lead_id}/feedback", status_code=status.HTTP_200_OK)
+@limiter.limit("30/minute")
+async def submit_lead_ai_feedback(
+    request: Request,
+    lead_id: UUID,
+    feedback: LeadFeedbackRequest,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """
+    Submits feedback (thumbs up/down) for AI responses on a tenant's lead.
+    Enforces strict multi-tenant isolation by filtering exclusively by current_user.id.
+    """
+    if feedback.rating not in (1, -1):
+        raise HTTPException(status_code=400, detail="Rating must be 1 or -1")
+
+    lead = db.query(Lead).filter(Lead.id == lead_id, Lead.user_id == current_user.id).first()
+    if not lead:
+        raise HTTPException(status_code=404, detail="Lead not found")
+
+    lead.ai_rating = feedback.rating
+    lead.ai_feedback_note = feedback.note
+    db.commit()
+
+    logger.info(
+        f"📝 AI Feedback recorded for lead {lead_id} (rating: {feedback.rating}) by tenant {current_user.email}"
+    )
+    return {"status": "success", "message": "Feedback recorded successfully"}
