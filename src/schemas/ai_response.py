@@ -27,6 +27,14 @@ class WhatsAppAgentResponse(BaseModel):
         ...,
         description="True if the customer is angry, requests a human, or raises an out-of-scope issue.",
     )
+    abstained: bool = Field(
+        default=False,
+        description="True when required business facts are absent from verified context.",
+    )
+    cited_chunk_ids: list[str] = Field(
+        default_factory=list,
+        description="Tenant knowledge chunk IDs grounding factual claims.",
+    )
     extracted_data: LeadExtraction = Field(default_factory=LeadExtraction)
 
     @field_validator("reply_text", mode="before")

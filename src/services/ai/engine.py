@@ -13,6 +13,7 @@ from google import genai
 from google.genai import types
 
 from src.config import settings
+from src.security.ai_guardrails import inspect_and_wrap_input, validate_llm_output
 from src.services.ai.output_sanitizer import sanitize_ai_output
 from src.services.ai.prompt_builder import PromptBuilder
 
@@ -181,8 +182,13 @@ class AIEngine:
             system_instruction = system_prompt or PromptBuilder.build_system_instruction(
                 business_type="General", business_name="Business"
             )
-        if text_input is not None:
-            text_input = text_input[: PromptBuilder.MAX_INBOUND_MESSAGE_LENGTH]
+
+        sanitized_input = inspect_and_wrap_input(text_input or "")
+        if sanitized_input.is_flagged:
+            logger.warning(
+                f"🚨 Prompt Injection Detected (OWASP LLM01): {sanitized_input.risk_reason}"
+            )
+        effective_text = sanitized_input.clean_text
 
         # SCENARIO A: Audio/Media or Explicit Schema provided -> Legacy JSON Mode
         if audio_path or expected_schema:
@@ -195,18 +201,32 @@ class AIEngine:
                     "needs_human_escalation": boolean
                 }"""
 
+            safe_truncated_text = (text_input or "").replace("<", "").replace(">", "")[:1000]
+
             final_prompt = f"""
             {system_instruction}
             Current User Talking to you: {sender_name}
-            User Message: {text_input if text_input else "Audio Message (Transcribed separately)"}
+            User Message: {safe_truncated_text if text_input else "Audio Message (Transcribed separately)"}
             Task: You must respond in the character defined above.
             Return ONLY a valid JSON object strictly matching this format:
             {expected_schema}
             """
 
-            return await run_in_threadpool(
+            raw_res = await run_in_threadpool(
                 self.generate_raw_analysis, prompt=final_prompt, media_path=audio_path
             )
+            if isinstance(raw_res, dict) and isinstance(raw_res.get("reply_text"), str):
+                raw_res["reply_text"] = validate_llm_output(
+                    raw_res["reply_text"],
+                    forbidden_markers=[
+                        "system instruction",
+                        "base_guardrails",
+                        "developer mode",
+                        "הוראות מערכת",
+                    ],
+                )
+                raw_res["reply_text"] = sanitize_ai_output(raw_res["reply_text"])
+            return raw_res
 
         # SCENARIO B: Text-Based Chat -> Agentic / Function Calling Mode
         else:
@@ -271,7 +291,7 @@ class AIEngine:
                 formatted_history.append(
                     types.Content(
                         role="user",
-                        parts=[types.Part.from_text(text=f"[{sender_name}]: {text_input}")],
+                        parts=[types.Part.from_text(text=f"[{sender_name}]: {effective_text}")],
                     )
                 )
                 generation_config = types.GenerateContentConfig(
@@ -291,6 +311,13 @@ class AIEngine:
                     config=generation_config,
                 )
                 final_text = response.text if hasattr(response, "text") else ""
+                forbidden_markers = [
+                    "system instruction",
+                    "base_guardrails",
+                    "developer mode",
+                    "הוראות מערכת",
+                ]
+                final_text = validate_llm_output(final_text, forbidden_markers=forbidden_markers)
                 final_text = sanitize_ai_output(final_text)
 
                 # Robust Handoff Detection

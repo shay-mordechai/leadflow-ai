@@ -187,24 +187,25 @@ async def simulate_ai_chat(
                 }
             )
 
-        # Lazy load the AI Engine to prevent circular imports
-        from src.services.ai.engine import ai_engine
-        from src.services.ai.prompt_builder import PromptBuilder
+        # Lazy load the Agent Harness to prevent circular imports
+        from src.services.ai.harness import agent_harness
 
         biz = current_user.business_profile
-        system_instruction = PromptBuilder.build_system_instruction(
-            business_type=biz.business_type if biz else current_user.business_type or "General",
-            business_name=biz.business_name if biz else current_user.business_name or "העסק שלנו",
-            products_services=biz.products_services if biz else None,
-            custom_instructions=agent.system_prompt,
-        )
+        b_type = biz.business_type if biz else current_user.business_type or "General"
+        b_name = biz.business_name if biz else current_user.business_name or "העסק שלנו"
+        prod_serv = biz.products_services if biz else None
+        custom_inst = agent.system_prompt
 
-        # Ask the AI Engine
-        ai_response = await ai_engine.analyze_interaction(
-            system_instruction=system_instruction,
-            text_input=data.message,
-            sender_name="לקוח פוטנציאלי (סימולטור)",
-            chat_history=formatted_history,
+        ai_response = await agent_harness.execute_turn(
+            tenant_id=str(current_user.id),
+            business_type=b_type,
+            business_name=b_name,
+            products_services=prod_serv,
+            custom_instructions=custom_inst,
+            lead_name="לקוח פוטנציאלי (סימולטור)",
+            lead_source="SIMULATOR",
+            conversation_history=formatted_history,
+            latest_message=data.message,
         )
 
         return {

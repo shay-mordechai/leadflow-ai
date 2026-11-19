@@ -2,6 +2,9 @@ import logging
 from enum import Enum
 from typing import Any, Protocol
 
+from fastapi.concurrency import run_in_threadpool
+from google.genai import types
+
 logger = logging.getLogger(__name__)
 
 
@@ -72,17 +75,36 @@ class GeminiTieredRouter:
         prompt: str,
         complexity: TaskComplexity = TaskComplexity.STANDARD,
         max_monthly_tokens: int = 500_000,
+        response_schema: Any | None = None,
+        tools: list[Any] | None = None,
+        system_instruction: str | None = None,
+        chat_history: list[Any] | None = None,
         **kwargs: Any,
-    ) -> str:
+    ) -> Any:
         """
         Validates tenant budget, selects the cost-optimal Gemini model,
-        and executes with automatic failover.
+        and executes with automatic failover and quota rollback on failure.
         """
         # Rough token estimation (~4 characters per token)
         estimated_tokens = max(len(prompt) // 4, 50)
         await self.verify_and_record_budget(tenant_id, estimated_tokens, max_monthly_tokens)
 
         primary_model, fallback_model = self.select_models(complexity)
+
+        generation_config_args: dict[str, Any] = {
+            "max_output_tokens": kwargs.pop("max_output_tokens", 512),
+            "temperature": kwargs.pop("temperature", 0.2),
+        }
+        if response_schema is not None:
+            generation_config_args["response_mime_type"] = "application/json"
+            generation_config_args["response_schema"] = response_schema
+        if system_instruction is not None:
+            generation_config_args["system_instruction"] = system_instruction
+        if tools:
+            generation_config_args["tools"] = tools
+
+        config = types.GenerateContentConfig(**generation_config_args)
+        contents = chat_history if chat_history is not None else prompt
 
         try:
             logger.info(
@@ -93,9 +115,37 @@ class GeminiTieredRouter:
                     "complexity": complexity.value,
                 },
             )
-            return await self.gemini.generate(model=primary_model, prompt=prompt, **kwargs)
+            return await run_in_threadpool(
+                self.gemini.models.generate_content,
+                model=primary_model,
+                contents=contents,
+                config=config,
+            )
         except Exception as primary_err:
             logger.warning(
                 f"Primary model {primary_model} failed ({primary_err}). Failing over to {fallback_model}."
             )
-            return await self.gemini.generate(model=fallback_model, prompt=prompt, **kwargs)
+            try:
+                return await run_in_threadpool(
+                    self.gemini.models.generate_content,
+                    model=fallback_model,
+                    contents=contents,
+                    config=config,
+                )
+            except Exception as fallback_err:
+                # Quota Rollback on total failure
+                logger.error(f"Both models failed. Releasing reserved budget for {tenant_id}.")
+                await self.release_budget(tenant_id, estimated_tokens)
+                raise fallback_err
+
+    async def release_budget(self, tenant_id: str, estimated_tokens: int) -> None:
+        """Rolls back token reservation in Redis or local tracking on failure."""
+        key = f"tenant:{tenant_id}:monthly_tokens"
+        if self.redis is not None:
+            try:
+                await self.redis.decrby(key, estimated_tokens)
+            except Exception as e:
+                logger.warning(f"Failed to release budget in Redis: {e}")
+        else:
+            current = self._local_usage.get(key, 0)
+            self._local_usage[key] = max(0, current - estimated_tokens)

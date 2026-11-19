@@ -23,7 +23,6 @@ from src.database.models import (
 )
 from src.database.session import AsyncSessionLocal
 from src.schemas.ai_response import WhatsAppAgentResponse
-from src.services.ai.prompt_builder import PromptBuilder
 
 logger = logging.getLogger("WhatsAppPipeline")
 
@@ -320,29 +319,22 @@ async def _prepare_message_context(
         {"sender": recent.sender_type, "text": recent.content}
         for recent in reversed(recent_messages.all())
     ]
-    system_instruction = PromptBuilder.build_system_instruction(
-        business_type=(
-            (business_profile.business_type if business_profile else None)
-            or user.business_type
-            or "General"
-        ),
-        business_name=(
-            (business_profile.business_name if business_profile else None)
-            or user.business_name
-            or "העסק שלנו"
-        ),
-        products_services=(business_profile.products_services if business_profile else None),
-        custom_instructions=(
-            (business_profile.custom_instructions if business_profile else None)
-            or agent.system_prompt
-        ),
+
+    b_type = (
+        (business_profile.business_type if business_profile else None)
+        or user.business_type
+        or "General"
     )
-    lead_turn_prompt = PromptBuilder.build_lead_turn_prompt(
-        lead_name=sender_name,
-        lead_source=str(lead.source.value if hasattr(lead.source, "value") else lead.source),
-        conversation_history=history,
-        latest_message=text_body,
+    b_name = (
+        (business_profile.business_name if business_profile else None)
+        or user.business_name
+        or "העסק שלנו"
     )
+    prod_serv = business_profile.products_services if business_profile else None
+    custom_inst = (
+        business_profile.custom_instructions if business_profile else None
+    ) or agent.system_prompt
+
     return "ready", {
         "external_id": external_id,
         "lead_id": lead.id,
@@ -353,8 +345,15 @@ async def _prepare_message_context(
             or (phone_record.provider_id if phone_record else None)
             or settings.WHATSAPP_PHONE_ID
         ),
-        "system_instruction": system_instruction,
-        "lead_turn_prompt": lead_turn_prompt,
+        "tenant_id": str(user.id),
+        "business_type": b_type,
+        "business_name": b_name,
+        "products_services": prod_serv,
+        "custom_instructions": custom_inst,
+        "lead_name": sender_name,
+        "lead_source": str(lead.source.value if hasattr(lead.source, "value") else lead.source),
+        "conversation_history": history,
+        "latest_message": text_body,
     }
 
 
@@ -386,18 +385,48 @@ async def _process_single_message(
     if result != "ready":
         return result
 
+    # WhatsApp Burst Debounce Check (3.5s window)
     try:
-        response = await client.models.generate_content(
-            model="gemini-2.5-flash",
-            contents=context["lead_turn_prompt"],
-            config=_build_generation_config(context["system_instruction"]),
+        import redis.asyncio as aioredis
+
+        r_client = aioredis.from_url(settings.REDIS_URL, decode_responses=True)
+        debounce_key = f"wa_debounce:{context['tenant_id']}:{context['lead_id']}"
+        is_burst = await r_client.set(debounce_key, "1", ex=3.5, nx=True)
+        await r_client.close()
+        if not is_burst:
+            logger.info(
+                f"🛡️ WhatsApp burst debounced for lead {context['lead_id']}; message coalesced."
+            )
+            return "debounced"
+    except Exception as debounce_err:
+        logger.warning(f"Debounce Redis check failed (proceeding): {debounce_err}")
+
+    try:
+        from src.services.ai.harness import agent_harness
+        from src.services.ai.memory import ConversationMemoryService
+
+        memory = await ConversationMemoryService.get_lead_memory(
+            db, context["tenant_id"], context["lead_id"]
         )
-        structured_output = response.parsed
-        if not isinstance(structured_output, WhatsAppAgentResponse):
-            raise TypeError("Gemini did not return a parsed WhatsAppAgentResponse")
+
+        ai_result = await agent_harness.execute_turn(
+            tenant_id=context["tenant_id"],
+            business_type=context["business_type"],
+            business_name=context["business_name"],
+            products_services=context["products_services"],
+            custom_instructions=context["custom_instructions"],
+            lead_name=context["lead_name"],
+            lead_source=context["lead_source"],
+            conversation_history=memory["recent_history"],
+            latest_message=context["latest_message"],
+            kb_version=1,
+        )
+        reply_text = ai_result.get("reply_text", "")
+        qualification_score = ai_result.get("lead_qualification_score", 50)
+        needs_human = ai_result.get("needs_human_escalation", False)
     except Exception as ai_error:
         logger.error(
-            "Gemini inference failed for inbound message id=%s (%s)",
+            "Agent Harness inference failed for inbound message id=%s (%s)",
             message.get("id"),
             type(ai_error).__name__,
         )
@@ -418,8 +447,8 @@ async def _process_single_message(
                 )
                 post_inference_result = "muted_during_inference"
             else:
-                lead.qualification_score = structured_output.lead_qualification_score
-                if structured_output.needs_human_escalation:
+                lead.qualification_score = qualification_score
+                if needs_human:
                     lead.bot_active = False
                     lead.requires_human = True
                     logger.warning("Human handoff required for lead %s", lead.id)
@@ -438,7 +467,7 @@ async def _process_single_message(
         outbound_id = await send_whatsapp_message(
             context["phone_number_id"],
             context["sender_id"],
-            structured_output.reply_text,
+            reply_text,
         )
     except Exception:
         logger.exception("Meta Graph API send failed for inbound message id=%s", message.get("id"))
@@ -451,7 +480,7 @@ async def _process_single_message(
                 Message(
                     lead_id=context["lead_id"],
                     sender_type="bot",
-                    content=structured_output.reply_text,
+                    content=reply_text,
                     external_id=outbound_id,
                 )
             )
