@@ -65,7 +65,7 @@ services:
       - WHISPER_USE_MMAP=1
       - OMP_NUM_THREADS=2
       - REDIS_URL=redis://redis:6379/0
-      - DATABASE_URL=postgresql+asyncpg://leadflow:leadflow_secret@db:5432/leadflow_prod
+      - DATABASE_URL=postgresql://leadflow:leadflow_secret@db:5432/leadflow_prod
       - EXPECTED_DB_REVISION=${EXPECTED_DB_REVISION:-}
       - CURRENT_IMAGE_SHA=${CURRENT_IMAGE_SHA:-}
     volumes:
@@ -97,7 +97,7 @@ services:
       - WHISPER_USE_MMAP=1
       - OMP_NUM_THREADS=2
       - REDIS_URL=redis://redis:6379/0
-      - DATABASE_URL=postgresql+asyncpg://leadflow:leadflow_secret@db:5432/leadflow_prod
+      - DATABASE_URL=postgresql://leadflow:leadflow_secret@db:5432/leadflow_prod
     volumes:
       - ./storage:/app/storage:Z
       - ./data:/app/data:Z

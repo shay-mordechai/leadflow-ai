@@ -3,18 +3,25 @@ import logging
 import os
 from logging.handlers import RotatingFileHandler
 
+from pythonjsonlogger import jsonlogger
+
 
 def setup_logging():
     """
-    Configures a rotating file logger.
-    Rotates logs when they reach 5MB, keeping the last 3 backup files.
+    Configures structured JSON logging or standard text logging.
     """
     log_dir = "logs"
     os.makedirs(log_dir, exist_ok=True)
     log_file = os.path.join(log_dir, "app.log")
 
-    # Create formatters
-    formatter = logging.Formatter("%(asctime)s - %(name)s - %(levelname)s - %(message)s")
+    log_format_env = os.getenv("LOG_FORMAT", "JSON").upper()
+
+    if log_format_env == "JSON":
+        formatter = jsonlogger.JsonFormatter(
+            "%(asctime)s %(name)s %(levelname)s %(message)s %(tenant_id)s %(trace_id)s"
+        )
+    else:
+        formatter = logging.Formatter("%(asctime)s - %(name)s - %(levelname)s - %(message)s")
 
     # 1. File Handler (Rotating)
     file_handler = RotatingFileHandler(
