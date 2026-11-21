@@ -29,7 +29,7 @@ const params = useParams();
 const router = useRouter();
 const leadId = params.id;
 
-const [lead, setLead] = useState(null);
+const [lead, setLead] = useState<Record<string, any> | null>(null);
 const [loading, setLoading] = useState(true);
 const [replyText, setReplyText] = useState("");
 const [sending, setSending] = useState(false);

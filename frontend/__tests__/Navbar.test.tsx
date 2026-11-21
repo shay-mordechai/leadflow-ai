@@ -1,6 +1,8 @@
 // frontend/__tests__/Navbar.test.tsx
 import { render, screen } from '@testing-library/react'
 import Navbar from '@/components/marketing/Navbar'
+import { describe, it, expect } from 'vitest';
+import '@testing-library/jest-dom/vitest';
 
 describe('Navbar Component', () => {
   it('renders the brand name correctly', () => {

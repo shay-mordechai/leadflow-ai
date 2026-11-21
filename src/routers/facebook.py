@@ -56,7 +56,7 @@ async def facebook_oauth_callback(code: str, state: str, db: Session = Depends(g
         f"client_id={FB_CLIENT_ID}&redirect_uri={redirect_uri}&"
         f"client_secret={FB_CLIENT_SECRET}&code={code}"
     )
-    res = requests.get(token_url)
+    res = requests.get(token_url, timeout=10)
     if not res.ok:
         raise HTTPException(status_code=400, detail="Failed to exchange code")
 

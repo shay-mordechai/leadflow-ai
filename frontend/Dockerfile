@@ -6,6 +6,9 @@ WORKDIR /app
 COPY package.json package-lock.json ./
 RUN npm ci --legacy-peer-deps
 
+COPY package.json package-lock.json ./
+RUN npm install -g npm@12.2.3 && npm ci --legacy-peer-deps
+
 # 2. Build
 FROM node:22-alpine AS builder
 WORKDIR /app

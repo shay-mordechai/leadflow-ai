@@ -6,7 +6,7 @@ import toast from "react-hot-toast";
 import { Upload, FileAudio, Loader2, ChevronLeft, CheckCircle2, Clock, AlertCircle, FileText } from "lucide-react";
 
 export default function SessionsClient({ initialSessions, leads, token }: any) {
-    const [sessions, setSessions] = useState(initialSessions);
+    const [sessions, setSessions] = useState<Record<string, any>[]>([]);
     const [selectedLead, setSelectedLead] = useState("");
     const [isUploading, setIsUploading] = useState(false);
     const [selectedFile, setSelectedFile] = useState<File | null>(null);
