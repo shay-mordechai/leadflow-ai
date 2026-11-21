@@ -125,7 +125,7 @@ python-multipart==0.0.31
 PyYAML==6.0.3
 redis==5.0.4
 regex==2025.11.3
-requests==2.33.0
+requests==2.34.2
 rich==14.3.2
 rsa==4.9.1
 ruamel.yaml==0.19.1
