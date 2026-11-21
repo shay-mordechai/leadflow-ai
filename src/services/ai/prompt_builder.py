@@ -103,8 +103,9 @@ No tools are currently enabled. Do not promise direct calendar bookings or autom
                 title = cls._xml_safe(ch.get("section_title", ""))
                 content = cls._xml_safe(ch.get("content", ""))
                 chunk_lines.append(f'<chunk id="{cid}" title="{title}">\n{content}\n</chunk>')
+            joined_chunks = "\n".join(chunk_lines)
             knowledge_block = f"""<retrieved_knowledge>
-{"\n".join(chunk_lines)}
+{joined_chunks}
 </retrieved_knowledge>"""
 
         history_lines = []
