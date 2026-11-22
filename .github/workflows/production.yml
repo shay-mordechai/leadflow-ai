@@ -2,35 +2,67 @@ name: LeadFlow Production Deploy (GHCR & Hetzner)
 
 on:
   workflow_dispatch:
+    inputs:
+      deploy_backend:
+        description: "Build and deploy backend image"
+        type: boolean
+        default: true
+      deploy_frontend:
+        description: "Build and deploy frontend image"
+        type: boolean
+        default: true
+      deploy_datagate:
+        description: "Build and deploy data-gate WASM image"
+        type: boolean
+        default: true
   push:
-    branches: [ main ]
+    branches: ["main"]
     paths:
-      - 'src/**'
-      - 'alembic/**'
-      - 'alembic.ini'
-      - 'scripts/**'
-      - 'frontend/**'
-      - 'data-gate/**'
-      - 'compose.yaml'
-      - 'Dockerfile'
-      - 'requirements.txt'
-      - '.gitleaks.toml'
-      - '.github/workflows/production.yml'
+      - "src/**"
+      - "alembic/**"
+      - "alembic.ini"
+      - "scripts/**"
+      - "frontend/**"
+      - "data-gate/**"
+      - "compose.yaml"
+      - "Dockerfile"
+      - "requirements.txt"
+      - ".gitleaks.toml"
+      - ".github/workflows/production.yml"
+
+# Queue production deployments strictly one at a time; never cancel an active deploy
+concurrency:
+  group: production-deploy
+  cancel-in-progress: false
+
+# Enforce least privilege globally; grant minimal permissions per job
+permissions: {}
 
 env:
   REGISTRY: ghcr.io
-  IMAGE_NAME: ${{ github.repository_owner }}
 
 jobs:
   detect-changes:
+    name: Detect Deployment Targets
     runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      contents: read
     outputs:
-      backend: ${{ steps.filter.outputs.backend }}
-      frontend: ${{ steps.filter.outputs.frontend }}
-      datagate: ${{ steps.filter.outputs.datagate }}
+      backend: ${{ steps.targets.outputs.backend }}
+      frontend: ${{ steps.targets.outputs.frontend }}
+      datagate: ${{ steps.targets.outputs.datagate }}
+      any: ${{ steps.targets.outputs.any }}
     steps:
-      - uses: actions/checkout@v7
-      - uses: dorny/paths-filter@v4
+      - name: Checkout repository
+        if: github.event_name != 'workflow_dispatch'
+        uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+
+      - name: Filter changed paths
+        if: github.event_name != 'workflow_dispatch'
+        uses: dorny/paths-filter@v4
         id: filter
         with:
           filters: |
@@ -48,69 +80,140 @@ jobs:
             datagate:
               - 'data-gate/**'
 
-  security-and-test-gates:
+      - name: Resolve effective deployment targets
+        id: targets
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+          IN_BACKEND: ${{ inputs.deploy_backend }}
+          IN_FRONTEND: ${{ inputs.deploy_frontend }}
+          IN_DATAGATE: ${{ inputs.deploy_datagate }}
+          CHG_BACKEND: ${{ steps.filter.outputs.backend }}
+          CHG_FRONTEND: ${{ steps.filter.outputs.frontend }}
+          CHG_DATAGATE: ${{ steps.filter.outputs.datagate }}
+        run: |
+          if [[ "$EVENT_NAME" == "workflow_dispatch" ]]; then
+            BACKEND="${IN_BACKEND:-true}"
+            FRONTEND="${IN_FRONTEND:-true}"
+            DATAGATE="${IN_DATAGATE:-true}"
+          else
+            BACKEND="${CHG_BACKEND:-false}"
+            FRONTEND="${CHG_FRONTEND:-false}"
+            DATAGATE="${CHG_DATAGATE:-false}"
+          fi
+
+          echo "backend=$BACKEND" >> "$GITHUB_OUTPUT"
+          echo "frontend=$FRONTEND" >> "$GITHUB_OUTPUT"
+          echo "datagate=$DATAGATE" >> "$GITHUB_OUTPUT"
+
+          if [[ "$BACKEND" == "true" || "$FRONTEND" == "true" || "$DATAGATE" == "true" ]]; then
+            echo "any=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "any=false" >> "$GITHUB_OUTPUT"
+          fi
+
+  repo-security-scan:
+    name: Secret & Vulnerability Scan (Gitleaks + Trivy)
     needs: detect-changes
+    if: needs.detect-changes.outputs.any == 'true'
     runs-on: ubuntu-latest
+    timeout-minutes: 15
     permissions:
       contents: read
       security-events: write
     steps:
-      - name: Checkout Code
+      - name: Checkout full history for secret scanning
         uses: actions/checkout@v7
         with:
           fetch-depth: 0
+          persist-credentials: false
 
-      - name: Scan repository for leaked secrets
+      - name: Scan repository for leaked secrets (Gitleaks)
         uses: gitleaks/gitleaks-action@v3
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: Run Trivy vulnerability scanner
-        uses: aquasecurity/trivy-action@master
+      - name: Run Trivy filesystem and misconfiguration scan
+        uses: aquasecurity/trivy-action@0.28.0
         with:
-          scan-type: 'fs'
-          scan-ref: '.'
-          format: 'sarif'
-          output: 'trivy-results.sarif'
-          severity: 'HIGH,CRITICAL'
-          exit-code: '0'
+          scan-type: "fs"
+          scan-ref: "."
+          scanners: "vuln,secret,misconfig"
+          severity: "HIGH,CRITICAL"
+          ignore-unfixed: true
+          format: "sarif"
+          output: "trivy-results.sarif"
+          exit-code: "0"
 
       - name: Upload Trivy scan results to GitHub Security tab
         uses: github/codeql-action/upload-sarif@v3
-        if: always()
+        if: always() && hashFiles('trivy-results.sarif') != ''
         with:
-          sarif_file: 'trivy-results.sarif'
-          
-      - name: Setup Python 3.12
-        if: needs.detect-changes.outputs.backend == 'true' || github.event_name == 'workflow_dispatch'
+          sarif_file: "trivy-results.sarif"
+
+  backend-verify:
+    name: Backend Lint, Security, PG15 Migrations & Tests
+    needs: detect-changes
+    if: needs.detect-changes.outputs.backend == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    permissions:
+      contents: read
+    services:
+      postgres:
+        image: postgres:15-alpine
+        env:
+          POSTGRES_USER: leadflow
+          POSTGRES_PASSWORD: leadflow_ci_password
+          POSTGRES_DB: leadflow_ci
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd="pg_isready -U leadflow -d leadflow_ci"
+          --health-interval=5s
+          --health-timeout=5s
+          --health-retries=10
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+
+      - name: Set up Python 3.12
         uses: actions/setup-python@v7
         with:
-          python-version: '3.12'
-          cache: 'pip'
+          python-version: "3.12"
+          cache: "pip"
+          cache-dependency-path: requirements.txt
 
-      - name: Install dependencies and test scanners
-        if: needs.detect-changes.outputs.backend == 'true' || github.event_name == 'workflow_dispatch'
+      - name: Install dependencies and security scanners
         run: |
           python -m pip install --upgrade pip
-          pip install -r requirements.txt ruff bandit pip-audit pytest pytest-asyncio pytest-mock
+          pip install --quiet -r requirements.txt ruff bandit pip-audit pytest pytest-asyncio pytest-mock
 
-      - name: Run Linter (Ruff)
-        if: needs.detect-changes.outputs.backend == 'true' || github.event_name == 'workflow_dispatch'
+      - name: Run Linter and Formatter Check (Ruff)
         run: |
-          ruff check src tests
-          ruff format --check src tests
+          ruff check src tests alembic
+          ruff format --check src tests alembic
 
-      - name: Run Bandit SAST
-        if: needs.detect-changes.outputs.backend == 'true' || github.event_name == 'workflow_dispatch'
+      - name: Run SAST (Bandit)
         run: bandit -r src/ -ll -ii
 
-      - name: Run Pip Audit SCA
-        if: needs.detect-changes.outputs.backend == 'true' || github.event_name == 'workflow_dispatch'
-        run: pip-audit -r requirements.txt
+      - name: Run SCA Dependency Audit (pip-audit)
+        run: pip-audit -r requirements.txt --progress-spinner off
         continue-on-error: true
 
-      - name: Run Tests Verification Gate
-        if: needs.detect-changes.outputs.backend == 'true' || github.event_name == 'workflow_dispatch'
+      - name: Verify Alembic Migrations against PostgreSQL 15
+        env:
+          PYTHONPATH: "."
+          ENVIRONMENT: "test"
+          DATABASE_URL: "postgresql://leadflow:leadflow_ci_password@127.0.0.1:5432/leadflow_ci"
+          ENCRYPTION_KEY: "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA="
+          GOOGLE_API_KEY: "dummy_google_api_key_for_tests_only"
+        run: |
+          alembic upgrade head
+          alembic check
+
+      - name: Run Automated Tests (Pytest)
         env:
           PYTHONPATH: "."
           ENVIRONMENT: "test"
@@ -119,34 +222,77 @@ jobs:
           GOOGLE_API_KEY: "dummy_google_api_key_for_tests_only"
         run: pytest tests/ -q
 
-  build-and-push:
-    needs: [ detect-changes, security-and-test-gates ]
+  frontend-verify:
+    name: Frontend Audit, Lint & Unit Tests
+    needs: detect-changes
+    if: needs.detect-changes.outputs.frontend == 'true'
     runs-on: ubuntu-latest
+    timeout-minutes: 15
+    permissions:
+      contents: read
+    defaults:
+      run:
+        working-directory: ./frontend
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+
+      - name: Set up Node.js 22
+        uses: actions/setup-node@v7
+        with:
+          node-version: "22"
+          cache: "npm"
+          cache-dependency-path: frontend/package-lock.json
+
+      - name: Install frontend dependencies
+        run: npm ci
+
+      - name: Audit production npm dependencies
+        run: npm audit --audit-level=high --omit=dev
+        continue-on-error: true
+
+      - name: Lint frontend
+        run: npm run lint
+
+      - name: Run frontend unit tests
+        run: |
+          if node -e "process.exit(require('./package.json').scripts?.test ? 0 : 1)"; then
+            npm test -- --run
+          fi
+
+  build-and-push:
+    name: Build & Push GHCR Container Images
+    needs: [detect-changes, repo-security-scan, backend-verify, frontend-verify]
+    if: >-
+      always() &&
+      needs.detect-changes.outputs.any == 'true' &&
+      needs.repo-security-scan.result == 'success' &&
+      (needs.backend-verify.result == 'success' || needs.backend-verify.result == 'skipped') &&
+      (needs.frontend-verify.result == 'success' || needs.frontend-verify.result == 'skipped')
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
     permissions:
       contents: read
       packages: write
     steps:
-      - name: Checkout Code
+      - name: Checkout repository
         uses: actions/checkout@v7
-
-      - name: Lowercase Repository Owner
-        id: string_transform
-        uses: ASzc/change-string-case-action@v8
         with:
-          string: ${{ env.IMAGE_NAME }}
+          persist-credentials: false
 
-      - name: Install Rust Toolchain (WASM)
-        if: needs.detect-changes.outputs.datagate == 'true' || github.event_name == 'workflow_dispatch'
-        uses: dtolnay/rust-toolchain@stable
-        with:
-          targets: wasm32-unknown-unknown
-
-      - name: Build WASM Filter
-        if: needs.detect-changes.outputs.datagate == 'true' || github.event_name == 'workflow_dispatch'
-        working-directory: ./data-gate
+      - name: Compute lowercase GHCR owner and short commit SHA
+        id: meta
         env:
-          RUSTFLAGS: "-C link-arg=--allow-undefined"
-        run: cargo build --target wasm32-unknown-unknown --release
+          REPO_OWNER: ${{ github.repository_owner }}
+          COMMIT_SHA: ${{ github.sha }}
+        run: |
+          echo "owner=${REPO_OWNER,,}" >> "$GITHUB_OUTPUT"
+          echo "short_sha=${COMMIT_SHA:0:12}" >> "$GITHUB_OUTPUT"
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v4
 
       - name: Log in to GHCR
         uses: docker/login-action@v4
@@ -155,45 +301,101 @@ jobs:
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
+      - name: Install Rust Toolchain (WASM)
+        if: needs.detect-changes.outputs.datagate == 'true'
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: wasm32-unknown-unknown
+
+      - name: Cache Rust cargo artifacts
+        if: needs.detect-changes.outputs.datagate == 'true'
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            data-gate/target
+          key: ${{ runner.os }}-cargo-${{ hashFiles('data-gate/Cargo.lock') }}
+          restore-keys: |
+            ${{ runner.os }}-cargo-
+
+      - name: Build WASM Filter
+        if: needs.detect-changes.outputs.datagate == 'true'
+        working-directory: ./data-gate
+        env:
+          RUSTFLAGS: "-C link-arg=--allow-undefined"
+        run: cargo build --target wasm32-unknown-unknown --release
+
       - name: Build and Push Backend Image
-        if: needs.detect-changes.outputs.backend == 'true' || github.event_name == 'workflow_dispatch'
-        run: |
-          LOWER_REPO=${{ steps.string_transform.outputs.lowercase }}
-          docker build --build-arg CURRENT_IMAGE_SHA=${{ github.sha }} -t ${{ env.REGISTRY }}/${LOWER_REPO}/leadflow-backend:latest .
-          docker push ${{ env.REGISTRY }}/${LOWER_REPO}/leadflow-backend:latest
+        if: needs.detect-changes.outputs.backend == 'true'
+        uses: docker/build-push-action@v7
+        with:
+          context: .
+          file: ./Dockerfile
+          push: true
+          build-args: |
+            CURRENT_IMAGE_SHA=${{ github.sha }}
+          tags: |
+            ${{ env.REGISTRY }}/${{ steps.meta.outputs.owner }}/leadflow-backend:latest
+            ${{ env.REGISTRY }}/${{ steps.meta.outputs.owner }}/leadflow-backend:sha-${{ steps.meta.outputs.short_sha }}
+          cache-from: type=gha,scope=backend
+          cache-to: type=gha,mode=max,scope=backend
 
       - name: Build and Push Frontend Image
-        if: needs.detect-changes.outputs.frontend == 'true' || github.event_name == 'workflow_dispatch'
-        working-directory: ./frontend
-        run: |
-          LOWER_REPO=${{ steps.string_transform.outputs.lowercase }}
-          docker build -t ${{ env.REGISTRY }}/${LOWER_REPO}/leadflow-frontend:latest .
-          docker push ${{ env.REGISTRY }}/${LOWER_REPO}/leadflow-frontend:latest
+        if: needs.detect-changes.outputs.frontend == 'true'
+        uses: docker/build-push-action@v7
+        with:
+          context: ./frontend
+          file: ./frontend/Dockerfile
+          push: true
+          tags: |
+            ${{ env.REGISTRY }}/${{ steps.meta.outputs.owner }}/leadflow-frontend:latest
+            ${{ env.REGISTRY }}/${{ steps.meta.outputs.owner }}/leadflow-frontend:sha-${{ steps.meta.outputs.short_sha }}
+          cache-from: type=gha,scope=frontend
+          cache-to: type=gha,mode=max,scope=frontend
 
       - name: Build and Push Data Gate Image
-        if: needs.detect-changes.outputs.datagate == 'true' || github.event_name == 'workflow_dispatch'
-        working-directory: ./data-gate
-        run: |
-          LOWER_REPO=${{ steps.string_transform.outputs.lowercase }}
-          docker build -t ${{ env.REGISTRY }}/${LOWER_REPO}/leadflow-data-gate:latest .
-          docker push ${{ env.REGISTRY }}/${LOWER_REPO}/leadflow-data-gate:latest
+        if: needs.detect-changes.outputs.datagate == 'true'
+        uses: docker/build-push-action@v7
+        with:
+          context: ./data-gate
+          file: ./data-gate/Dockerfile
+          push: true
+          tags: |
+            ${{ env.REGISTRY }}/${{ steps.meta.outputs.owner }}/leadflow-data-gate:latest
+            ${{ env.REGISTRY }}/${{ steps.meta.outputs.owner }}/leadflow-data-gate:sha-${{ steps.meta.outputs.short_sha }}
+          cache-from: type=gha,scope=datagate
+          cache-to: type=gha,mode=max,scope=datagate
 
   deploy:
-    needs: build-and-push
+    name: Trigger Hetzner Production Webhook
+    needs: [detect-changes, build-and-push]
+    if: needs.detect-changes.outputs.any == 'true' && needs.build-and-push.result == 'success'
     runs-on: ubuntu-latest
+    timeout-minutes: 5
+    environment: production
+    permissions: {}
     steps:
       - name: Trigger Secure Webhook Deployment (HMAC-SHA256 + Timestamp)
         env:
           WEBHOOK_SECRET: ${{ secrets.WEBHOOK_DEPLOY_TOKEN }}
+          COMMIT_SHA: ${{ github.sha }}
         run: |
+          if [[ -z "$WEBHOOK_SECRET" ]]; then
+            echo "ERROR: WEBHOOK_DEPLOY_TOKEN secret is not configured. Aborting deployment." >&2
+            exit 1
+          fi
+
           TIMESTAMP=$(date +%s)
-          PAYLOAD="deploy:${TIMESTAMP}:${{ github.sha }}"
-          SIGNATURE=$(echo -n "$PAYLOAD" | openssl dgst -sha256 -hmac "${WEBHOOK_SECRET:-dev-deploy-secret}" | awk '{print $NF}')
-          
-          curl -f -X POST "https://deploy.my-leads.app/hooks/deploy-leadflow" \
-               -H "Content-Type: application/json" \
-               -H "X-Deploy-Timestamp: $TIMESTAMP" \
-               -H "X-Deploy-Signature: sha256=$SIGNATURE" \
-               -H "X-Commit-Sha: ${{ github.sha }}" \
-               -d "{\"sha\":\"${{ github.sha }}\"}"
-          echo "✅ Secure HMAC-signed deployment webhook sent successfully to Hetzner!"
+          PAYLOAD="deploy:${TIMESTAMP}:${COMMIT_SHA}"
+          SIGNATURE=$(printf '%s' "$PAYLOAD" | openssl dgst -sha256 -hmac "$WEBHOOK_SECRET" | awk '{print $NF}')
+
+          curl -fsS --retry 3 --retry-delay 5 --connect-timeout 10 --max-time 60 \
+            -X POST "https://deploy.my-leads.app/hooks/deploy-leadflow" \
+            -H "Content-Type: application/json" \
+            -H "X-Deploy-Timestamp: ${TIMESTAMP}" \
+            -H "X-Deploy-Signature: sha256=${SIGNATURE}" \
+            -H "X-Commit-Sha: ${COMMIT_SHA}" \
+            -d "{\"sha\":\"${COMMIT_SHA}\"}"
+
+          echo "Secure HMAC-signed deployment webhook delivered to Hetzner for commit ${COMMIT_SHA}."
