@@ -5,19 +5,101 @@ updates:
     directory: "/frontend"
     schedule:
       interval: "weekly"
+      day: "sunday"
+      time: "04:00"
+      timezone: "Asia/Jerusalem"
     open-pull-requests-limit: 5
+    # Delay new releases by 3 days to reduce supply-chain malware exposure
+    cooldown:
+      default-days: 3
+    commit-message:
+      prefix: "chore(deps)"
+    labels:
+      - "dependencies"
+      - "frontend"
+    groups:
+      frontend-minor-patch:
+        patterns:
+          - "*"
+        update-types:
+          - "minor"
+          - "patch"
     ignore:
-      - dependency-name: "@types/node" # מתעלם כרגע מההתנגשות של vitest
+      # Temporarily ignore @types/node due to Vitest type compatibility conflict
+      - dependency-name: "@types/node"
 
   # 2. Backend Dependencies (pip)
   - package-ecosystem: "pip"
     directory: "/"
     schedule:
       interval: "weekly"
+      day: "sunday"
+      time: "04:00"
+      timezone: "Asia/Jerusalem"
     open-pull-requests-limit: 5
+    cooldown:
+      default-days: 3
+    commit-message:
+      prefix: "chore(deps)"
+    labels:
+      - "dependencies"
+      - "backend"
+    groups:
+      python-minor-patch:
+        patterns:
+          - "*"
+        update-types:
+          - "minor"
+          - "patch"
 
-  # 3. CI/CD Pipeline (GitHub Actions)
+  # 3. Backend Container Base Image (Dockerfile)
+  - package-ecosystem: "docker"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+      day: "sunday"
+      time: "04:00"
+      timezone: "Asia/Jerusalem"
+    open-pull-requests-limit: 3
+    commit-message:
+      prefix: "build(docker)"
+    labels:
+      - "dependencies"
+      - "docker"
+
+  # 4. Frontend Container Base Image (frontend/Dockerfile)
+  - package-ecosystem: "docker"
+    directory: "/frontend"
+    schedule:
+      interval: "weekly"
+      day: "sunday"
+      time: "04:00"
+      timezone: "Asia/Jerusalem"
+    open-pull-requests-limit: 3
+    commit-message:
+      prefix: "build(docker)"
+    labels:
+      - "dependencies"
+      - "docker"
+      - "frontend"
+
+  # 5. CI/CD Pipeline Actions (GitHub Actions)
   - package-ecosystem: "github-actions"
     directory: "/"
     schedule:
       interval: "weekly"
+      day: "sunday"
+      time: "04:00"
+      timezone: "Asia/Jerusalem"
+    open-pull-requests-limit: 5
+    cooldown:
+      default-days: 3
+    commit-message:
+      prefix: "ci(deps)"
+    labels:
+      - "dependencies"
+      - "ci"
+    groups:
+      github-actions-updates:
+        patterns:
+          - "*"
