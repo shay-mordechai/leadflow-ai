@@ -1,0 +1,207 @@
+name: Dependabot Daily Auto-Merge & Rebase
+
+on:
+  schedule:
+    # Runs daily at 03:00 UTC (05:00 Israel Standard Time, after Dependabot and nightly audits)
+    - cron: "0 3 * * *"
+  workflow_dispatch:
+    inputs:
+      allow_major:
+        description: "Allow auto-merging green SemVer major dependency updates"
+        type: boolean
+        default: false
+
+concurrency:
+  group: dependabot-automator
+  cancel-in-progress: false
+
+permissions: {}
+
+jobs:
+  process-dependabot-prs:
+    name: Rebase & Auto-Merge Green Dependabot PRs
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    permissions:
+      contents: write
+      pull-requests: write
+      actions: write
+    steps:
+      - name: Process open Dependabot pull requests
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          REPO: ${{ github.repository }}
+          ALLOW_MAJOR: ${{ inputs.allow_major }}
+        run: |
+          python3 - << 'PY'
+          import json
+          import os
+          import re
+          import subprocess
+          import sys
+
+          repo = os.environ["REPO"]
+          allow_major = os.environ.get("ALLOW_MAJOR", "false").lower() == "true"
+
+
+          def run_gh(args: list[str], check: bool = True) -> subprocess.CompletedProcess[str]:
+              return subprocess.run(
+                  ["gh", *args, "--repo", repo],
+                  text=True,
+                  capture_output=True,
+                  check=check,
+              )
+
+
+          def is_major_bump(title: str, branch: str) -> bool:
+              if "-major" in branch.lower():
+                  return True
+              match = re.search(
+                  r"from\s+v?(\d+)\.\d+(?:\.\d+)?\s+to\s+v?(\d+)\.\d+(?:\.\d+)?",
+                  title,
+                  re.IGNORECASE,
+              )
+              if match:
+                  old_major, new_major = int(match.group(1)), int(match.group(2))
+                  return new_major > old_major
+              return False
+
+
+          def checks_passed(checks: list[dict]) -> tuple[bool, str]:
+              if not checks:
+                  return False, "no status checks reported yet"
+
+              passed_count = 0
+              for item in checks:
+                  status = item.get("status")
+                  conclusion = item.get("conclusion")
+                  state = item.get("state")
+
+                  if status and status != "COMPLETED":
+                      return False, f"check still running ({status})"
+                  if conclusion and conclusion not in ("SUCCESS", "SKIPPED", "NEUTRAL"):
+                      return False, f"check failed ({conclusion})"
+                  if state and state != "SUCCESS":
+                      return False, f"status context failed ({state})"
+                  if conclusion == "SUCCESS" or state == "SUCCESS":
+                      passed_count += 1
+
+              if passed_count == 0:
+                  return False, "zero successful checks recorded"
+              return True, "all checks green"
+
+
+          def post_dependabot_command(pr_number: int, comments: list[dict], command: str) -> None:
+              last_body = comments[-1].get("body", "").strip() if comments else ""
+              if last_body == command:
+                  print(f"PR #{pr_number}: '{command}' already posted as latest comment; skipping.")
+                  return
+              run_gh(["pr", "comment", str(pr_number), "--body", command], check=False)
+              print(f"PR #{pr_number}: posted '{command}'.")
+
+
+          raw = run_gh(
+              [
+                  "pr",
+                  "list",
+                  "--author",
+                  "app/dependabot",
+                  "--state",
+                  "open",
+                  "--limit",
+                  "30",
+                  "--json",
+                  "number,title,headRefName,isCrossRepository,mergeStateStatus,statusCheckRollup,comments,files",
+              ]
+          ).stdout
+
+          prs = sorted(json.loads(raw or "[]"), key=lambda p: p["number"])
+          if not prs:
+              print("No open Dependabot pull requests found.")
+              sys.exit(0)
+
+          merged_count = 0
+          deploy_backend = False
+          deploy_frontend = False
+          deploy_datagate = False
+
+          for pr in prs:
+              num = pr["number"]
+              title = pr["title"]
+              branch = pr["headRefName"]
+              merge_state = pr.get("mergeStateStatus", "UNKNOWN")
+              comments = pr.get("comments", [])
+
+              if pr.get("isCrossRepository"):
+                  print(f"PR #{num}: skipping cross-repository PR.")
+                  continue
+
+              if not allow_major and is_major_bump(title, branch):
+                  print(f"PR #{num} ({title}): skipping major version bump (requires manual review).")
+                  continue
+
+              if merge_state == "DIRTY":
+                  post_dependabot_command(num, comments, "@dependabot recreate")
+                  continue
+
+              if merge_state == "BEHIND" or merged_count > 0:
+                  post_dependabot_command(num, comments, "@dependabot rebase")
+                  continue
+
+              ok, reason = checks_passed(pr.get("statusCheckRollup", []))
+              if not ok:
+                  print(f"PR #{num} ({title}): skipping merge ({reason}).")
+                  continue
+
+              if merge_state != "CLEAN":
+                  print(f"PR #{num} ({title}): skipping merge (mergeStateStatus={merge_state}).")
+                  continue
+
+              # Approve and squash-merge clean, verified PR
+              run_gh(["pr", "review", str(num), "--approve"], check=False)
+              merge_res = run_gh(["pr", "merge", str(num), "--squash", "--delete-branch"], check=False)
+              if merge_res.returncode != 0:
+                  print(f"PR #{num}: merge failed: {merge_res.stderr.strip()}")
+                  post_dependabot_command(num, comments, "@dependabot rebase")
+                  continue
+
+              merged_count += 1
+              print(f"PR #{num} ({title}): merged successfully.")
+
+              for f in pr.get("files", []):
+                  path = f.get("path", "")
+                  if path.startswith("frontend/"):
+                      deploy_frontend = True
+                  elif path.startswith("data-gate/"):
+                      deploy_datagate = True
+                  elif path.startswith(("src/", "alembic/", "scripts/")) or path in (
+                      "Dockerfile",
+                      "requirements.txt",
+                      "alembic.ini",
+                      "compose.yaml",
+                  ):
+                      deploy_backend = True
+
+          print(f"Summary: merged {merged_count} PR(s).")
+
+          if merged_count > 0 and (deploy_backend or deploy_frontend or deploy_datagate):
+              print(
+                  f"Triggering single consolidated production deploy "
+                  f"(backend={deploy_backend}, frontend={deploy_frontend}, datagate={deploy_datagate})..."
+              )
+              run_gh(
+                  [
+                      "workflow",
+                      "run",
+                      "LeadFlow Production Deploy (GHCR & Hetzner)",
+                      "--ref",
+                      "main",
+                      "-f",
+                      f"deploy_backend={str(deploy_backend).lower()}",
+                      "-f",
+                      f"deploy_frontend={str(deploy_frontend).lower()}",
+                      "-f",
+                      f"deploy_datagate={str(deploy_datagate).lower()}",
+                  ]
+              )
+          PY
