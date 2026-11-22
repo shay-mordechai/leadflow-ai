@@ -53,6 +53,12 @@ updates:
       # botocore requires python-dateutil<3.0.0
       - dependency-name: "python-dateutil"
         versions: [">=3.0.0"]
+      # Legacy SDK requires protobuf>=6.33.5; project uses google-genai
+      - dependency-name: "google-ai-generativelanguage"
+        versions: [">=0.7.0"]
+      # Keep bcrypt on 4.0.x for password hashing compatibility
+      - dependency-name: "bcrypt"
+        versions: [">=4.1.0"]
 
   # 3. Backend Container Base Image (keep pinned to Python 3.12 minor/patch releases)
   - package-ecosystem: "docker"
