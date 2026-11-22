@@ -9,7 +9,7 @@ on:
       allow_major:
         description: "Allow auto-merging green SemVer major dependency updates"
         type: boolean
-        default: false
+        default: true
 
 concurrency:
   group: dependabot-automator
@@ -41,7 +41,7 @@ jobs:
           import sys
 
           repo = os.environ["REPO"]
-          allow_major = os.environ.get("ALLOW_MAJOR", "false").lower() == "true"
+          allow_major = (os.environ.get("ALLOW_MAJOR") or "true").lower() == "true"
 
 
           def run_gh(args: list[str], check: bool = True) -> subprocess.CompletedProcess[str]:
