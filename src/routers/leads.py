@@ -475,7 +475,7 @@ async def resolve_pending_approval(
         raise HTTPException(status_code=404, detail="Pending approval not found")
 
     if approval.status != "PENDING":
-        raise HTTPException(status_code=400, detail="Approval request is already resolved")
+        raise HTTPException(status_code=409, detail="Approval request is already resolved")
 
     now = datetime.now(UTC)
     final_text = (
