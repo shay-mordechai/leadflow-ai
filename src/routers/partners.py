@@ -9,6 +9,7 @@ from sqlalchemy.orm import Session
 
 from src.database.models import Lead, LeadStatus, PlanTier, User, UserRole
 from src.database.session import get_db
+from src.security.dependencies import get_current_user
 from src.security.hashing import get_password_hash
 
 logger = logging.getLogger("LeadFlowSystem")
@@ -89,13 +90,19 @@ async def register_partner(data: PartnerRegistrationRequest, db: Session = Depen
 @router.get("/performance")
 async def get_partners_performance(
     db: Session = Depends(get_db),
-    # In a real app, ensure current_user has Role = ADMIN
-    # current_user: User = Depends(get_current_user)
+    current_user: User = Depends(get_current_user),
 ):
     """
     Returns performance metrics for all registered campaigners (Partners).
     Used by the Agency Admin Dashboard to track lead volume and quality.
+    Enforces strict ADMIN authorization.
     """
+    if current_user.role != UserRole.ADMIN:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Admin access required",
+        )
+
     partners = db.query(User).filter(User.role == UserRole.PARTNER).all()
 
     performance_stats = []
