@@ -1,0 +1,77 @@
+name: CI Self-Healing Auto-Fix
+
+on:
+  workflow_run:
+    workflows:
+      - "LeadFlow Production Deploy (GHCR & Hetzner)"
+      - "DevSecOps CI Gate"
+      - "Nightly Security & Dependency Audit"
+    types:
+      - completed
+
+permissions:
+  contents: write
+  pull-requests: write
+  actions: read
+
+jobs:
+  autofix:
+    name: Diagnose & Open Auto-Fix PR
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    if: >-
+      github.event.workflow_run.conclusion == 'failure' &&
+      github.event.workflow_run.head_branch == 'main' &&
+      !startsWith(github.event.workflow_run.head_commit.message, 'fix(ci):') &&
+      !startsWith(github.event.workflow_run.head_branch, 'autofix/')
+    steps:
+      - name: Checkout failed commit on main
+        uses: actions/checkout@v7
+        with:
+          ref: ${{ github.event.workflow_run.head_sha }}
+          fetch-depth: 1
+
+      - name: Set up Python 3.12
+        uses: actions/setup-python@v7
+        with:
+          python-version: "3.12"
+          cache: "pip"
+          cache-dependency-path: requirements.txt
+
+      - name: Install application and remediation dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install --quiet google-genai pydantic ruff pytest pytest-asyncio pytest-mock
+          if [ -f requirements.txt ]; then pip install --quiet -r requirements.txt; fi
+
+      - name: Fetch failed job logs
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          gh run view "${{ github.event.workflow_run.id }}" --log-failed | tail -n 180 > /tmp/failed_log.txt
+
+      - name: Generate and validate fix with Gemini
+        env:
+          GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+        run: python .github/scripts/autofix_ci.py
+
+      - name: Create Pull Request if changes were made
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          if [[ -n "$(git status --porcelain)" ]]; then
+            BRANCH="autofix/ci-${{ github.event.workflow_run.id }}"
+            git config user.name "github-actions[bot]"
+            git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+            git checkout -b "$BRANCH"
+            git add -A
+            git commit --no-verify -m "fix(ci): auto-remediate workflow failure #${{ github.event.workflow_run.id }}"
+            git push origin "$BRANCH"
+            gh pr create \
+              --base main \
+              --head "$BRANCH" \
+              --title "fix(ci): auto-fix failure in run #${{ github.event.workflow_run.id }}" \
+              --body "Automated remediation generated for failed run: ${{ github.event.workflow_run.html_url }}"
+          else
+            echo "No changes produced; skipping PR creation."
+          fi
