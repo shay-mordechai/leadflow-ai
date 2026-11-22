@@ -148,7 +148,7 @@ tomli==2.5.0
 tomli_w==1.2.0
 tomlkit==0.14.0
 tqdm==4.67.3
-twilio==9.10.0
+twilio==9.13.0
 typer==0.21.2
 typing-inspection==0.4.2
 typing_extensions==4.16.0
