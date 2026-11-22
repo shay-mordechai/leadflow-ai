@@ -1,7 +1,7 @@
 # Optimized Dockerfile for FastAPI with AI processing capabilities (Whisper).
 # Uses a non-root user and slim base for enhanced security and reduced footprint.
 
-FROM python:3.11-slim
+FROM python:3.12-slim
 
 ARG CURRENT_IMAGE_SHA=unknown
 ENV CURRENT_IMAGE_SHA=${CURRENT_IMAGE_SHA}
