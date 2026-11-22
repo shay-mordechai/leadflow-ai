@@ -131,7 +131,7 @@ jobs:
 
       - name: Lowercase Repository Owner
         id: string_transform
-        uses: ASzc/change-string-case-action@v6
+        uses: ASzc/change-string-case-action@v8
         with:
           string: ${{ env.IMAGE_NAME }}
 
