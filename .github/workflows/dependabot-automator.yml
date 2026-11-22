@@ -1,8 +1,13 @@
-name: Dependabot Daily Auto-Merge & Rebase
+name: Dependabot Auto-Merge & Rebase
 
 on:
+  workflow_run:
+    workflows:
+      - "DevSecOps CI Gate"
+    types:
+      - completed
   schedule:
-    # Runs daily at 03:00 UTC (05:00 Israel Standard Time, after Dependabot and nightly audits)
+    # Daily fallback sweep at 03:00 UTC (05:00 Israel Standard Time)
     - cron: "0 3 * * *"
   workflow_dispatch:
     inputs:
@@ -22,6 +27,12 @@ jobs:
     name: Rebase & Auto-Merge Green Dependabot PRs
     runs-on: ubuntu-latest
     timeout-minutes: 15
+    if: >-
+      github.event_name != 'workflow_run' ||
+      (
+        github.event.workflow_run.conclusion == 'success' &&
+        github.event.workflow_run.head_repository.full_name == github.repository
+      )
     permissions:
       contents: write
       pull-requests: write
@@ -157,7 +168,6 @@ jobs:
                   print(f"PR #{num} ({title}): skipping merge (mergeStateStatus={merge_state}).")
                   continue
 
-              # Approve and squash-merge clean, verified PR
               run_gh(["pr", "review", str(num), "--approve"], check=False)
               merge_res = run_gh(["pr", "merge", str(num), "--squash", "--delete-branch"], check=False)
               if merge_res.returncode != 0:
@@ -186,7 +196,7 @@ jobs:
 
           if merged_count > 0 and (deploy_backend or deploy_frontend or deploy_datagate):
               print(
-                  f"Triggering single consolidated production deploy "
+                  f"Triggering production deploy "
                   f"(backend={deploy_backend}, frontend={deploy_frontend}, datagate={deploy_datagate})..."
               )
               run_gh(
