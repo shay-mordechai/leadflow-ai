@@ -2,40 +2,110 @@ name: Nightly Security & Dependency Audit
 
 on:
   schedule:
-    # Runs every day at 02:00 UTC (04:00 Israel time)
-    - cron: '0 2 * * *'
-  # Allows manual triggering from GitHub Actions tab:
+    # Runs daily at 02:00 UTC (04:00 Israel Standard Time)
+    - cron: "0 2 * * *"
   workflow_dispatch:
 
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions: {}
+
 jobs:
-  audit:
-    name: Dependency Vulnerability Scan
+  python-audit:
+    name: Backend Dependency Audit (pip-audit)
     runs-on: ubuntu-latest
-
+    timeout-minutes: 10
+    permissions:
+      contents: read
     steps:
-      - name: Checkout code
+      - name: Checkout repository
         uses: actions/checkout@v7
+        with:
+          persist-credentials: false
 
-      - name: Set up Python
+      # Match production Dockerfile and DevSecOps CI Gate (Python 3.12)
+      - name: Set up Python 3.12
         uses: actions/setup-python@v7
         with:
-          python-version: '3.11'
-          cache: 'pip'
+          python-version: "3.12"
+          cache: "pip"
+          cache-dependency-path: requirements.txt
 
-      - name: Install audit tools
+      - name: Install pip-audit
         run: |
           python -m pip install --upgrade pip
-          pip install pip-audit
+          pip install --quiet pip-audit
 
-      - name: Run pip-audit
-        run: |
-          pip-audit -r requirements.txt
+      - name: Run pip-audit against requirements.txt
+        run: pip-audit -r requirements.txt --progress-spinner off
 
-      - name: Run Trivy Vulnerability Scanner
-        uses: aquasecurity/trivy-action@master
+  frontend-audit:
+    name: Frontend Dependency Audit (npm audit)
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: read
+    defaults:
+      run:
+        working-directory: ./frontend
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v7
         with:
-          scan-type: 'fs'
-          scan-ref: '.'
-          severity: 'HIGH,CRITICAL'
-          exit-code: '0' # Logs all findings without failing (ללא שבירת התהליך)
-          format: 'table'
+          persist-credentials: false
+
+      - name: Set up Node.js 22
+        uses: actions/setup-node@v7
+        with:
+          node-version: "22"
+          cache: "npm"
+          cache-dependency-path: frontend/package-lock.json
+
+      - name: Audit production npm dependencies
+        run: npm audit --audit-level=high --omit=dev
+
+  trivy-scan:
+    name: Filesystem, IaC & Secret Scan (Trivy)
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    permissions:
+      contents: read
+      security-events: write
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+
+      # Pin to a tagged release instead of @master (Dependabot will keep it updated)
+      - name: Run Trivy SARIF scan
+        uses: aquasecurity/trivy-action@0.28.0
+        with:
+          scan-type: "fs"
+          scan-ref: "."
+          scanners: "vuln,secret,misconfig"
+          severity: "HIGH,CRITICAL"
+          ignore-unfixed: true
+          format: "sarif"
+          output: "trivy-results.sarif"
+          exit-code: "0"
+
+      - name: Upload Trivy findings to GitHub Security tab
+        uses: github/codeql-action/upload-sarif@v3
+        if: always() && hashFiles('trivy-results.sarif') != ''
+        with:
+          sarif_file: "trivy-results.sarif"
+
+      # Fail only on fixable CRITICAL vulnerabilities so nightly alerts stay actionable
+      - name: Enforce CRITICAL vulnerability gate
+        uses: aquasecurity/trivy-action@0.28.0
+        with:
+          scan-type: "fs"
+          scan-ref: "."
+          scanners: "vuln,secret"
+          severity: "CRITICAL"
+          ignore-unfixed: true
+          format: "table"
+          exit-code: "1"
