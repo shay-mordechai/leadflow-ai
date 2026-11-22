@@ -4,7 +4,6 @@ on:
   workflow_run:
     workflows:
       - "LeadFlow Production Deploy (GHCR & Hetzner)"
-      - "DevSecOps CI Gate"
       - "Nightly Security & Dependency Audit"
     types:
       - completed

@@ -9,7 +9,6 @@ updates:
       time: "04:00"
       timezone: "Asia/Jerusalem"
     open-pull-requests-limit: 5
-    # Delay new releases by 3 days to reduce supply-chain malware exposure
     cooldown:
       default-days: 3
     commit-message:
@@ -25,7 +24,6 @@ updates:
           - "minor"
           - "patch"
     ignore:
-      # Temporarily ignore @types/node due to Vitest type compatibility conflict
       - dependency-name: "@types/node"
 
   # 2. Backend Dependencies (pip)
@@ -51,8 +49,12 @@ updates:
         update-types:
           - "minor"
           - "patch"
+    ignore:
+      # botocore requires python-dateutil<3.0.0
+      - dependency-name: "python-dateutil"
+        versions: [">=3.0.0"]
 
-  # 3. Backend Container Base Image (Dockerfile)
+  # 3. Backend Container Base Image (keep pinned to Python 3.12 minor/patch releases)
   - package-ecosystem: "docker"
     directory: "/"
     schedule:
@@ -66,8 +68,11 @@ updates:
     labels:
       - "dependencies"
       - "docker"
+    ignore:
+      - dependency-name: "*"
+        update-types: ["version-update:semver-major"]
 
-  # 4. Frontend Container Base Image (frontend/Dockerfile)
+  # 4. Frontend Container Base Image (keep pinned to Node 22 minor/patch releases)
   - package-ecosystem: "docker"
     directory: "/frontend"
     schedule:
@@ -82,6 +87,9 @@ updates:
       - "dependencies"
       - "docker"
       - "frontend"
+    ignore:
+      - dependency-name: "*"
+        update-types: ["version-update:semver-major"]
 
   # 5. CI/CD Pipeline Actions (GitHub Actions)
   - package-ecosystem: "github-actions"
