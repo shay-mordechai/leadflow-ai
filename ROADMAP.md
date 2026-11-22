@@ -53,7 +53,7 @@ The primary risks at launch are **external regulatory bottlenecks** and **operat
 - **Worker Isolation (`WF #10, #17`):** Separate `-Q audio_queue` from `-Q realtime_chat` to prevent 2-minute voice notes from blocking live text conversations.
 
 ### 3. Billing, Celery Beat & Subscription Lifecycle (`WF #8, #9, #20`)
-- **Payment Gateway Reliability & Tax Invoices (`WF #8`):** Back Meshulam/Grow `transactionId` idempotency with PostgreSQL `UNIQUE` constraints (not Redis TTL alone). Delegate Israeli tax-compliant digital invoices (חשבונית מס קבלה) to Meshulam/Grow or Morning (חשבונית ירוקה) APIs rather than custom Python PDFs.
+- **Payment Gateway Reliability & Tax Invoices (`WF #8`):** Back Meshulam/Grow `transactionId` idempotency with PostgreSQL `UNIQUE` constraints (not Redis TTL alone). Delegate Israeli tax-compliant digital invoices to Meshulam/Grow or Morning APIs rather than custom Python PDFs.
 - **Single-Instance Celery Beat (`WF #9, #20`):** Strictly enforce `replicas: 1` for `leadflow-beat` in production so scheduled follow-ups and monthly quota resets never fire twice.
 - **Graceful Trial Cut-Off (`WF #20`):** Trigger an automated WhatsApp/email alert 48 hours before the 14-day trial expires showing active open leads so tenants convert before `bot_active` switches to `False`.
 
@@ -79,7 +79,7 @@ The primary risks at launch are **external regulatory bottlenecks** and **operat
 - [ ] Submit Meta App Review (`whatsapp_business_management`, `whatsapp_business_messaging`) & Meta Business Verification.
 - [ ] Register pre-approved Hebrew Meta Utility Templates for `WF #5` initial outbound lead outreach.
 - [ ] Submit first Twilio `+972` Regulatory Bundle for the Design Partner tenant.
-- [ ] Connect Morning (חשבונית ירוקה) / Meshulam automatic invoice webhook integration.
+- [ ] Connect Morning / Meshulam automatic invoice webhook integration.
 
 ### Stage C — Design Partner Pilot (HITL Draft Mode)
 - [ ] Upload Design Partner pricing sheet, policies, and FAQs via `POST /api/v1/knowledge/documents` and verify `INDEXED` status.

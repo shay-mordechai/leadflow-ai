@@ -182,8 +182,18 @@ jobs:
     needs: build-and-push
     runs-on: ubuntu-latest
     steps:
-      - name: Trigger Webhook Deployment
+      - name: Trigger Secure Webhook Deployment (HMAC-SHA256 + Timestamp)
+        env:
+          WEBHOOK_SECRET: ${{ secrets.WEBHOOK_DEPLOY_TOKEN }}
         run: |
+          TIMESTAMP=$(date +%s)
+          PAYLOAD="deploy:${TIMESTAMP}:${{ github.sha }}"
+          SIGNATURE=$(echo -n "$PAYLOAD" | openssl dgst -sha256 -hmac "${WEBHOOK_SECRET:-dev-deploy-secret}" | awk '{print $NF}')
+          
           curl -f -X POST "https://deploy.my-leads.app/hooks/deploy-leadflow" \
-               -H "X-Deploy-Token: ${{ secrets.WEBHOOK_DEPLOY_TOKEN }}"
-          echo "✅ Webhook trigger sent successfully to Hetzner!"
+               -H "Content-Type: application/json" \
+               -H "X-Deploy-Timestamp: $TIMESTAMP" \
+               -H "X-Deploy-Signature: sha256=$SIGNATURE" \
+               -H "X-Commit-Sha: ${{ github.sha }}" \
+               -d "{\"sha\":\"${{ github.sha }}\"}"
+          echo "✅ Secure HMAC-signed deployment webhook sent successfully to Hetzner!"

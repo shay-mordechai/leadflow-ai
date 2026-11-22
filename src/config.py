@@ -221,6 +221,9 @@ class Settings(BaseSettings):
     MESHULAM_API_KEY: str = "MOCK_API_KEY"
     MESHULAM_PAGE_CODE: str = "MOCK_PAGE_CODE"
 
+    # --- AI Advanced V2 Workflow Graph ---
+    ENABLE_WORKFLOW_GRAPH: bool = False
+
 
 def validate_config(s: Settings):
     if s.APP_ENV == "production":

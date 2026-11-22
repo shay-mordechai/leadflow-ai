@@ -8,7 +8,7 @@
 use log::{info, warn};
 use proxy_wasm::traits::*;
 use proxy_wasm::types::*;
-use serde_json::{json, Value};
+use serde_json::Value;
 use std::collections::HashSet;
 use std::sync::OnceLock;
 
@@ -93,9 +93,15 @@ impl HttpContext for DataHopHttpContext {
             return Action::Continue;
         }
 
-        // שימוש ב-usize::MAX מבטיח קבלה של כל הבאפר המצטבר בבטחה ללא תלות ב-Chunking
-        let actual_size = if body_size == 0 { 1024 } else { body_size * 2 };
-        
+        // SECURITY: Enforce 10 MiB hard ceiling on Wasm buffer inspection to prevent OOM/DoS
+        const MAX_WASM_BUFFER_SIZE: usize = 10 * 1024 * 1024;
+        if body_size > MAX_WASM_BUFFER_SIZE {
+            warn!("Data Hop Firewall: Response body exceeds 10 MiB limit ({} bytes). Dropping payload.", body_size);
+            let err = b"{\"error\": \"Security Exception: Payload Exceeds Wasm Buffer Limit\"}";
+            self.set_http_response_body(0, body_size, err);
+            return Action::Continue;
+        }
+
         if let Some(body_bytes) = self.get_http_response_body(0, usize::MAX) {
             match serde_json::from_slice::<Value>(&body_bytes) {
                 Ok(mut json_body) => {
@@ -139,11 +145,10 @@ fn redact_recursive_bounded(
             let redacted_value = Value::String("[REDACTED]".to_string());
 
             for (key, val) in map.iter_mut() {
-                // אופטימיזציה א': בדיקה ישירה של המפתח מול הסט (Zero-Allocation).
-                // הערה: מניחים שהמפתחות ב-JSON מגיעים בפורמט אחיד (lowercase או camelCase תואם).
-                // אם נדרש Case-Insensitive מלא ללא הקצאה, ניתן להשתמש בקרייט unicase.
-                if sensitive_set.contains(key.as_str()) {
-                    // אופטימיזציה ב': החלפה בטוחה בלי העתקת String כפולה ב-Heap באמצעות swap
+                // Case-insensitive key comparison against sensitive set
+                let lower_key = key.to_ascii_lowercase();
+                if sensitive_set.contains(lower_key.as_str()) {
+                    // Safe in-place replacement via swap
                     std::mem::swap(val, &mut redacted_value.clone());
                 } else {
                     redact_recursive_bounded(val, current_depth + 1, max_depth, sensitive_set);
