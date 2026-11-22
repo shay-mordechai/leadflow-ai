@@ -21,6 +21,7 @@ from pydantic import BaseModel, EmailStr, Field
 # Security: Rate Limiting
 from slowapi import Limiter
 from slowapi.util import get_remote_address
+from sqlalchemy import update
 from sqlalchemy.orm import Session, selectinload
 
 # FIXED: Added 'Message' to imports for Manual Message logging
@@ -477,23 +478,42 @@ async def resolve_pending_approval(
         raise HTTPException(status_code=400, detail="Approval request is already resolved")
 
     now = datetime.now(UTC)
-    approval.resolved_at = now
-
     final_text = (
         decision_req.edited_reply
         if decision_req.decision == "EDIT" and decision_req.edited_reply
         else approval.draft_reply
     )
 
+    new_status = "APPROVED"
     if decision_req.decision == "APPROVE":
-        approval.status = "APPROVED"
+        new_status = "APPROVED"
     elif decision_req.decision == "EDIT":
-        approval.status = "EDITED"
-        approval.draft_reply = final_text
+        new_status = "EDITED"
     elif decision_req.decision == "REJECT":
-        approval.status = "REJECTED"
+        new_status = "REJECTED"
     else:
         raise HTTPException(status_code=400, detail="Invalid decision type")
+
+    # Atomic conditional update to eliminate TOCTOU race condition
+    stmt = (
+        update(PendingApproval)
+        .where(
+            PendingApproval.id == approval_id,
+            PendingApproval.user_id == current_user.id,
+            PendingApproval.status == "PENDING",
+        )
+        .values(
+            status=new_status,
+            resolved_at=now,
+            draft_reply=final_text,
+        )
+    )
+    res = db.execute(stmt)
+    if res.rowcount == 0:
+        db.rollback()
+        raise HTTPException(
+            status_code=409, detail="Approval request was already resolved concurrently"
+        )
 
     # Update Lead state if approved or edited
     lead = (

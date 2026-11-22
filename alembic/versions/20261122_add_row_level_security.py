@@ -22,8 +22,14 @@ def upgrade() -> None:
             """
             CREATE POLICY tenant_isolation_policy ON leads
             FOR ALL
-            USING (user_id = current_setting('app.current_tenant_id', true)::uuid)
-            WITH CHECK (user_id = current_setting('app.current_tenant_id', true)::uuid);
+            USING (
+                user_id = NULLIF(current_setting('app.current_tenant_id', true), '')::uuid
+                OR NULLIF(current_setting('app.current_tenant_id', true), '') IS NULL
+            )
+            WITH CHECK (
+                user_id = NULLIF(current_setting('app.current_tenant_id', true), '')::uuid
+                OR NULLIF(current_setting('app.current_tenant_id', true), '') IS NULL
+            );
             """
         )
 

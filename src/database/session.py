@@ -1,6 +1,7 @@
 # src/database/session.py
 import logging
 import uuid
+from contextvars import ContextVar
 
 import sqlalchemy.exc
 from sqlalchemy import Column, ForeignKey, create_engine, event, text
@@ -11,6 +12,13 @@ from sqlalchemy.types import CHAR, TypeDecorator
 from tenacity import before_log, retry, retry_if_exception_type, stop_after_attempt, wait_fixed
 
 from src.config import settings
+
+# --- ContextVar for PostgreSQL RLS Tenant Context ---
+current_tenant_id_var: ContextVar[str | None] = ContextVar("current_tenant_id", default=None)
+
+
+def set_current_tenant_context(tenant_id: str | None) -> None:
+    current_tenant_id_var.set(tenant_id)
 
 
 # --- 1. Define GUID Helper (Single Source of Truth) ---
@@ -137,6 +145,16 @@ AsyncSessionLocal = async_sessionmaker(
 
 def get_db():
     db = SessionLocal()
+    tenant_id = current_tenant_id_var.get()
+    if tenant_id and db.bind and db.bind.dialect.name == "postgresql":
+        try:
+            parsed_uuid = str(uuid.UUID(tenant_id))
+            db.execute(
+                text("SELECT set_config('app.current_tenant_id', :tid, true)"),
+                {"tid": parsed_uuid},
+            )
+        except (ValueError, TypeError) as e:
+            logger.warning(f"Invalid tenant_id format in RLS context: {e}")
     try:
         yield db
     finally:

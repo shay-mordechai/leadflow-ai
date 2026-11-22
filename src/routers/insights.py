@@ -3,6 +3,7 @@ import logging
 from datetime import UTC, datetime, timedelta
 
 from fastapi import APIRouter, Depends, HTTPException, status
+from sqlalchemy import func
 from sqlalchemy.orm import Session
 
 from src.database.models import KnowledgeDocument, Lead, LeadStatus, PendingApproval, User
@@ -27,17 +28,16 @@ async def get_virtual_cmo_insights(
     try:
         six_months_ago = datetime.now(UTC) - timedelta(days=180)
 
-        # TENANT ISOLATION: Explicitly filter by tenant_id (current_user.id)
-        leads = (
-            db.query(Lead)
+        # 1. Fast SQL count for total 6-month leads
+        total_leads = (
+            db.query(func.count(Lead.id))
             .filter(
                 Lead.user_id == current_user.id,
                 Lead.created_at >= six_months_ago,
             )
-            .all()
-        )
+            .scalar()
+        ) or 0
 
-        total_leads = len(leads)
         if total_leads == 0:
             return {
                 "status": "success",
@@ -50,14 +50,26 @@ async def get_virtual_cmo_insights(
                 "trending_services": [],
             }
 
-        qualified_leads = sum(
-            1 for l in leads if l.status == LeadStatus.QUALIFIED or l.ai_rating == 1
+        # 2. Bounded projection query (max 500 leads)
+        leads_query = (
+            db.query(Lead.summary_text, Lead.status, Lead.ai_rating, Lead.created_at)
+            .filter(
+                Lead.user_id == current_user.id,
+                Lead.created_at >= six_months_ago,
+            )
+            .order_by(Lead.created_at.desc())
+            .limit(500)
+            .all()
         )
-        conversion_rate = round((qualified_leads / total_leads) * 100, 1)
+
+        qualified_leads = sum(
+            1 for l in leads_query if l.status == LeadStatus.QUALIFIED or l.ai_rating == 1
+        )
+        conversion_rate = round((qualified_leads / len(leads_query)) * 100, 1)
 
         # Aggregate lead summaries and common interest patterns
         service_mentions: dict[str, int] = {}
-        for lead in leads:
+        for lead in leads_query:
             summary = (lead.summary_text or "").lower()
             # Simple keyword extraction or categorization for demo insights
             if "מחיר" in summary or "עלות" in summary:

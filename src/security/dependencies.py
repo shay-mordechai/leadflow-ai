@@ -7,7 +7,7 @@ from sqlalchemy.orm import Session
 
 from src.config import settings
 from src.database.models import User
-from src.database.session import get_db
+from src.database.session import get_db, set_current_tenant_context
 from src.security.token_revocation import ensure_token_not_revoked
 
 oauth2_scheme = OAuth2PasswordBearer(tokenUrl="/api/v1/auth/login", auto_error=False)
@@ -62,4 +62,5 @@ async def get_current_user(
     user = db.query(User).filter(User.email == email).first()
     if user is None or payload["token_version"] != (user.token_version or 0):
         raise credentials_exception
+    set_current_tenant_context(str(user.id))
     return user

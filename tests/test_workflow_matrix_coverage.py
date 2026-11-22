@@ -13,7 +13,7 @@ from sqlalchemy.pool import StaticPool
 
 from src.database.models import Base, Lead, User, UserRole
 from src.database.session import get_db
-from src.routers import partners
+from src.routers import leads, partners
 from src.security.dependencies import get_current_user
 from src.services.ai.memory import ConversationMemoryService
 from src.services.rag.ingestor import ingest_tenant_document
@@ -252,3 +252,57 @@ def test_wf16_and_wf24_followup_and_dlq_tasks():
 
     assert callable(process_smart_followups)
     assert callable(process_dlq_events)
+
+
+def test_hitl_approval_atomic_race_condition():
+    """Regression: Concurrent resolution of the same PendingApproval allows only one successful update (TOCTOU protection)."""
+    from src.database.models import PendingApproval
+
+    engine = create_engine(
+        "sqlite:///:memory:", connect_args={"check_same_thread": False}, poolclass=StaticPool
+    )
+    Base.metadata.create_all(bind=engine)
+    session_factory = sessionmaker(bind=engine, expire_on_commit=False)
+
+    app = FastAPI()
+    app.include_router(leads.router, prefix="/api/v1/leads")
+
+    db = session_factory()
+    user_id = uuid.uuid4()
+    lead_id = uuid.uuid4()
+    user = User(
+        id=user_id, name="U", email="u@example.com", hashed_password="pw", role=UserRole.CLIENT
+    )
+    lead = Lead(id=lead_id, user_id=user_id, name="L", phone_number="+972501234567")
+    approval_id = uuid.uuid4()
+    approval = PendingApproval(
+        id=approval_id,
+        user_id=user_id,
+        lead_id=lead_id,
+        action_type="TEST",
+        draft_reply="Draft",
+        status="PENDING",
+    )
+    db.add(user)
+    db.add(lead)
+    db.add(approval)
+    db.commit()
+    db.close()
+
+    app.dependency_overrides[get_db] = lambda: session_factory()
+    app.dependency_overrides[get_current_user] = lambda: user
+
+    client = TestClient(app)
+    res = client.post(
+        f"/api/v1/leads/approvals/{approval_id}/decision", json={"decision": "APPROVE"}
+    )
+    assert res.status_code == 200
+
+    # Second concurrent attempt on already approved item must fail with 409 Conflict
+    res2 = client.post(
+        f"/api/v1/leads/approvals/{approval_id}/decision", json={"decision": "APPROVE"}
+    )
+    assert res2.status_code == 409
+
+    Base.metadata.drop_all(bind=engine)
+    engine.dispose()
