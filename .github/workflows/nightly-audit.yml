@@ -81,7 +81,7 @@ jobs:
 
       # Pin to a tagged release instead of @master (Dependabot will keep it updated)
       - name: Run Trivy SARIF scan
-        uses: aquasecurity/trivy-action@0.28.0
+        uses: aquasecurity/trivy-action@v0.36.0
         with:
           scan-type: "fs"
           scan-ref: "."
@@ -100,7 +100,7 @@ jobs:
 
       # Fail only on fixable CRITICAL vulnerabilities so nightly alerts stay actionable
       - name: Enforce CRITICAL vulnerability gate
-        uses: aquasecurity/trivy-action@0.28.0
+        uses: aquasecurity/trivy-action@v0.36.0
         with:
           scan-type: "fs"
           scan-ref: "."
