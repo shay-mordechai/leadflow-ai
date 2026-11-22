@@ -1,29 +1,20 @@
 # alembic/env.py
-from logging.config import fileConfig
-from sqlalchemy import engine_from_config
-from sqlalchemy import pool
-from alembic import context
 import os
 import sys
+from logging.config import fileConfig
+
+from sqlalchemy import engine_from_config, pool
+
+from alembic import context
 
 # 1. Add the parent directory to path so we can import src modules
 sys.path.insert(0, os.path.dirname(os.path.dirname(__file__)))
 
 # 2. Import settings and models
+# IMPORTANT: Import ALL models here so they are registered with Base.metadata before migration
+import src.database.models  # noqa: F401
 from src.config import settings
 from src.database.session import Base
-
-# IMPORTANT: Import ALL models here so they are registered with Base.metadata before migration
-from src.database.models import (
-    User,
-    Lead,
-    BusinessProfile,
-    PhoneNumber,
-    AIAgent,
-    MediaInteraction,
-    Integration,
-    MeetingSession,
-)
 
 config = context.config
 

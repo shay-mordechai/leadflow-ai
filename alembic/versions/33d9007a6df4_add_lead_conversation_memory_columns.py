@@ -9,6 +9,7 @@ Create Date: 2026-11-19 15:24:55.866409
 from collections.abc import Sequence
 
 import sqlalchemy as sa
+from sqlalchemy.dialects import postgresql
 
 import src.database.session
 from alembic import op
@@ -100,10 +101,29 @@ def upgrade() -> None:
     with op.batch_alter_table("business_profiles", schema=None) as batch_op:
         batch_op.add_column(sa.Column("summary_template", sa.Text(), nullable=True))
 
+    # Create leadsource ENUM on PostgreSQL before casting leads.source
+    if op.get_bind().dialect.name == "postgresql":
+        postgresql.ENUM(
+            "FACEBOOK",
+            "FACEBOOK_AD",
+            "INSTAGRAM",
+            "WHATSAPP",
+            "GOOGLE_ADS",
+            "MANUAL",
+            "LANDING_PAGE",
+            "SOCIAL_CAMPAIGN",
+            name="leadsource",
+        ).create(op.get_bind(), checkfirst=True)
+
     with op.batch_alter_table("leads", schema=None) as batch_op:
         batch_op.add_column(sa.Column("conversation_summary", sa.Text(), nullable=True))
         batch_op.add_column(sa.Column("extracted_state", sa.JSON(), nullable=True))
-        batch_op.add_column(sa.Column("summary_message_count", sa.Integer(), nullable=False))
+        batch_op.add_column(
+            sa.Column("summary_message_count", sa.Integer(), nullable=False, server_default="0")
+        )
+        batch_op.alter_column(
+            "summary_message_count", existing_type=sa.Integer(), nullable=False, server_default=None
+        )
         batch_op.alter_column(
             "source",
             existing_type=sa.VARCHAR(length=12),
@@ -119,13 +139,28 @@ def upgrade() -> None:
                 name="leadsource",
             ),
             existing_nullable=False,
+            postgresql_using="source::leadsource",
         )
+
+    # Explicitly create PostgreSQL ENUM type before adding the role column
+    bind = op.get_bind()
+    if bind.dialect.name == "postgresql":
+        postgresql.ENUM("CLIENT", "PARTNER", "ADMIN", name="userrole").create(bind, checkfirst=True)
 
     with op.batch_alter_table("users", schema=None) as batch_op:
         batch_op.add_column(
             sa.Column(
-                "role", sa.Enum("CLIENT", "PARTNER", "ADMIN", name="userrole"), nullable=False
+                "role",
+                sa.Enum("CLIENT", "PARTNER", "ADMIN", name="userrole"),
+                nullable=False,
+                server_default="CLIENT",
             )
+        )
+        batch_op.alter_column(
+            "role",
+            existing_type=sa.Enum("CLIENT", "PARTNER", "ADMIN", name="userrole"),
+            nullable=False,
+            server_default=None,
         )
         batch_op.add_column(sa.Column("business_profile_path", sa.String(), nullable=True))
         batch_op.add_column(sa.Column("agency_name", sa.String(), nullable=True))
