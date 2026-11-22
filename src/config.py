@@ -203,10 +203,21 @@ class Settings(BaseSettings):
 
     # --- Meta / WhatsApp ---
     META_ACCESS_TOKEN: str = ""
+    META_ADMIN_ACCESS_TOKEN: str = ""
     WHATSAPP_PHONE_ID: str = ""
     WHATSAPP_VERIFY_TOKEN: str = "my_secure_token"
     WHATSAPP_APP_SECRET: str = ""
     GRAPH_API_VERSION: str = "v21.0"
+
+    @property
+    def admin_access_token(self) -> str:
+        """
+        Returns META_ADMIN_ACCESS_TOKEN if set, falling back to META_ACCESS_TOKEN.
+        Used for WABA and phone asset management, inspection, and configuration tasks (Admin Bot).
+        """
+        return (self.META_ADMIN_ACCESS_TOKEN or "").strip() or (
+            self.META_ACCESS_TOKEN or ""
+        ).strip()
 
     # --- Email (SMTP) & Alerts ---
     MAIL_USERNAME: str = ""

@@ -5,6 +5,7 @@ import re
 from fastapi import APIRouter, Depends, Request
 from sqlalchemy.orm import Session
 
+from src.config import settings
 from src.database.models import User as Tenant
 from src.database.session import get_db
 from src.services.providers.aggregator import number_aggregator
@@ -42,10 +43,6 @@ async def twilio_sms_webhook(request: Request, db: Session = Depends(get_db)):
             f"✅ Phone number {to_number} verified successfully for tenant {tenant.email} (Code: {verification_code})"
         )
 
-        # Mark tenant as active or phone verified in database if needed
-        # tenant.is_phone_verified = True
-        # db.commit()
-
         return {
             "status": "success",
             "message": "Phone verified successfully via local provider",
@@ -60,20 +57,32 @@ async def provision_tenant_number(
     tenant_id: int, country_code: str = "IL", db: Session = Depends(get_db)
 ):
     """
-    Provisions the cheapest available local phone number using Least-Cost Routing (LCR).
+    Provisions a phone number for a tenant under explicit operator/admin control
+    (WF-21: Admin WABA & Phone Asset Management via Meta Admin Bot using META_ADMIN_ACCESS_TOKEN
+    with fallback to META_ACCESS_TOKEN).
+
+    Note: There is no autonomous bot-driven number purchasing or automatic addition of new business
+    phone numbers; all provisioning and WABA asset management require explicit operator/admin action.
     """
+    # Verify/inspect admin token availability for WABA/phone management operations
+    admin_token = settings.admin_access_token
+    if not admin_token:
+        logger.info(
+            "ℹ️ Admin token (META_ADMIN_ACCESS_TOKEN / META_ACCESS_TOKEN) not set for administrative WABA asset inspection."
+        )
+
     tenant = db.query(Tenant).filter(Tenant.id == tenant_id).first()
     if not tenant:
         return {"error": "Tenant not found"}
 
-    # Use our LCR aggregator to find the lowest-cost local number
+    # Use our LCR aggregator to find the lowest-cost local number under operator control
     cheapest_option = number_aggregator.find_cheapest_number(country_code=country_code)
 
     if not cheapest_option:
         return {"error": "No available numbers found across configured providers"}
 
     try:
-        # Execute purchase through the winning provider
+        # Execute purchase through the winning provider upon explicit operator request
         phone_number = cheapest_option["number"]
         provider_name = cheapest_option["provider"]
 

@@ -47,7 +47,7 @@ Before validating individual workflows, verify that state transitions across lin
 | **WF-18** | Virtual CMO Marketing Insights | `src/routers/insights.py` (`/marketing-report`) | `WF-11`, `WF-17` | `tests/test_pilot_kpis.py` | `COVERED` |
 | **WF-19** | Async Audio Transcription (Whisper) | `src/tasks/audio_tasks.py`, `src/services/ai/whisper.py` | `WF-09`, `WF-25` | `tests/security/test_application_defenses.py` | `COVERED` |
 | **WF-20** | Session Upload & PDF Summary Export | `src/routers/sessions.py`, `src/services/media/pdf_maker.py` | `WF-22`, `WF-23`, `WF-25` | `tests/security/test_sec_012_pdf_path_traversal.py`, `tests/security/test_application_defenses.py` | `COVERED` |
-| **WF-21** | Twilio/Meta Number Provisioning | `src/routers/provisioning.py` | `WF-09`, `WF-22` | `tests/security/test_sec_015_twilio_signature_validation.py`, `tests/test_workflow_matrix_coverage.py` | `COVERED` |
+| **WF-21** | Admin WABA & Phone Asset Management | `src/routers/provisioning.py` | `WF-09`, `WF-22` | `tests/security/test_sec_015_twilio_signature_validation.py`, `tests/test_workflow_matrix_coverage.py` | `COVERED` |
 | **WF-22** | KYC Document Upload (S3) | `src/routers/phones.py`, `src/services/storage/s3_service.py` | `WF-21`, `WF-23` | `tests/security/test_application_defenses.py`, `tests/test_workflow_matrix_coverage.py` | `COVERED` |
 | **WF-23** | Local Tenant Media Containment | `src/routers/storage.py` | `WF-20`, `WF-24` | `tests/security/test_application_defenses.py` | `COVERED` |
 | **WF-24** | Scheduled Follow-Ups & DLQ Replayer | `src/worker.py`, `src/tasks/followup_tasks.py` | `WF-05`, `WF-16` | `tests/security/test_webhook_security.py`, `tests/test_workflow_matrix_coverage.py` | `COVERED` |

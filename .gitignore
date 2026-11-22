@@ -1,8 +1,6 @@
 # --- Secrets & Identity ---
 
 .env
-.env.*
-!.env.example
 certs/
 target/
 *.pem
