@@ -22,15 +22,12 @@ regexes = [
   '''^ml_live_3b5h8k9m2n4p7x1q$''',
 ]
 
-[allowlist]
-description = "Allowlist verified historical test/mock API keys and README documentation text"
-commits = [
-  "fb60933c0ac430219b2b61a98fb70053cf6a8aaf",
-  "19eab2c31e92a311ca89ea99582dfc5b70150758",
-  "25011ed9da18e29f7759d9642721309001a43aaa",
-]
-paths = [
-  '''README\.md$''',
-  '''src/scripts/setup_bridal_e2e\.py$''',
-  '''frontend/app/dashboard/marketer/page\.tsx$''',
-]
+[[allowlists]]
+description = "Historical mock API key in bridal E2E setup script"
+commits = ["19eab2c31e92a311ca89ea99582dfc5b70150758"]
+paths = ['''^src/scripts/setup_bridal_e2e\.py$''']
+
+[[allowlists]]
+description = "Historical documentation text in README matching generic-api-key entropy"
+commits = ["fb60933c0ac430219b2b61a98fb70053cf6a8aaf"]
+paths = ['''^README\.md$''']

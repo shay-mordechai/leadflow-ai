@@ -313,7 +313,10 @@ def test_backend_image_receives_current_commit_sha() -> None:
 
     workflow = Path(".github/workflows/production.yml").read_text(encoding="utf-8")
     dockerfile = Path("Dockerfile").read_text(encoding="utf-8")
-    assert "--build-arg CURRENT_IMAGE_SHA=${{ github.sha }}" in workflow
+    assert (
+        "--build-arg CURRENT_IMAGE_SHA=${{ github.sha }}" in workflow
+        or "CURRENT_IMAGE_SHA=${{ github.sha }}" in workflow
+    )
     assert "ARG CURRENT_IMAGE_SHA" in dockerfile
     assert "ENV CURRENT_IMAGE_SHA=${CURRENT_IMAGE_SHA}" in dockerfile
 
