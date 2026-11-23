@@ -124,10 +124,10 @@ def _resolve_or_create_lead(db: Session, owner_id: int, clean_from: str) -> Lead
         db.query(Lead).filter(Lead.user_id == owner_id, Lead.phone_number == clean_from).first()
     )
     if not lead_record and len(clean_from) >= 9:
-        suffix = re.escape(clean_from[-9:])
+        suffix = clean_from[-9:]
         lead_record = (
             db.query(Lead)
-            .filter(Lead.user_id == owner_id, Lead.phone_number.op("~")(f"{suffix}$"))
+            .filter(Lead.user_id == owner_id, Lead.phone_number.endswith(suffix))
             .first()
         )
 
