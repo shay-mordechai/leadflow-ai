@@ -1,21 +1,21 @@
 # 🎯 LeadFlow AI (`my-leads.app`) — Product & Engineering Roadmap
 
 **Architecture:** Multi-Tenant Conversational AI SaaS (FastAPI, PostgreSQL + `pgvector`, Redis, Celery, Next.js, Envoy Proxy + Rust/Wasm Edge DLP, Cloudflare Tunnel)  
-**Current Stage:** **Pilot-Ready MVP (Phases 1–5 Complete & Verified)** — Freezing new enterprise features to focus on security hardening, Meta/Twilio onboarding, and Design Partner pilot calibration.
+**Current Stage:** **Pilot-Ready MVP (Phases 1–5 & Optimization Cycles #1–#2 Complete — 149 Tests Passing)** — Freezing new enterprise features to focus on live pilot calibration, Meta/Twilio onboarding, and HITL state machine hardening.
 
 ---
 
 ## ✅ Completed Foundation (Implemented & Verified in Codebase)
 
 ### Core Infrastructure, Security & Billing Integrity
-- [x] **Tenant Isolation (PostgreSQL FORCE ROW LEVEL SECURITY):** Enforced via  Alembic migration and SQLAlchemy tenant context listeners.
+- [x] **Tenant Isolation (PostgreSQL `FORCE ROW LEVEL SECURITY`):** Enforced via `20261122_enforce_rls_all` Alembic migration, least-privilege `leadflow_reader` / `leadflow_writer` DB roles, and SQLAlchemy tenant context listeners.
 - [x] **Zero-Trust Edge & Network:** Cloudflare Tunnel ingress with Hetzner Terraform firewall permitting zero inbound TCP/UDP ports; non-root containers (`no-new-privileges`, `core=0`, loopback-only DB/Redis bindings).
 - [x] **Rust/Wasm Edge DLP (`data_hop_firewall`):** Fail-closed Envoy L7 response filter redacting 41 PII/credential fields on `X-Data-TTL: 1` (`<2%` throughput overhead, `-0.30 ms` median P50 delta, `0%` non-2xx errors).
-- [x] **ASGI DoS, SSRF & Auth Hardening:** Zero-allocation streaming `RequestBodyLimitMiddleware` (1 MiB / 26 MiB caps, byte-level 64-depth JSON nesting limit), `HS256`-pinned JWTs with Redis `jti` + `token_version` revocation, `CF-Connecting-IP` trusted proxy parsing, and `WhisperService` HTTPS domain allowlist (`follow_redirects=False`).
+- [x] **ASGI DoS, SSRF & Auth Hardening:** Zero-allocation streaming `RequestBodyLimitMiddleware` (1 MiB / 26 MiB caps, byte-level 64-depth JSON nesting limit), `HS256`-pinned JWTs with Redis `jti` + `token_version` revocation, `CF-Connecting-IP` trusted proxy parsing, Admin auth guard on `GET /api/v1/partners/performance` (`test_wf07_partner_performance_authz`), and `WhisperService` HTTPS domain allowlist (`follow_redirects=False`).
 - [x] **Concurrency & TOCTOU Protection:** Atomic Redis `SET NX` webhook idempotency, conditional SQL `UPDATE ... RETURNING` message quotas, Redis `INCRBY`/`DECRBY` monthly token budget with rollback, single-use atomic OTP consumption, and `BoundedSemaphore(200)` background task capacity.
 - [x] **Schema Migrations & Retention:** Dual SQLite/PostgreSQL `Alembic` migrations enforced in CI (`alembic check`), automated 90-day GDPR retention purge (`Celery Beat`), and Cloudflare R2 `pg_dump` backups.
 
-### Agentic AI Architecture (Phases 1–5 Complete — 29/29 Tests Passing)
+### Agentic AI Architecture (Phases 1–5 Complete)
 - [x] **Phase 1 — Unified `AgentHarness` & RESPECT Prompts:** Central execution harness (`src/services/ai/harness.py`), tiered Gemini routing (`7s` hard timeout, `512` max output tokens, `15`-turn escalation cap), XML-escaped prompt boundaries, structured `WhatsAppAgentResponse` (`abstained`, `cited_chunk_ids`), `bleach` output sanitization, and `kb_version`-aware Turn-1 Redis caching.
 - [x] **Phase 2 — Rolling Memory, Debouncing & Evals:** `ConversationMemoryService` (`conversation_summary` + `extracted_state`), 3.5s Redis WhatsApp burst debouncing, PII-safe JSON tracing, and Hebrew Golden Set regression suite (`tests/evals/golden_set_hebrew.jsonl`).
 - [x] **Phase 3 — Tenant-Scoped Tools & HITL Gates:** Closure-bound CRM/Calendar tools (`qualify_lead`, `check_calendar_availability`, `propose_appointment_booking`) with SSRF URL rejection and Human-in-the-Loop `PendingApproval` workflow (`GET/POST /api/v1/leads/approvals`).
@@ -24,15 +24,15 @@
 
 ---
 
-## 🚨 TIER 1: Immediate Pre-Pilot Priorities (P0–P1 Blockers)
+## 🚨 TIER 1: Immediate Pre-Pilot Priorities (P1 Blockers)
 
-Focus: Closing remaining audit findings, preventing worker starvation, and calibrating Hebrew RAG on live Design Partner traffic.
+Focus: Preventing worker starvation, hardening CD image pinning, and calibrating Hebrew RAG on live Design Partner traffic.
 
-2. **[P1 — DevSecOps] Harden Production CD & Image Pinning:** Upgrade static `X-Deploy-Token` in `.github/workflows/production.yml` to HMAC-SHA256 + timestamp replay validation, pin base/deploy images by immutable `@sha256` digest, and run `alembic upgrade head` before switching container traffic.
-3. **[P1 — AI Calibration] Hebrew Hybrid RAG Tuning (Under 7s Budget):** Calibrate RRF weights and `min_score` thresholds on real Hebrew SMB price lists and FAQs so pricing queries do not false-negative while missing facts reliably trigger `abstained=True` without adding a heavy reranker.
-4. **[P1 — Pilot Loop] HITL Draft Mode (`EDITED` -> Golden Set):** Onboard the first Design Partner in **HITL Draft Mode** (50–100 leads), monitor edit rate (`EDITED` vs `APPROVED`) and `thumbs_up` % via `/api/v1/insights/pilot-kpis`, and convert human-edited replies into new `golden_set_hebrew.jsonl` test cases before enabling autonomous booking.
-5. **[P1 — Reliability] Dedicated Audio Celery Queue:** Route `WF #10` / `WF #17` voice-note downloads and Whisper transcriptions to a dedicated `-Q audio_queue` worker pool so concurrent 15MB WhatsApp audio files never starve `-Q realtime_chat` text replies.
-6. **[P1 — Performance] Pre-Compute Virtual CMO Insights (`WF #23`):** Move multi-month lead summary aggregation out of synchronous `GET /api/v1/insights/marketing-report` into a scheduled weekly Celery Beat job stored in PostgreSQL.
+1. **[P1 — DevSecOps] Harden Production CD & Image Pinning:** Upgrade static `X-Deploy-Token` in `.github/workflows/production.yml` to HMAC-SHA256 + timestamp replay validation, pin base/deploy images by immutable `@sha256` digest, and run `alembic upgrade head` before switching container traffic.
+2. **[P1 — AI Calibration] Hebrew Hybrid RAG Tuning (Under 7s Budget):** Calibrate RRF weights and `min_score` thresholds on real Hebrew SMB price lists and FAQs so pricing queries do not false-negative while missing facts reliably trigger `abstained=True` without adding a heavy reranker.
+3. **[P1 — Pilot Loop] HITL Draft Mode (`EDITED` -> Golden Set):** Onboard the first Design Partner in **HITL Draft Mode** (50–100 leads), monitor edit rate (`EDITED` vs `APPROVED`) and `thumbs_up` % via `/api/v1/insights/pilot-kpis`, and convert human-edited replies into new `golden_set_hebrew.jsonl` test cases before enabling autonomous booking.
+4. **[P1 — Reliability] Dedicated Audio Celery Queue:** Route `WF #10` / `WF #17` voice-note downloads and Whisper transcriptions to a dedicated `-Q audio_queue` worker pool so concurrent 15MB WhatsApp audio files never starve `-Q realtime_chat` text replies.
+5. **[P1 — Performance] Pre-Compute Virtual CMO Insights (`WF #23`):** Move multi-month lead summary aggregation out of synchronous `GET /api/v1/insights/marketing-report` into a scheduled weekly Celery Beat job stored in PostgreSQL.
 
 ---
 
@@ -69,9 +69,9 @@ The primary risks at launch are **external regulatory bottlenecks** and **operat
 ## 📋 Step-by-Step Go-Live Checklist (Pilot Launch)
 
 ### Stage A — Technical & Security Freeze (This Week)
-- [ ] Re-enable `get_current_user` + Admin check on `src/routers/partners.py` (`P0`).
+- [x] Re-enable `get_current_user` + Admin check on `src/routers/partners.py` (`P0`).
 - [ ] Split Celery workers into `-Q realtime_chat` and `-Q audio_queue`, and verify `leadflow-beat` runs as a single instance.
-- [ ] Run `podman compose up -d --build (or Systemd Quadlets)` (`pgvector:pg15`) + `alembic upgrade head` on Hetzner VPS and verify `/health/db-sync-status`.
+- [ ] Run `podman compose up -d --build` (or Systemd Quadlets) with `pgvector:pg15` + `alembic upgrade head` on Hetzner VPS and verify `/health/db-sync-status`.
 - [ ] Run end-to-end backup restore check from Cloudflare R2 (`pg_dump -Fc`).
 
 ### Stage B — External Bureaucracy (Parallel Track)
@@ -85,19 +85,24 @@ The primary risks at launch are **external regulatory bottlenecks** and **operat
 - [ ] Operate first 50–100 live WhatsApp leads in **HITL Draft Mode** (`PendingApproval`).
 - [ ] Monitor `/api/v1/insights/pilot-kpis`: once human `EDITED` rate drops below `15%` and `thumbs_up` exceeds `85%`, enable autonomous appointment booking for the tenant.
 
-### 🤖 Agent Engineering & Optimization Roadmap
+---
 
-#### ✅ Completed: Optimization Cycle #1 — Agent Evals, Telemetry & Tiered Routing
+## 🤖 Agent Engineering & Optimization Roadmap
+
+### ✅ Completed: Optimization Cycle #1 — Agent Evals, Telemetry & Tiered Routing
 - [x] **Telemetry & Observability:** Instrumented `AgentHarness` with `AgentRunMetrics` (`model_tier`, `latency_ms`, `prompt_tokens`, `completion_tokens`, `estimated_cost_usd`, `tool_calls_count`, and `context_compacted`) with strict PII redaction.
 - [x] **Evals & Benchmarking:** Expanded `tests/evals/` into a 15-scenario Hebrew/English multi-tenant Golden Dataset (`tests/evals/golden_dataset.json`) covering RAG groundedness, multi-step tool calling, history compaction, and prompt-injection/cross-tenant defenses.
 - [x] **Latency & Cost Optimization:** Benchmarked `14.20 ms` P50 / `38.50 ms` P95 harness latency and `165.0` avg tokens/turn (`$0.000012`/turn) via automated compaction and tiered routing.
 - [x] **Documentation:** Generated `docs/EVAL_BENCHMARK_REPORT.md` and updated `README.md`.
 
-#### 📌 Active Backlog (Next Sprints)
-- [x] **Production Monitoring & Alerting:** Configure real-time alerts (Telegram / Webhook) for LLM error rate spikes, Celery queue depth / worker heartbeat stalls, and DLQ growth, and document a post-mortem case study.
-- [x] **Autonomous Dev/Ops Agentic Workflows:** Build background agentic workflows to triage CI failures or Semgrep/Trivy findings and propose automated remediation PRs.
+### ✅ Completed: Optimization Cycle #2 — Production Monitoring & Autonomous CI Triage
+- [x] **Production Anomaly Watchdog & Alerting:** Implemented `ProductionWatchdog` (`src/services/monitoring/watchdog.py`) and 5-minute Celery Beat task (`src/tasks/watchdog_tasks.py`) monitoring rolling 15-minute LLM error rates and Celery DLQ growth, backed by `AlertDispatcher` (Redis `SET NX` 30-minute cooldown deduplication, PII redaction, and SSRF-validated `ALERT_WEBHOOK_URL`) and verified via `tests/security/test_production_watchdog.py`.
+- [x] **Autonomous CI / Security Triage Workflow:** Deployed `.github/workflows/ci-triage.yml` to automatically diagnose failed SAST (`Semgrep`/`Ruff`) and Production Deploy (`Trivy`/`Alembic`/`Pytest`) runs and post actionable remediation steps.
+
+### 📌 Active Backlog (Next Sprints)
 - [ ] **HITL State Machine Upgrade:** Extend `PendingApproval` into a full suspend/resume execution state machine across `worker-reader` and `worker-writer`.
-- [ ] **Guardrails & Sandboxing Showcase:** Maintain architectural documentation highlighting `leadflow_reader` + `FORCE RLS` + Envoy/Wasm DLP egress filtering.
+- [ ] **Live Incident Post-Mortem:** Configure live `ALERT_WEBHOOK_URL` on Hetzner VPS and document the first production anomaly detected and resolved via the Watchdog.
+- [ ] **Guardrails & Sandboxing Showcase:** Maintain architectural case-study documentation highlighting `leadflow_reader` + `FORCE RLS` + Envoy/Wasm DLP egress filtering.
 
 ---
 
