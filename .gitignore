@@ -1,6 +1,6 @@
 # --- Secrets & Identity ---
 
-.env
+.env*
 certs/
 target/
 *.pem
@@ -40,8 +40,8 @@ downloads/
 pycache/
 *.py[cod]
 *$py.class
-venv/
-.venv/
+venv*/
+.venv*/
 env/
 build/
 dist/
@@ -50,7 +50,6 @@ dist/
 .coverage
 htmlcov/
 .mypy_cache/
-
 # --- Frontend (Next.js) ---
 
 node_modules/
@@ -86,4 +85,5 @@ caddy_data/
 caddy_config/
 
 .env.production
-*.env
+*.env.env.bak*
+.env.bak*
