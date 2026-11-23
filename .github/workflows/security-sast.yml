@@ -1,0 +1,71 @@
+name: SAST Security Gate (Semgrep & Ruff)
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "src/**"
+      - "alembic/**"
+      - "pyproject.toml"
+      - ".github/workflows/security-sast.yml"
+  pull_request:
+    branches: [main]
+    paths:
+      - "src/**"
+      - "alembic/**"
+      - "pyproject.toml"
+      - ".github/workflows/security-sast.yml"
+
+permissions:
+  contents: read
+  security-events: write
+
+concurrency:
+  group: sast-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  ruff-security:
+    name: Ruff Bandit SAST Rules
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+
+      - name: Install Ruff
+        run: pip install --no-cache-dir ruff
+
+      - name: Run Ruff Security Rules (flake8-bandit)
+        run: ruff check src --select S --output-format=github
+
+  semgrep-sast:
+    name: Semgrep OWASP & FastAPI SAST
+    runs-on: ubuntu-latest
+    container:
+      image: semgrep/semgrep:latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Run Semgrep OWASP Top 10 & Python Security Scan
+        run: |
+          semgrep scan \
+            --config p/owasp-top-ten \
+            --config p/python \
+            --config p/secrets \
+            --severity ERROR \
+            --error \
+            --sarif \
+            --output semgrep.sarif \
+            src alembic
+
+      - name: Upload SARIF results to GitHub Security tab
+        if: always()
+        uses: github/codeql-action/upload-sarif@v3
+        with:
+          sarif_file: semgrep.sarif
