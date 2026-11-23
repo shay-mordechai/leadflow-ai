@@ -198,7 +198,10 @@ def test_retention_policy_is_ninety_days_and_deletes_expired_leads(
     """Vulnerability: Excessive Personal Data Retention; leads beyond 90 days must be deleted."""
     monkeypatch.setattr(settings, "RETENTION_TTL_HOURS", 90 * 24)
     cutoff = retention_tasks._retention_cutoff()
-    age = datetime.now(UTC).replace(tzinfo=None) - cutoff
+    now_dt = (
+        datetime.now(UTC) if cutoff.tzinfo is not None else datetime.now(UTC).replace(tzinfo=None)
+    )
+    age = now_dt - cutoff
     assert timedelta(days=89, hours=23) <= age <= timedelta(days=90, minutes=1)
 
     engine = create_engine(

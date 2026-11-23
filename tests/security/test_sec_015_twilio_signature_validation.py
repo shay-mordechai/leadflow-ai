@@ -6,6 +6,7 @@ import hmac
 import pytest
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
+from sqlalchemy import text
 
 import src.database.models  # noqa: F401
 from src.config import settings
@@ -20,10 +21,12 @@ app.include_router(twilio_webhook_router.router, prefix="/webhooks/twilio")
 
 @pytest.fixture(autouse=True, scope="session")
 def setup_db():
-
-    Base.metadata.create_all(bind=engine)
-    yield
-    Base.metadata.drop_all(bind=engine)
+    if engine.dialect.name == "sqlite":
+        Base.metadata.create_all(bind=engine)
+        yield
+        Base.metadata.drop_all(bind=engine)
+    else:
+        yield
 
 
 @pytest.fixture(name="client")
@@ -45,18 +48,35 @@ def generate_twilio_signature(url, params, auth_token):
 
 def test_twilio_webhook_with_valid_signature(client, mocker):
     # Seed a mock phone number and user in DB
-    Base.metadata.create_all(bind=engine)
+    if engine.dialect.name == "sqlite":
+        Base.metadata.create_all(bind=engine)
     with SessionLocal() as db:
-        if not db.query(PhoneNumber).filter_by(number="+97233829709").first():
+        if engine.dialect.name == "postgresql":
+            db.execute(text("SELECT set_config('app.rls_bypass', 'on', true)"))
+        user = db.query(User).filter_by(email="owner@example.com").first()
+        if not user:
             user = User(
                 email="owner@example.com",
                 name="Owner",
                 hashed_password="pw",
                 business_name="Clinic",
+                role="CLIENT",
+                plan_tier="STARTER",
+                subscription_status="TRIAL",
+                monthly_ai_messages=0,
             )
             db.add(user)
             db.commit()
             db.refresh(user)
+
+        if engine.dialect.name == "postgresql":
+            db.execute(
+                text("SELECT set_config('app.current_tenant_id', :tid, true)"),
+                {"tid": str(user.id)},
+            )
+            db.execute(text("SELECT set_config('app.rls_bypass', 'off', true)"))
+
+        if not db.query(PhoneNumber).filter_by(number="+97233829709").first():
             phone = PhoneNumber(number="+97233829709", is_active=True, owner_id=user.id)
             db.add(phone)
             db.commit()
