@@ -1,7 +1,6 @@
 # src/tasks/audio_tasks.py
 import logging
 
-from celery import shared_task
 from sqlalchemy.orm import Session
 
 from src.database.models import Lead, MeetingSession, Message, SessionStatus, User
@@ -9,11 +8,12 @@ from src.database.session import SessionLocal
 from src.services.ai.engine import ai_engine
 from src.services.ai.whisper import whisper_service
 from src.services.communication.whatsapp import whatsapp_adapter
+from src.worker import celery_app
 
 logger = logging.getLogger("AudioTask")
 
 
-@shared_task(name="process_audio_message", bind=True, max_retries=3)
+@celery_app.task(name="process_audio_message", bind=True, max_retries=3)
 def process_audio_message(self, media_url: str, sender_id: str, bot_phone_number: str):
     """
     Asynchronous Celery task to download, transcribe, and respond to an audio message.
@@ -113,7 +113,7 @@ def process_audio_message(self, media_url: str, sender_id: str, bot_phone_number
         db.close()
 
 
-@shared_task(name="process_meeting_audio", bind=True, max_retries=1)
+@celery_app.task(name="process_meeting_audio", bind=True, max_retries=1)
 def process_meeting_audio(self, session_id: str, user_id: str, file_path: str):
     """
     Heavy task forced into SWAP. Transcribes a long audio file locally (Privacy First)

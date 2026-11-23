@@ -20,15 +20,24 @@ celery_app = Celery(
     ],
 )
 
-# Configure Celery serialization and periodic schedules (Beat)
+# Configure Celery serialization, reliability guarantees, and periodic schedules (Beat)
 celery_app.conf.update(
     task_serializer="json",
     accept_content=["json"],
     result_serializer="json",
     timezone="UTC",
     enable_utc=True,
+    task_acks_late=True,
+    task_reject_on_worker_lost=True,
+    worker_prefetch_multiplier=1,
     # Prevent memory leaks (memory optimization per child process)
     worker_max_tasks_per_child=50,
+    task_routes={
+        "src.tasks.rag_*": {"queue": "rag_read"},
+        "rag_*": {"queue": "rag_read"},
+        "*.rag_*": {"queue": "rag_read"},
+        "*": {"queue": "default"},
+    },
     beat_schedule={
         "purge-expired-tenant-data": {
             "task": "purge_expired_tenant_data",

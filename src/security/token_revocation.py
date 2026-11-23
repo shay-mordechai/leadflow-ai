@@ -1,7 +1,9 @@
 """Redis-backed revocation for individually logged-out JWTs."""
 
+import asyncio
 import hashlib
 import logging
+import weakref
 from datetime import UTC, datetime
 
 import jwt  # New import
@@ -12,9 +14,30 @@ from redis.exceptions import RedisError
 
 from src.config import settings
 
-redis_client: Redis = from_url(settings.REDIS_URL, decode_responses=True)
+_redis_clients: weakref.WeakKeyDictionary[asyncio.AbstractEventLoop, Redis] = (
+    weakref.WeakKeyDictionary()
+)
+redis_client: Redis | None = None
 logger = logging.getLogger("TokenRevocation")
 _development_revoked_tokens: set[str] = set()
+
+
+def _get_redis() -> Redis:
+    """Returns a Redis client instance bound to the running event loop or test override."""
+    override = globals().get("redis_client")
+    if override is not None:
+        return override
+    try:
+        loop = asyncio.get_running_loop()
+    except RuntimeError:
+        loop = None
+    if loop is not None:
+        client = _redis_clients.get(loop)
+        if client is None:
+            client = from_url(settings.REDIS_URL, decode_responses=True)
+            _redis_clients[loop] = client
+        return client
+    return from_url(settings.REDIS_URL, decode_responses=True)
 
 
 def _token_key(token: str) -> str:
@@ -46,7 +69,8 @@ async def revoke_token(token: str) -> None:
     if ttl <= 0:
         return
     try:
-        await redis_client.set(_token_key(token), "1", ex=ttl)
+        r = _get_redis()
+        await r.set(_token_key(token), "1", ex=ttl)
     except RedisError as error:
         if settings.APP_ENV != "production":
             logger.warning(
@@ -71,7 +95,8 @@ async def ensure_token_not_revoked(token: str) -> None:
             headers={"WWW-Authenticate": "Bearer"},
         )
     try:
-        if await redis_client.exists(key):
+        r = _get_redis()
+        if await r.exists(key):
             raise HTTPException(
                 status_code=status.HTTP_401_UNAUTHORIZED,
                 detail="Could not validate credentials",

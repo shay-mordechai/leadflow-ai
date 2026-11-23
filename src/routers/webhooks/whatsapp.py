@@ -10,6 +10,8 @@ from typing import Any
 from fastapi import APIRouter, BackgroundTasks, HTTPException, Query, Request, status
 from fastapi.responses import JSONResponse, PlainTextResponse
 from google import genai
+from google.genai import types
+from sqlalchemy import text
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
@@ -27,9 +29,17 @@ from src.database.models import (
     WebhookDLQ,
     WebhookProvider,
 )
-from src.database.session import SessionLocal
+from src.database.session import (
+    SessionLocal,
+    reset_current_tenant_context,
+    set_current_tenant_context,
+)
+from src.schemas.ai_response import WhatsAppAgentResponse
+from src.security.pii import mask_body, mask_phone
+from src.services.ai.prompt_builder import PromptBuilder
 from src.services.background_task_capacity import background_task_capacity
 from src.services.communication.whatsapp_pipeline import process_whatsapp_message
+from src.services.profile_loader import load_tenant_profile
 
 router = APIRouter(tags=["Webhooks - WhatsApp"])
 logger = logging.getLogger("WhatsAppWebhook")
@@ -39,7 +49,7 @@ PRO_MESSAGE_LIMIT = 2000
 
 
 def _is_production() -> bool:
-    return (settings.APP_ENV or "").lower() == "production"
+    return (settings.APP_ENV or "").strip().lower() == "production"
 
 
 def _has_fresh_meta_timestamps(payload: dict, now: float | None = None) -> bool:
@@ -89,7 +99,7 @@ def _digits_only(value: str | None) -> str:
 
 
 async def verify_whatsapp_signature(request: Request) -> None:
-    """Validates X-Hub-Signature-256 against WHATSAPP_APP_SECRET."""
+    """Validate X-Hub-Signature-256 against WHATSAPP_APP_SECRET."""
     secret = (getattr(settings, "WHATSAPP_APP_SECRET", None) or "").strip()
     signature = request.headers.get("X-Hub-Signature-256") or request.headers.get(
         "x-hub-signature-256"
@@ -131,16 +141,16 @@ async def verify_webhook(
     mode: str = Query(..., alias="hub.mode"),
     token: str = Query(..., alias="hub.verify_token"),
     challenge: str = Query(..., alias="hub.challenge"),
-):
-    """Meta (Facebook) Verification Handshake."""
-    verify_token = settings.WHATSAPP_VERIFY_TOKEN
+) -> PlainTextResponse:
+    """Handle the Meta (Facebook) webhook verification handshake."""
+    verify_token = (settings.WHATSAPP_VERIFY_TOKEN or "").strip()
 
-    if mode == "subscribe" and token == verify_token:
+    if mode == "subscribe" and verify_token and hmac.compare_digest(token, verify_token):
         logger.info("WhatsApp webhook verified successfully.")
         return PlainTextResponse(content=challenge)
 
     logger.warning("WhatsApp verification failed: invalid token.")
-    raise HTTPException(status_code=403, detail="Verification failed")
+    raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Verification failed")
 
 
 def _resolve_tenant(db: Session, metadata: dict) -> tuple[User | None, PhoneNumber | None]:
@@ -171,6 +181,7 @@ def _resolve_tenant(db: Session, metadata: dict) -> tuple[User | None, PhoneNumb
 def _tenant_graph_credentials(
     user: User, phone_record: PhoneNumber | None
 ) -> tuple[str | None, str | None]:
+    """Resolve messaging credentials for customer-facing WhatsApp replies (Messaging Bot)."""
     token = getattr(user, "whatsapp_access_token", None) or settings.META_ACCESS_TOKEN
     phone_id = (
         getattr(user, "whatsapp_phone_number_id", None)
@@ -211,43 +222,10 @@ def _extract_text_body(message: dict) -> str | None:
     return None
 
 
-async def _handle_inbound_message(
-    db: Session,
-    metadata: dict,
-    contacts: list,
-    message: dict,
-    client: genai.Client,
-) -> str:
-    sender_id = _digits_only(message.get("from"))
-    if not sender_id:
-        logger.warning("Skipping Meta message without sender id: %s", message.get("id"))
-        return "ignored_incomplete_message"
-
-    contact_profile = {}
-    if contacts:
-        contact_profile = (contacts[0] or {}).get("profile") or {}
-    sender_name = contact_profile.get("name") or "Guest"
-
-    user, phone_record = _resolve_tenant(db, metadata)
-    bot_phone_number = metadata.get("display_phone_number")
-    if not user:
-        logger.warning("Received message for unassigned number: %s", bot_phone_number)
-        return "ignored_unassigned_number"
-
-    agent = db.query(AIAgent).filter(AIAgent.user_id == user.id).first()
-    if not agent or not agent.is_active:
-        logger.info("AI agent disabled or missing for %s", bot_phone_number)
-        return "agent_disabled"
-
-    tenant_context = {
-        "user_id": user.id,
-        "email": user.email,
-        "plan_tier": user.plan_tier,
-        "monthly_ai_messages": user.monthly_ai_messages or 0,
-        "business_profile_path": user.business_profile_path,
-        "system_prompt": agent.system_prompt or "",
-    }
-
+def _resolve_or_create_lead(
+    db: Session, user: User, sender_id: str, sender_name: str
+) -> Lead | None:
+    """Find an existing lead for the tenant or create a new one safely inside a savepoint."""
     tail_match = f"%{sender_id[-9:]}%" if len(sender_id) >= 9 else f"%{sender_id}%"
     lead_record = (
         db.query(Lead).filter(Lead.user_id == user.id, Lead.phone_number.like(tail_match)).first()
@@ -265,9 +243,9 @@ async def _handle_inbound_message(
                     needs_followup=False,
                 )
                 db.add(lead_record)
-            db.flush()
+                db.flush()
         except IntegrityError:
-            db.rollback()
+            # Savepoint is automatically rolled back on exit; re-fetch the concurrent record.
             lead_record = (
                 db.query(Lead)
                 .filter(Lead.user_id == user.id, Lead.phone_number.like(tail_match))
@@ -279,159 +257,228 @@ async def _handle_inbound_message(
         lead_record.needs_followup = False
         db.flush()
 
-    msg_type = message.get("type")
-    text_body = _extract_text_body(message)
+    return lead_record
 
-    if msg_type == "audio":
-        media_id = (message.get("audio") or {}).get("id")
-        logger.info(
-            "Audio message received via Meta Cloud API (media_id=%s); text RAG path skipped.",
-            media_id,
-        )
-        return "audio_received"
 
-    if not text_body:
-        logger.info(
-            "Ignoring unsupported or empty Meta message type=%s id=%s",
-            msg_type,
-            message.get("id"),
-        )
-        return "ignored_unsupported_type"
-
-    inbound_message = Message(lead_id=lead_record.id, sender_type="user", content=text_body)
-    db.add(inbound_message)
-    db.flush()
-
-    if not lead_record.bot_active:
-        logger.info("Muted lead %s (human takeover); message saved.", sender_id)
-        return "muted"
-
-    max_limit = (
-        PRO_MESSAGE_LIMIT if tenant_context["plan_tier"] == PlanTier.PRO else STARTER_MESSAGE_LIMIT
+async def _generate_ai_reply(
+    db: Session,
+    user: User,
+    tenant_context: dict[str, Any],
+    lead_record: Lead,
+    inbound_message: Message,
+    sender_name: str,
+    text_body: str,
+    client: genai.Client,
+) -> WhatsAppAgentResponse:
+    """Build tenant context and request a structured WhatsApp reply from Gemini."""
+    profile_data = (
+        await load_tenant_profile(tenant_context["business_profile_path"])
+        if tenant_context["business_profile_path"]
+        else {}
     )
-    if tenant_context["monthly_ai_messages"] >= max_limit:
-        logger.warning("User %s exceeded AI message limit.", tenant_context["email"])
-        _send_tenant_message(
-            user=user,
-            phone_record=phone_record,
-            to_phone=sender_id,
-            text="מערכת המענה האוטומטי מושבתת זמנית עקב הגעה למגבלת ההודעות החודשית.",
-        )
-        return "limit_exceeded"
+    business_profile = db.query(BusinessProfile).filter(BusinessProfile.user_id == user.id).first()
 
+    profile_services = profile_data.get("services", [])
+    profile_faqs = profile_data.get("faqs", [])
+    products_services = (
+        business_profile.products_services
+        if business_profile and business_profile.products_services
+        else json.dumps({"services": profile_services, "faqs": profile_faqs}, ensure_ascii=False)
+    )
+    business_type = (
+        business_profile.business_type
+        if business_profile and business_profile.business_type
+        else user.business_type or profile_data.get("business_type", "General")
+    )
+    business_name = (
+        business_profile.business_name
+        if business_profile
+        else user.business_name or profile_data.get("business_name", "העסק שלנו")
+    )
+    custom_instructions = (
+        business_profile.custom_instructions
+        if business_profile and business_profile.custom_instructions
+        else tenant_context["system_prompt"]
+    )
+    system_instruction = PromptBuilder.build_system_instruction(
+        business_type=business_type,
+        business_name=business_name,
+        products_services=products_services,
+        custom_instructions=custom_instructions,
+    )
+
+    previous_messages = (
+        db.query(Message)
+        .filter(Message.lead_id == lead_record.id, Message.id != inbound_message.id)
+        .order_by(Message.created_at.desc())
+        .limit(6)
+        .all()
+    )
+    turn_prompt = PromptBuilder.build_lead_turn_prompt(
+        lead_name=sender_name,
+        lead_source=str(
+            lead_record.source.value if hasattr(lead_record.source, "value") else lead_record.source
+        ),
+        conversation_history=[
+            {"sender": msg.sender_type, "text": msg.content} for msg in reversed(previous_messages)
+        ],
+        latest_message=text_body,
+    )
+
+    generation_config = types.GenerateContentConfig(
+        system_instruction=system_instruction,
+        response_mime_type="application/json",
+        response_schema=WhatsAppAgentResponse,
+    )
+    ai_response = await asyncio.to_thread(
+        client.models.generate_content,
+        model="gemini-2.5-flash",
+        contents=turn_prompt,
+        config=generation_config,
+    )
+
+    structured_response = ai_response.parsed
+    if not isinstance(structured_response, WhatsAppAgentResponse):
+        if not ai_response.text:
+            raise ValueError("Gemini returned no structured response")
+        structured_response = WhatsAppAgentResponse.model_validate_json(ai_response.text)
+
+    return structured_response
+
+
+async def _handle_inbound_message(
+    db: Session,
+    metadata: dict,
+    contacts: list,
+    message: dict,
+    client: genai.Client,
+) -> str:
+    sender_id = _digits_only(message.get("from"))
+    if not sender_id:
+        logger.warning("Skipping Meta message without sender id: %s", message.get("id"))
+        return "ignored_incomplete_message"
+
+    contact_profile = (contacts[0] or {}).get("profile") or {} if contacts else {}
+    sender_name = contact_profile.get("name") or "Guest"
+
+    user, phone_record = _resolve_tenant(db, metadata)
+    bot_phone_number = metadata.get("display_phone_number")
+    if not user:
+        logger.warning(
+            "Received message for unassigned number: %s", mask_phone(bot_phone_number or "")
+        )
+        return "ignored_unassigned_number"
+
+    tenant_token = set_current_tenant_context(str(user.id))
     try:
-        from google.genai import types
-
-        from src.schemas.ai_response import WhatsAppAgentResponse
-        from src.services.ai.prompt_builder import PromptBuilder
-        from src.services.profile_loader import load_tenant_profile
-
-        profile_data = (
-            await load_tenant_profile(tenant_context["business_profile_path"])
-            if tenant_context["business_profile_path"]
-            else {}
-        )
-        business_profile = (
-            db.query(BusinessProfile).filter(BusinessProfile.user_id == user.id).first()
-        )
-        profile_services = profile_data.get("services", [])
-        profile_faqs = profile_data.get("faqs", [])
-        products_services = (
-            business_profile.products_services
-            if business_profile and business_profile.products_services
-            else json.dumps(
-                {"services": profile_services, "faqs": profile_faqs}, ensure_ascii=False
+        # Apply tenant RLS context to the already-open PostgreSQL transaction
+        if db.bind is not None and db.bind.dialect.name == "postgresql":
+            db.execute(
+                text("SELECT set_config('app.current_tenant_id', :tid, true)"),
+                {"tid": str(user.id)},
             )
-        )
-        business_type = (
-            business_profile.business_type
-            if business_profile and business_profile.business_type
-            else user.business_type or profile_data.get("business_type", "General")
-        )
-        business_name = (
-            business_profile.business_name
-            if business_profile
-            else user.business_name or profile_data.get("business_name", "העסק שלנו")
-        )
-        custom_instructions = (
-            business_profile.custom_instructions
-            if business_profile and business_profile.custom_instructions
-            else tenant_context["system_prompt"]
-        )
-        system_instruction = PromptBuilder.build_system_instruction(
-            business_type=business_type,
-            business_name=business_name,
-            products_services=products_services,
-            custom_instructions=custom_instructions,
-        )
 
-        previous_messages = (
-            db.query(Message)
-            .filter(Message.lead_id == lead_record.id, Message.id != inbound_message.id)
-            .order_by(Message.created_at.desc())
-            .limit(6)
-            .all()
-        )
-        turn_prompt = PromptBuilder.build_lead_turn_prompt(
-            lead_name=sender_name,
-            lead_source=str(
-                lead_record.source.value
-                if hasattr(lead_record.source, "value")
-                else lead_record.source
-            ),
-            conversation_history=[
-                {
-                    "sender": message.sender_type,
-                    "text": message.content,
-                }
-                for message in reversed(previous_messages)
-            ],
-            latest_message=text_body,
-        )
+        agent = db.query(AIAgent).filter(AIAgent.user_id == user.id).first()
+        if not agent or not agent.is_active:
+            logger.info("AI agent disabled or missing for %s", mask_phone(bot_phone_number or ""))
+            return "agent_disabled"
 
-        generation_config = types.GenerateContentConfig(
-            system_instruction=system_instruction,
-            response_mime_type="application/json",
-            response_schema=WhatsAppAgentResponse,
-        )
-        ai_response = await asyncio.to_thread(
-            client.models.generate_content,
-            model="gemini-2.5-flash",
-            contents=turn_prompt,
-            config=generation_config,
-        )
-        structured_response = ai_response.parsed
-        if not isinstance(structured_response, WhatsAppAgentResponse):
-            if not ai_response.text:
-                raise ValueError("Gemini returned no structured response")
-            structured_response = WhatsAppAgentResponse.model_validate_json(ai_response.text)
+        tenant_context = {
+            "user_id": user.id,
+            "email": user.email,
+            "plan_tier": user.plan_tier,
+            "monthly_ai_messages": user.monthly_ai_messages or 0,
+            "business_profile_path": user.business_profile_path,
+            "system_prompt": agent.system_prompt or "",
+        }
 
-        if structured_response.needs_human_escalation:
-            logger.warning("WhatsApp escalation requested for lead %s", sender_id)
-        else:
+        lead_record = _resolve_or_create_lead(db, user, sender_id, sender_name)
+        if not lead_record:
+            logger.error("Failed to resolve or create lead for %s", mask_phone(sender_id))
+            return "lead_resolution_error"
+
+        msg_type = message.get("type")
+        text_body = _extract_text_body(message)
+
+        if msg_type == "audio":
+            media_id = (message.get("audio") or {}).get("id")
             logger.info(
-                "WhatsApp AI reply for lead %s: %s",
-                sender_id,
-                structured_response.reply_text,
+                "Audio message received via Meta Cloud API (media_id=%s); text RAG path skipped.",
+                media_id,
             )
-        reply_text = structured_response.reply_text
+            return "audio_received"
 
-        if reply_text:
-            success = _send_tenant_message(user, phone_record, sender_id, reply_text)
-            if success:
-                db.add(Message(lead_id=lead_record.id, sender_type="bot", content=reply_text))
-                user.monthly_ai_messages = (user.monthly_ai_messages or 0) + 1
-                db.flush()
-                return "ai_replied"
+        if not text_body:
+            logger.info(
+                "Ignoring unsupported or empty Meta message type=%s id=%s",
+                msg_type,
+                message.get("id"),
+            )
+            return "ignored_unsupported_type"
+
+        inbound_message = Message(lead_id=lead_record.id, sender_type="user", content=text_body)
+        db.add(inbound_message)
+        db.flush()
+
+        if not lead_record.bot_active:
+            logger.info("Muted lead %s (human takeover); message saved.", mask_phone(sender_id))
+            return "muted"
+
+        max_limit = (
+            PRO_MESSAGE_LIMIT
+            if tenant_context["plan_tier"] == PlanTier.PRO
+            else STARTER_MESSAGE_LIMIT
+        )
+        if tenant_context["monthly_ai_messages"] >= max_limit:
+            logger.warning("Tenant user_id=%s exceeded AI message limit.", user.id)
+            _send_tenant_message(
+                user=user,
+                phone_record=phone_record,
+                to_phone=sender_id,
+                text="מערכת המענה האוטומטי מושבתת זמנית עקב הגעה למגבלת ההודעות החודשית.",
+            )
+            return "limit_exceeded"
+
+        try:
+            structured_response = await _generate_ai_reply(
+                db=db,
+                user=user,
+                tenant_context=tenant_context,
+                lead_record=lead_record,
+                inbound_message=inbound_message,
+                sender_name=sender_name,
+                text_body=text_body,
+                client=client,
+            )
+
+            if structured_response.needs_human_escalation:
+                logger.warning("WhatsApp escalation requested for lead %s", mask_phone(sender_id))
             else:
+                logger.info(
+                    "WhatsApp AI reply for lead %s: %s",
+                    mask_phone(sender_id),
+                    mask_body(structured_response.reply_text or ""),
+                )
+
+            reply_text = structured_response.reply_text
+            if reply_text:
+                success = _send_tenant_message(user, phone_record, sender_id, reply_text)
+                if success:
+                    db.add(Message(lead_id=lead_record.id, sender_type="bot", content=reply_text))
+                    user.monthly_ai_messages = (user.monthly_ai_messages or 0) + 1
+                    db.flush()
+                    return "ai_replied"
+
                 logger.error("Failed to send WhatsApp message via adapter.")
                 return "whatsapp_send_failure"
 
-    except Exception as ai_err:
-        logger.error("Error during AI generation or response dispatch: %s", ai_err)
-        return "ai_processing_error"
+        except Exception as ai_err:
+            logger.error("Error during AI generation or response dispatch: %s", ai_err)
+            return "ai_processing_error"
 
-    return "no_action"
+        return "no_action"
+    finally:
+        reset_current_tenant_context(tenant_token)
 
 
 def _legacy_process_whatsapp_message(payload: dict[str, Any]) -> None:
@@ -500,7 +547,7 @@ async def _process_whatsapp_message(payload: dict[str, Any], client: genai.Clien
 async def handle_whatsapp_webhook(
     background_tasks: BackgroundTasks,
     request: Request,
-):
+) -> JSONResponse:
     """Validate and acknowledge Meta webhook requests without waiting on AI."""
     await verify_whatsapp_signature(request)
 
@@ -508,9 +555,12 @@ async def handle_whatsapp_webhook(
         payload = await request.json()
     except (json.JSONDecodeError, UnicodeDecodeError) as parse_err:
         logger.warning("Failed to parse incoming WhatsApp webhook JSON: %s", parse_err)
-        raise HTTPException(status_code=400, detail="Invalid JSON body")
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Invalid JSON body")
     if not isinstance(payload, dict):
-        raise HTTPException(status_code=400, detail="Webhook payload must be a JSON object")
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Webhook payload must be a JSON object",
+        )
 
     if not _has_fresh_meta_timestamps(payload):
         logger.warning("Rejected Meta webhook with missing, malformed, or stale event timestamp.")
@@ -525,4 +575,4 @@ async def handle_whatsapp_webhook(
             status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
             detail="Background processing capacity is full",
         )
-    return JSONResponse(status_code=200, content={"status": "ok"})
+    return JSONResponse(status_code=status.HTTP_200_OK, content={"status": "ok"})
