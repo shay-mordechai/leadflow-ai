@@ -1,4 +1,3 @@
-```markdown
 # MyLeads AI (`leadflow-ai`) — Secure Multi-Tenant Agentic AI Platform
 
 **Production engineering case study covering:**
@@ -238,9 +237,3 @@ python -m pytest tests/security/ -v
 * **Worker & Async Isolation:** Separate Whisper audio transcription into a dedicated Celery `-Q audio_queue` pool and pre-compute Virtual CMO insights via Celery Beat.
 * **Depth Hardening:** Enable PostgreSQL `FORCE ROW LEVEL SECURITY`, upgrade the pull-based CD webhook to HMAC-SHA256 + timestamp replay protection with `@sha256` image pinning, and add case-insensitive key matching + free-text PII regex scrubbing to `data_hop_firewall`.
 * **Systems V2:** Wire bounded single-pass self-reflection (`src/services/ai/workflow_graph.py`) behind a feature flag and advance the native C++ zero-copy audio processing engine (`cpp-transcription-engine`).
-
-```
-
-*(Quick pre-publish note: Before pushing this updated `README.md` alongside public portfolio/interview links, remember to re-enable the commented-out `get_current_user` / Admin guard on `src/routers/partners.py` so the codebase matches the zero-trust posture documented above.)*
-
-```
