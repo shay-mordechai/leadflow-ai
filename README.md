@@ -51,11 +51,11 @@ Envoy Proxy v1.28 (Port 10000 — Rust/Wasm Egress DLP Filter: data_hop_firewall
        │     ├── Tenant-Scoped Closure Tools (CRM Qualification, Calendar Availability, HITL Booking)
        │     └── Rolling Conversation Memory & PII-Safe JSON Tracing
        │
-       ├──► Redis 7 (Rate Limiting, JWT Revocation, Webhook Idempotency, Burst Debounce, Token Quotas, Turn-1 Cache)
+       ├──► Redis 7 (AOF noeviction, Rate Limiting, JWT Revocation, Webhook Idempotency, Burst Debounce, Token Quotas, Turn-1 Cache)
        │
-       ├──► PostgreSQL 15 + pgvector (Tenant-Isolated Relational State, PendingApproval, Hybrid RAG Chunks, Alembic)
+       ├──► PostgreSQL 15 + pgvector (Fail-Closed FORCE RLS, Least-Privilege Reader/Writer Roles, Alembic)
        │
-       └──► Celery Workers & Beat (Async Follow-Ups, Whisper Audio Transcription, 90-Day GDPR Purge, R2 Backups)
+       └──► Celery Split Workers & Beat (worker-reader [RAG/Marketing] vs. worker-writer [Mutations/Follow-Ups], Whisper, GDPR Purge)
  │
  ▼
 Linux Host Runtime (Rootless Podman / Systemd Quadlets / no-new-privileges / core=0)
@@ -91,6 +91,7 @@ The conversational AI layer is structured around a deterministic execution harne
 * **Structure-Aware Ingestion:** Tenants upload pricing sheets, policies, and FAQs (`.pdf`, `.md`, `.txt` up to 5 MB) via `POST /api/v1/knowledge/documents`. Filenames are sanitized via `os.path.basename`, pricing tables and section headings are preserved during chunking, embeddings are generated, and Redis `tenant:{tenant_id}:kb_version` is atomically incremented to invalidate stale cache entries.
 * **Hard SQL Pre-Filtering + Hybrid RRF:** `retrieve_relevant_chunks()` filters `KnowledgeChunk.user_id == str(tenant_id)` **before** ranking, combining semantic cosine similarity with Hebrew-normalized lexical token overlap via Reciprocal Rank Fusion (RRF). Queries lacking chunks above the relevance threshold enforce `abstained=True` and human escalation.
 
+
 ---
 
 ## 4. Defense-in-Depth Security & Runtime Hardening
@@ -119,6 +120,16 @@ The conversational AI layer is structured around a deterministic execution harne
 * **Rootless Containers (`compose.yaml`, `Dockerfile`):** Services execute under Rootless Podman and Systemd Quadlets as unprivileged users (`leadflowuser` UID 1000, `nextjs` UID 1001) with `no-new-privileges:true`, `ulimits: core: 0`, explicit cgroup memory caps (`1.5g`), read-only config mounts, and loopback-only database/service bindings.
 * **Fail-Fast Secret Hygiene (`src/config.py`):** Production startup aborts if a `.env` file exists on disk or `SECRET_KEY` is weak (`<32` chars). AWS SSM parameters are fetched via IMDSv2 and cached Fernet-encrypted with `0o600` permissions.
 
+### 4.5 Database-Level Tenant Isolation & Two-Way Prompt Injection Defense
+
+- **Fail-Closed `PostgreSQL FORCE ROW LEVEL SECURITY` (RLS):** Enforced across all 14 tenant-scoped tables via Alembic (`20261122_enforce_rls_all_tables`). Every query requires a transaction-local `app.current_tenant_id` binding; an unset context defaults to `0` rows returned rather than failing open. System-level webhook resolution uses explicit, scoped `app.rls_bypass = 'on'` inside `try ... finally` context managers.
+- **Least-Privilege Role Separation:** Database access is split across three non-superuser roles (`rolbypassrls = false`):
+  - `leadflow_migrator`: Owns schema DDL via Alembic migrations only.
+  - `leadflow_reader`: Restricted strictly to `SELECT` operations.
+  - `leadflow_writer`: Restricted to DML (`SELECT`, `INSERT`, `UPDATE`, `DELETE`) with zero DDL privileges.
+- **Two-Way Prompt Injection Neutralization:** Even if an adversarial payload inside a WhatsApp message or Whisper transcript bypasses pre-LLM guardrails, the blast radius is contained at both ends:
+  - **Integrity (Cannot Mutate):** Read-only AI/analytics tasks run on `worker-reader` backed by `leadflow_reader`—making `UPDATE` or `DELETE` physically impossible at the database layer.
+  - **Confidentiality (Cannot Exfiltrate):** All outbound responses pass through the inline Envoy Rust/Wasm DLP filter (`data_hop_firewall`) to redact PII and credentials before leaving the perimeter.
 ---
 
 ## 5. Active System Workflows Catalog
@@ -151,7 +162,12 @@ The conversational AI layer is structured around a deterministic execution harne
 | 12 | Multi-Tenant Hybrid RAG | `src/services/rag/`, `src/routers/knowledge.py` | PDF/MD/TXT ingestion, `kb_version` cache invalidation, SQL pre-filtered Vector + Lexical RRF retrieval. |
 | 13 | Quota Rollback & Turn-1 Cache | `src/services/llm_router.py`, `src/services/ai/harness.py` | Compensating Redis `DECRBY` / SQL credit release on failure; stateless Turn-1 response caching. |
 | 14 | Outbound Follow-Ups & Voice Notes | `src/tasks/followup_tasks.py`, `src/tasks/audio_tasks.py`, `src/services/ai/whisper.py` | Meta template outreach, SSRF-hardened audio download and Whisper transcription, PDF summary export. |
-| 15 | Virtual CMO Insights | `src/routers/insights.py` | Aggregates historical lead summaries into actionable tenant marketing reports. |
+| 15 | Virtual CMO Insights | `src/routers/insights.py`, `src/tasks/marketing_advisor.py` | Automated weekly Celery Beat digest aggregating 7-day lead conversions, tag performance, and Whisper call summaries under strict per-tenant RLS isolation. |
+| 20 | Fail-Closed Multi-Tenant RLS | `src/database/session.py`, `alembic/versions/20261122_enforce_rls_all_tables.py` | Automatic SQLAlchemy `after_begin` session listener binding `app.current_tenant_id` across sync/async engines with `FORCE ROW LEVEL SECURITY`. |
+| 21 | Least-Privilege Worker Split | `src/worker.py`, `compose.yaml` | Separates untrusted read/LLM analysis (`worker-reader` on `rag_read` with `leadflow_reader`) from state-mutating tasks (`worker-writer` on `mutations` with `leadflow_writer`) backed by Redis AOF (`noeviction`). |
+
+---
+
 
 ### Telecom, Storage, Background Workers & Infrastructure
 
@@ -227,13 +243,14 @@ python -m pytest tests/security/ -v
 
 ### Implemented & Verified
 
-* **Agentic AI Core (Phases 1–5):** `AgentHarness`, RESPECT + Abstention prompts, rolling conversation memory, 3.5s WhatsApp burst debounce, closure-bound tenant tools, HITL `PendingApproval` workflow, `pgvector` Hybrid RAG + Knowledge API, Pilot KPIs endpoint, Hebrew Golden Set evals, and `.claude/skills/` operational guardrails.
-* **Security & Edge Runtime:** Bounded recursive Rust/Wasm Envoy DLP filter (41 fields, `max_depth=32`), raw ASGI streaming body & 64-depth JSON limits, atomic Redis/SQL quotas and idempotency, SSRF/HMAC/JWT hardening, 90-day GDPR retention purge, and Cloudflare R2 backups.
-* **DevSecOps:** Automated GitHub Actions security gates (Gitleaks, Ruff, Bandit, `pip-audit`, Trivy, Alembic check, 13 security regression modules) and rootless Podman Quadlets behind Cloudflare Zero Trust.
+- **Agentic AI Core (Phases 1–5):** `AgentHarness`, RESPECT + Abstention prompts, rolling conversation memory, 3.5s WhatsApp burst debounce, closure-bound tenant tools, HITL `PendingApproval` workflow, `pgvector` Hybrid RAG + Knowledge API, Pilot KPIs endpoint, Hebrew Golden Set evals, and `.claude/skills/` operational guardrails.
+- **Database & Worker Hardening:** Fail-closed `PostgreSQL FORCE ROW LEVEL SECURITY` across all 14 tenant-scoped tables, three-tier least-privilege DB roles (`leadflow_migrator`, `leadflow_reader`, `leadflow_writer`), split `worker-reader` / `worker-writer` Celery pools with Redis AOF (`noeviction`), and automated weekly Marketing Advisor digests.
+- **Security & Edge Runtime:** Bounded recursive Rust/Wasm Envoy DLP filter (41 fields, `max_depth=32`), raw ASGI streaming body & 64-depth JSON limits, atomic Redis/SQL quotas and idempotency, SSRF/HMAC/JWT hardening, 90-day GDPR retention purge, and Cloudflare R2 backups.
+- **DevSecOps:** Automated GitHub Actions security gates (Gitleaks, Ruff, Bandit, `pip-audit`, Trivy, Alembic check, 13 security regression modules) and rootless Podman Quadlets behind Cloudflare Zero Trust.
 
 ### Next Up (Pre-Pilot & V2 Hardening)
 
-* **Pilot Calibration:** Calibrate Hebrew Hybrid RAG RRF weights and `min_score` thresholds on live Design Partner traffic under the 7-second webhook SLA, converting HITL `EDITED` responses into expanded Golden Set test cases.
-* **Worker & Async Isolation:** Separate Whisper audio transcription into a dedicated Celery `-Q audio_queue` pool and pre-compute Virtual CMO insights via Celery Beat.
-* **Depth Hardening:** Enable PostgreSQL `FORCE ROW LEVEL SECURITY`, upgrade the pull-based CD webhook to HMAC-SHA256 + timestamp replay protection with `@sha256` image pinning, and add case-insensitive key matching + free-text PII regex scrubbing to `data_hop_firewall`.
-* **Systems V2:** Wire bounded single-pass self-reflection (`src/services/ai/workflow_graph.py`) behind a feature flag and advance the native C++ zero-copy audio processing engine (`cpp-transcription-engine`).
+- **Pilot Calibration:** Calibrate Hebrew Hybrid RAG RRF weights and `min_score` thresholds on live Design Partner traffic under the 7-second webhook SLA, converting HITL `EDITED` responses into expanded Golden Set test cases.
+- **Audio Isolation:** Separate heavy local Whisper audio transcription into a dedicated Celery `-Q audio_queue` pool if local inference is enabled.
+- **Depth Hardening:** Upgrade the pull-based CD webhook to HMAC-SHA256 + timestamp replay protection with `@sha256` image pinning, and add case-insensitive key matching + free-text PII regex scrubbing to `data_hop_firewall`.
+- **Systems V2:** Wire bounded single-pass self-reflection (`src/services/ai/workflow_graph.py`) behind a feature flag and advance the native C++ zero-copy audio processing engine (`cpp-transcription-engine`).

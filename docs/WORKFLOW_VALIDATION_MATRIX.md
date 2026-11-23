@@ -68,3 +68,4 @@ Before validating individual workflows, verify that state transitions across lin
 | **WF-32** | Request-ID Tracing, JSON Logs & Exception Alerts | `src/main.py`, `src/logging_config.py`, `src/services/ai/tracing.py` | `All WF-01..WF-33` | `tests/evals/test_agent_regression_evals.py`, `tests/test_main.py` | `COVERED` |
 | **WF-34** | PostgreSQL `pgvector` & `FORCE ROW LEVEL SECURITY` | `src/database/session.py`, `alembic/versions/20261122_enforce_rls_all_tables.py` | `WF-01` .. `WF-33` | `tests/security/test_postgres_rls_and_worker_split.py` | `COVERED` |
 | **WF-35** | Two-Worker Celery Split & `task_acks_late` | `src/worker.py`, `compose.yaml` | `WF-16`, `WF-19`, `WF-24`, `WF-27` | `tests/security/test_postgres_rls_and_worker_split.py` | `COVERED` |
+| **WF-36** | Internal Marketing Advisor Worker | `src/tasks/marketing_advisor.py`, `src/worker.py` | `WF-17`, `WF-18`, `WF-34`, `WF-35` | `tests/security/test_marketing_advisor_worker.py` | `COVERED` |

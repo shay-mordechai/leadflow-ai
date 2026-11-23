@@ -16,6 +16,7 @@ celery_app = Celery(
         "src.tasks.backup_tasks",
         "src.tasks.billing_tasks",
         "src.tasks.followup_tasks",
+        "src.tasks.marketing_advisor",
         "src.tasks.retention_tasks",
     ],
 )
@@ -33,6 +34,9 @@ celery_app.conf.update(
     # Prevent memory leaks (memory optimization per child process)
     worker_max_tasks_per_child=50,
     task_routes={
+        "src.tasks.marketing_advisor.dispatch_weekly_marketing_digests": {"queue": "rag_read"},
+        "src.tasks.marketing_advisor.analyze_tenant_marketing": {"queue": "rag_read"},
+        "src.tasks.marketing_advisor.deliver_marketing_digest": {"queue": "mutations"},
         "src.tasks.rag_*": {"queue": "rag_read"},
         "rag_*": {"queue": "rag_read"},
         "*.rag_*": {"queue": "rag_read"},
@@ -50,6 +54,10 @@ celery_app.conf.update(
         "run-daily-backup": {
             "task": "src.tasks.backup_tasks.run_backup",
             "schedule": crontab(hour=2, minute=0),  # Daily at 02:00 AM
+        },
+        "weekly-marketing-advisor-digest": {
+            "task": "src.tasks.marketing_advisor.dispatch_weekly_marketing_digests",
+            "schedule": crontab(minute=0, hour=8, day_of_week=1),  # Mondays at 08:00 AM UTC
         },
     },
 )
