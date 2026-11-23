@@ -301,7 +301,7 @@ class Lead(Base):
     # NEW: Long-term conversation memory and extracted state
     conversation_summary = Column(Text, nullable=True)
     extracted_state = Column(JSON, nullable=True)
-    summary_message_count = Column(Integer, default=0, nullable=False)
+    summary_message_count = Column(Integer, default=0, server_default="0", nullable=False)
 
     user = relationship("User", back_populates="leads")
     media_files = relationship("MediaInteraction", back_populates="lead")

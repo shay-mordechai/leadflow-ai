@@ -2,38 +2,64 @@
 import os
 import sys
 from logging.config import fileConfig
+from pathlib import Path
 
 from sqlalchemy import engine_from_config, pool
 
 from alembic import context
 
-# 1. Add the parent directory to path so we can import src modules
-sys.path.insert(0, os.path.dirname(os.path.dirname(__file__)))
+# 1. Ensure the project root is on sys.path so src modules can be imported
+PROJECT_ROOT = str(Path(__file__).resolve().parents[1])
+if PROJECT_ROOT not in sys.path:
+    sys.path.insert(0, PROJECT_ROOT)
 
-# 2. Import settings and models
-# IMPORTANT: Import ALL models here so they are registered with Base.metadata before migration
+# 2. Import settings and ALL models so they are registered with Base.metadata
 import src.database.models  # noqa: F401
 from src.config import settings
 from src.database.session import Base
 
 config = context.config
 
-# 3. Logging configuration
+# 3. Configure Python logging from alembic.ini
 if config.config_file_name is not None:
     fileConfig(config.config_file_name)
 
-# 4. Connect app models to Alembic
+# 4. Target metadata for autogenerate support
 target_metadata = Base.metadata
 
 
+def _get_sync_database_url() -> str:
+    """
+    Resolve the database URL for Alembic migrations and ensure a synchronous driver.
+    Prefers dedicated migration URLs (e.g., leadflow_migrator) over runtime DATABASE_URL.
+    """
+    raw_url = (
+        os.getenv("ALEMBIC_DATABASE_URL")
+        or os.getenv("MIGRATION_DATABASE_URL")
+        or str(settings.DATABASE_URL)
+    ).strip()
+
+    if raw_url.startswith("postgresql+asyncpg://"):
+        return raw_url.replace("postgresql+asyncpg://", "postgresql+psycopg2://", 1)
+    if raw_url.startswith("postgres://"):
+        return raw_url.replace("postgres://", "postgresql+psycopg2://", 1)
+    if raw_url.startswith("sqlite+aiosqlite://"):
+        return raw_url.replace("sqlite+aiosqlite://", "sqlite://", 1)
+
+    return raw_url
+
+
 def run_migrations_offline() -> None:
-    """Run migrations in 'offline' mode."""
-    url = str(settings.DATABASE_URL)
+    """Run migrations in 'offline' mode without a live DB connection."""
+    url = _get_sync_database_url()
     context.configure(
         url=url,
         target_metadata=target_metadata,
         literal_binds=True,
         dialect_opts={"paramstyle": "named"},
+        compare_type=True,
+        compare_server_default=True,
+        render_as_batch=url.startswith("sqlite:"),
     )
 
     with context.begin_transaction():
@@ -41,12 +67,9 @@ def run_migrations_offline() -> None:
 
 
 def run_migrations_online() -> None:
-    """Run migrations in 'online' mode."""
-
-    # Override the URL in the ini file with the real URL from our codebase
-    configuration = config.get_section(config.config_ini_section)
-    if configuration is not None:
-        configuration["sqlalchemy.url"] = str(settings.DATABASE_URL)
+    """Run migrations in 'online' mode using a synchronous SQLAlchemy engine."""
+    configuration = dict(config.get_section(config.config_ini_section) or {})
+    configuration["sqlalchemy.url"] = _get_sync_database_url()
 
     connectable = engine_from_config(
         configuration,
@@ -58,11 +81,10 @@ def run_migrations_online() -> None:
         context.configure(
             connection=connection,
             target_metadata=target_metadata,
-            compare_type=True,  # Detects changes like String -> Text
-            compare_server_default=True,  # Detects changes in default values
-            # --- TIER 2 RELIABILITY: SQLite Batch Mode ---
-            # This allows SQLite to handle ALTER TABLE operations by recreating tables
-            render_as_batch=True,
+            compare_type=True,
+            compare_server_default=True,
+            # Enable batch mode only for SQLite ALTER TABLE compatibility
+            render_as_batch=connection.dialect.name == "sqlite",
         )
 
         with context.begin_transaction():
