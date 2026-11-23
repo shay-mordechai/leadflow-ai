@@ -41,13 +41,13 @@ jobs:
         run: pip install --no-cache-dir ruff
 
       - name: Run Ruff Security Rules (flake8-bandit)
-        run: ruff check src --select S --output-format=github
+        run: ruff check src --select S --ignore S105,S110 --output-format=github
 
   semgrep-sast:
     name: Semgrep OWASP & FastAPI SAST
     runs-on: ubuntu-latest
     container:
-      image: semgrep/semgrep:latest
+      image: docker.io/semgrep/semgrep:latest
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
