@@ -2,6 +2,7 @@
 import hashlib
 import json
 import logging
+import time
 from dataclasses import asdict, dataclass
 from typing import Any
 
@@ -81,16 +82,28 @@ class AgentHarness:
         Executes a complete AI turn with full security guardrails, caching, routing,
         and tenant-scoped tools.
         """
+        start_time = time.perf_counter()
         sanitized = inspect_and_wrap_input(latest_message)
         if sanitized.is_flagged:
             logger.warning(
                 f"Pre-LLM guardrail flagged input for tenant {tenant_id}: {sanitized.risk_reason}"
             )
+            # In src/services/ai/harness.py, inside the pre-LLM (and post-LLM) guardrail return block:
+            elapsed_ms = (time.perf_counter() - start_time) * 1000
             return {
                 "intent": "complaint",
                 "reply_text": "אני מעביר את השיחה לנציג אנושי שיחזור אליך בהקדם.",
                 "needs_human_escalation": True,
                 "abstained": True,
+                "metrics": {
+                    "latency_ms": round(elapsed_ms, 2),
+                    "input_tokens": 0,
+                    "output_tokens": 0,
+                    "total_tokens": 0,
+                    "estimated_cost_usd": 0.0,
+                    "model_used": "guardrail_blocked",
+                    "cache_hit": False,
+                },
             }
 
         effective_text = sanitized.clean_text
@@ -179,8 +192,6 @@ class AgentHarness:
                 parts=[types.Part.from_text(text=lead_turn_prompt)],
             )
         )
-
-        import time
 
         start_time = time.time()
 
