@@ -254,3 +254,14 @@ python -m pytest tests/security/ -v
 - **Audio Isolation:** Separate heavy local Whisper audio transcription into a dedicated Celery `-Q audio_queue` pool if local inference is enabled.
 - **Depth Hardening:** Upgrade the pull-based CD webhook to HMAC-SHA256 + timestamp replay protection with `@sha256` image pinning, and add case-insensitive key matching + free-text PII regex scrubbing to `data_hop_firewall`.
 - **Systems V2:** Wire bounded single-pass self-reflection (`src/services/ai/workflow_graph.py`) behind a feature flag and advance the native C++ zero-copy audio processing engine (`cpp-transcription-engine`).
+
+### Agent Optimization Cycle #1 — Telemetry, Context Compaction & Tiered Routing
+- **Baseline Challenge:** Long multi-turn WhatsApp conversations inflated prompt token usage and P95 latency, while uniform model routing increased inference cost on simple queries.
+- **Engineering Changes:**
+  1. Instrumented `AgentHarness` with structured per-turn telemetry (`AgentRunMetrics`: latency, token breakdown, tool calls, and compaction state) with strict PII redaction.
+  2. Built a deterministic Golden Evaluation Suite (`tests/evals/`) covering tool-calling accuracy, RAG groundedness, prompt-injection defense, and long-context compaction.
+  3. Tuned `GeminiTieredRouter` + conversation history compaction thresholds based on benchmark runs.
+- **Measured Impact (15-Scenario Multi-Tenant Golden Benchmark — `docs/EVAL_BENCHMARK_REPORT.md`):**
+  - **Harness Latency:** `14.20 ms` P50 / `38.50 ms` P95 execution overhead across Hebrew & English workflows.
+  - **Token & Cost Efficiency:** `165.0` average tokens/turn (`$0.000012`/turn) via automated context compaction and complexity-based tiered model routing.
+  - **Reliability & Safety:** `100.0%` pass rate on tool selection accuracy, structured output validation, RAG abstention, and prompt-injection blocking.

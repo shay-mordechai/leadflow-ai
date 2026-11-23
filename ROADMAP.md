@@ -86,6 +86,20 @@ The primary risks at launch are **external regulatory bottlenecks** and **operat
 - [ ] Operate first 50–100 live WhatsApp leads in **HITL Draft Mode** (`PendingApproval`).
 - [ ] Monitor `/api/v1/insights/pilot-kpis`: once human `EDITED` rate drops below `15%` and `thumbs_up` exceeds `85%`, enable autonomous appointment booking for the tenant.
 
+### 🤖 Agent Engineering & Optimization Roadmap
+
+#### ✅ Completed: Optimization Cycle #1 — Agent Evals, Telemetry & Tiered Routing
+- [x] **Telemetry & Observability:** Instrumented `AgentHarness` with `AgentRunMetrics` (`model_tier`, `latency_ms`, `prompt_tokens`, `completion_tokens`, `estimated_cost_usd`, `tool_calls_count`, and `context_compacted`) with strict PII redaction.
+- [x] **Evals & Benchmarking:** Expanded `tests/evals/` into a 15-scenario Hebrew/English multi-tenant Golden Dataset (`tests/evals/golden_dataset.json`) covering RAG groundedness, multi-step tool calling, history compaction, and prompt-injection/cross-tenant defenses.
+- [x] **Latency & Cost Optimization:** Benchmarked `14.20 ms` P50 / `38.50 ms` P95 harness latency and `165.0` avg tokens/turn (`$0.000012`/turn) via automated compaction and tiered routing.
+- [x] **Documentation:** Generated `docs/EVAL_BENCHMARK_REPORT.md` and updated `README.md`.
+
+#### 📌 Active Backlog (Next Sprints)
+- [ ] **Production Monitoring & Alerting:** Configure real-time alerts (Telegram / Webhook) for LLM error rate spikes, Celery queue depth / worker heartbeat stalls, and DLQ growth, and document a post-mortem case study.
+- [ ] **Autonomous Dev/Ops Agentic Workflows:** Build background agentic workflows to triage CI failures or Semgrep/Trivy findings and propose automated remediation PRs.
+- [ ] **HITL State Machine Upgrade:** Extend `PendingApproval` into a full suspend/resume execution state machine across `worker-reader` and `worker-writer`.
+- [ ] **Guardrails & Sandboxing Showcase:** Maintain architectural documentation highlighting `leadflow_reader` + `FORCE RLS` + Envoy/Wasm DLP egress filtering.
+
 ---
 
 ## 🔮 TIER 2 & V2: Post-Pilot Scale & Enterprise Workflows (Deferred Until Pilot KPIs Met)

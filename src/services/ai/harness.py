@@ -2,6 +2,7 @@
 import hashlib
 import json
 import logging
+from dataclasses import asdict, dataclass
 from typing import Any
 
 from google import genai
@@ -23,6 +24,19 @@ _FORBIDDEN_MARKERS = [
     "הוראות מערכת",
     "prompt",
 ]
+
+
+@dataclass
+class AgentRunMetrics:
+    model_tier: str
+    latency_ms: float
+    prompt_tokens: int
+    completion_tokens: int
+    total_tokens: int
+    estimated_cost_usd: float
+    tool_calls_count: int
+    tool_names: list[str]
+    context_compacted: bool
 
 
 class AgentHarness:
@@ -192,6 +206,43 @@ class AgentHarness:
             else:
                 response_text = str(response)
 
+            prompt_tokens = 0
+            completion_tokens = 0
+            total_tokens = 0
+            if hasattr(response, "usage_metadata") and response.usage_metadata:
+                prompt_tokens = getattr(response.usage_metadata, "prompt_token_count", 0) or 0
+                completion_tokens = (
+                    getattr(response.usage_metadata, "candidates_token_count", 0) or 0
+                )
+                total_tokens = getattr(response.usage_metadata, "total_token_count", 0) or (
+                    prompt_tokens + completion_tokens
+                )
+
+            if prompt_tokens == 0:
+                prompt_tokens = max(len(lead_turn_prompt) // 4, 10)
+            if completion_tokens == 0:
+                completion_tokens = max(len(response_text) // 4, 10)
+            if total_tokens == 0:
+                total_tokens = prompt_tokens + completion_tokens
+
+            primary_model, _ = self.router.select_models(complexity)
+            input_rate = 0.075 / 1_000_000
+            output_rate = 0.30 / 1_000_000
+            est_cost = (prompt_tokens * input_rate) + (completion_tokens * output_rate)
+            context_compacted = len(conversation_history) > 8
+
+            metrics = AgentRunMetrics(
+                model_tier=primary_model,
+                latency_ms=round(latency_ms, 2),
+                prompt_tokens=prompt_tokens,
+                completion_tokens=completion_tokens,
+                total_tokens=total_tokens,
+                estimated_cost_usd=round(est_cost, 7),
+                tool_calls_count=len(tools),
+                tool_names=tool_names,
+                context_compacted=context_compacted,
+            )
+
             parsed_data: dict[str, Any] = {}
             try:
                 cleaned_json = response_text.strip()
@@ -226,6 +277,7 @@ class AgentHarness:
                 "needs_human_escalation": needs_human,
                 "abstained": bool(parsed_data.get("abstained", False)),
                 "cited_chunk_ids": parsed_data.get("cited_chunk_ids", []),
+                "metrics": asdict(metrics),
             }
 
             if cache_key and self.router.redis is not None and not needs_human:

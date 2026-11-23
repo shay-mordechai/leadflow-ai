@@ -21,21 +21,23 @@ Multi-tenant SaaS platform for automated lead qualification and conversational s
 
 ---
 
-## 2. Autonomous Execution Protocol (Hybrid Plan-Act)
+## 2. Autonomous Execution Protocol (Plan-Act-Verify — Lite Mode)
 
-Whenever a task involves modifying code, database schemas, or infrastructure and verifying them with tests (`pytest` / `npm test`), agents **MUST** follow this three-stage workflow:
+Execute all phases directly in the active lightweight/fast model session. **DO NOT** spawn sub-agents or escalate to heavier/expensive models unless explicitly instructed by the user.
 
-1. **PLAN Phase (Architect / Strong Model):**
-   - Inspect relevant files, logs, database states, and failure tracebacks before editing.
-   - Produce a concrete, step-by-step execution plan naming exact target files, SQL/CLI commands, and root-cause fixes.
+Whenever a task involves modifying code, database schemas, or infrastructure and verifying them with tests (`pytest` / `npm test`), follow this three-stage workflow:
+
+1. **PLAN Phase (Read-Only Analysis):**
+   - Inspect relevant files, logs, database states, and failure tracebacks before making any edits.
+   - Write a concise, step-by-step execution plan naming exact target files, SQL/CLI commands, and root-cause fixes.
    - Identify affected security invariants (RLS, tenant context, webhook signatures, PII masking) upfront.
-2. **ACT Phase (Executor / Fast Model):**
-   - Execute the approved plan step-by-step without deviating from architectural constraints.
+2. **ACT Phase (Targeted Execution):**
+   - Execute the plan step-by-step without deviating from architectural constraints.
    - Run the relevant unit and security test suites (`pytest`) after applying changes to verify behavior.
    - **Test Integrity Rule:** NEVER modify, weaken, mock out, or skip existing test assertions in `tests/` to make a failing test pass—fix the underlying application, migration, or environment issue instead.
-3. **Circuit Breaker (Escalation Rule):**
+3. **Circuit Breaker (Stop & Report Rule):**
    - Track consecutive test failures during the ACT phase.
-   - If the same test suite fails **2 times in a row** or encounters a complex PostgreSQL RLS, role-permission, or async/sync driver issue, **stop guessing immediately** and escalate the full traceback back to the **PLAN Phase (Strong Model)** for root-cause re-analysis before making further edits.
+   - If the same test suite fails **2 times in a row** or hits a complex PostgreSQL RLS, role-permission, or async/sync driver issue, **stop editing immediately** and output a concise summary of the root cause and full traceback for user review instead of looping or spawning sub-agents.
 
 ---
 
