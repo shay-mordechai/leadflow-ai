@@ -1,0 +1,71 @@
+name: Autonomous CI & Security Triage Agent
+
+on:
+  workflow_run:
+    workflows:
+      - "SAST Security Gate (Semgrep & Ruff)"
+      - "LeadFlow Production Deploy (GHCR & Hetzner)"
+    types:
+      - completed
+
+permissions:
+  contents: read
+  pull-requests: write
+  issues: write
+
+jobs:
+  triage-failure:
+    name: Triage Failed Workflow Run
+    if: github.event.workflow_run.conclusion == 'failure'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Analyze failed workflow run and generate remediation guide
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          RUN_ID: ${{ github.event.workflow_run.id }}
+          WORKFLOW_NAME: ${{ github.event.workflow_run.name }}
+          HEAD_BRANCH: ${{ github.event.workflow_run.head_branch }}
+          PR_NUMBER: ${{ github.event.workflow_run.pull_requests[0].number }}
+        run: |
+          echo "Analyzing failed workflow run # for workflow ''..."
+          
+          FAILED_JOBS=$(gh api repos/${{ github.repository }}/actions/runs//jobs --jq '.jobs[] | select(.conclusion=="failure") | .name')
+          
+          SUMMARY="### 🤖 Autonomous Security & CI Triage Report
+
+"
+          SUMMARY+="Workflow **** (Run ID: \`\`) failed on branch \`\`.
+
+"
+          SUMMARY+="#### Failing Jobs:
+\`\`\`text
+
+\`\`\`
+
+"
+          SUMMARY+="#### Recommended Remediation Steps:
+"
+          SUMMARY+="- **SAST / Ruff / Semgrep Violations:** Run \`ruff check src tests --fix\` and review OWASP security rules.
+"
+          SUMMARY+="- **Alembic Migration Drift:** Run \`alembic upgrade head\` and verify \`alembic check\` against PostgreSQL 15.
+"
+          SUMMARY+="- **Pytest Failures:** Run \`venv/bin/pytest tests/ -v\` inside the development environment.
+"
+
+          echo -e "" > triage_comment.md
+
+          if [ -n "" ] && [ "" != "null" ]; then
+            echo "Posting triage report to PR #..."
+            gh pr comment "" --body-file triage_comment.md || true
+          else
+            echo "No associated PR found. Writing to GitHub Step Summary."
+            cat triage_comment.md >> $GITHUB_STEP_SUMMARY
+          fi

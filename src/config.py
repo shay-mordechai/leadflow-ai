@@ -304,6 +304,7 @@ class Settings(BaseSettings):
     MAIL_PORT: int = 587
     MAIL_SERVER: str = "smtp-relay.brevo.com"
     ADMIN_EMAIL: str = ""
+    ALERT_WEBHOOK_URL: str = ""
 
     # --- Billing (Meshulam / Grow) ---
     MESHULAM_USER_ID: str = "MOCK_USER"

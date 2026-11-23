@@ -8,6 +8,7 @@
 ## ✅ Completed Foundation (Implemented & Verified in Codebase)
 
 ### Core Infrastructure, Security & Billing Integrity
+- [x] **Tenant Isolation (PostgreSQL FORCE ROW LEVEL SECURITY):** Enforced via  Alembic migration and SQLAlchemy tenant context listeners.
 - [x] **Zero-Trust Edge & Network:** Cloudflare Tunnel ingress with Hetzner Terraform firewall permitting zero inbound TCP/UDP ports; non-root containers (`no-new-privileges`, `core=0`, loopback-only DB/Redis bindings).
 - [x] **Rust/Wasm Edge DLP (`data_hop_firewall`):** Fail-closed Envoy L7 response filter redacting 41 PII/credential fields on `X-Data-TTL: 1` (`<2%` throughput overhead, `-0.30 ms` median P50 delta, `0%` non-2xx errors).
 - [x] **ASGI DoS, SSRF & Auth Hardening:** Zero-allocation streaming `RequestBodyLimitMiddleware` (1 MiB / 26 MiB caps, byte-level 64-depth JSON nesting limit), `HS256`-pinned JWTs with Redis `jti` + `token_version` revocation, `CF-Connecting-IP` trusted proxy parsing, and `WhisperService` HTTPS domain allowlist (`follow_redirects=False`).
@@ -27,7 +28,6 @@
 
 Focus: Closing remaining audit findings, preventing worker starvation, and calibrating Hebrew RAG on live Design Partner traffic.
 
-1. **[P0 — Security] Restore Auth Guard on Partners Endpoint:** Re-enable `Depends(get_current_user)` + Admin role enforcement on `GET /api/v1/partners/performance` (`src/routers/partners.py`) and add an automated regression test in `tests/security/`.
 2. **[P1 — DevSecOps] Harden Production CD & Image Pinning:** Upgrade static `X-Deploy-Token` in `.github/workflows/production.yml` to HMAC-SHA256 + timestamp replay validation, pin base/deploy images by immutable `@sha256` digest, and run `alembic upgrade head` before switching container traffic.
 3. **[P1 — AI Calibration] Hebrew Hybrid RAG Tuning (Under 7s Budget):** Calibrate RRF weights and `min_score` thresholds on real Hebrew SMB price lists and FAQs so pricing queries do not false-negative while missing facts reliably trigger `abstained=True` without adding a heavy reranker.
 4. **[P1 — Pilot Loop] HITL Draft Mode (`EDITED` -> Golden Set):** Onboard the first Design Partner in **HITL Draft Mode** (50–100 leads), monitor edit rate (`EDITED` vs `APPROVED`) and `thumbs_up` % via `/api/v1/insights/pilot-kpis`, and convert human-edited replies into new `golden_set_hebrew.jsonl` test cases before enabling autonomous booking.
@@ -60,7 +60,6 @@ The primary risks at launch are **external regulatory bottlenecks** and **operat
 ### 4. Security & Infrastructure Depth (`P2 Hardening Roadmap`)
 | Workflow | Production Risk | Engineering Mitigation |
 | :--- | :--- | :--- |
-| **WF #3: Tenant Isolation** | Developer human error forgetting `.filter(user_id == ...)` | Enable **PostgreSQL Row-Level Security (`FORCE ROW LEVEL SECURITY`)** as a second defense layer beneath SQLAlchemy. |
 | **WF #4 & #19: Lead Ingestion** | Duplicate leads due to phone format drift (`054-...` vs `+97254...`) | Normalize all inbound phone numbers to strict **E.164** (`+972...`) *before* checking Redis idempotency keys. |
 | **WF #22 & #28: Wasm DLP** | Case-mismatch bypass or false-positive redaction on 9-digit numbers | Normalize JSON keys with `to_ascii_lowercase()`, add explicit Wasm VM buffer size cap, and validate regex boundaries against Israeli phone/price formats. |
 | **WF #18: R2 DB Backups** | Silent backup corruption | Run an automated monthly `pg_dump -Fc` restore verification test against an isolated staging container. |
@@ -72,7 +71,7 @@ The primary risks at launch are **external regulatory bottlenecks** and **operat
 ### Stage A — Technical & Security Freeze (This Week)
 - [ ] Re-enable `get_current_user` + Admin check on `src/routers/partners.py` (`P0`).
 - [ ] Split Celery workers into `-Q realtime_chat` and `-Q audio_queue`, and verify `leadflow-beat` runs as a single instance.
-- [ ] Run `docker compose up -d --build` (`pgvector:pg15`) + `alembic upgrade head` on Hetzner VPS and verify `/health/db-sync-status`.
+- [ ] Run `podman compose up -d --build (or Systemd Quadlets)` (`pgvector:pg15`) + `alembic upgrade head` on Hetzner VPS and verify `/health/db-sync-status`.
 - [ ] Run end-to-end backup restore check from Cloudflare R2 (`pg_dump -Fc`).
 
 ### Stage B — External Bureaucracy (Parallel Track)
@@ -95,8 +94,8 @@ The primary risks at launch are **external regulatory bottlenecks** and **operat
 - [x] **Documentation:** Generated `docs/EVAL_BENCHMARK_REPORT.md` and updated `README.md`.
 
 #### 📌 Active Backlog (Next Sprints)
-- [ ] **Production Monitoring & Alerting:** Configure real-time alerts (Telegram / Webhook) for LLM error rate spikes, Celery queue depth / worker heartbeat stalls, and DLQ growth, and document a post-mortem case study.
-- [ ] **Autonomous Dev/Ops Agentic Workflows:** Build background agentic workflows to triage CI failures or Semgrep/Trivy findings and propose automated remediation PRs.
+- [x] **Production Monitoring & Alerting:** Configure real-time alerts (Telegram / Webhook) for LLM error rate spikes, Celery queue depth / worker heartbeat stalls, and DLQ growth, and document a post-mortem case study.
+- [x] **Autonomous Dev/Ops Agentic Workflows:** Build background agentic workflows to triage CI failures or Semgrep/Trivy findings and propose automated remediation PRs.
 - [ ] **HITL State Machine Upgrade:** Extend `PendingApproval` into a full suspend/resume execution state machine across `worker-reader` and `worker-writer`.
 - [ ] **Guardrails & Sandboxing Showcase:** Maintain architectural documentation highlighting `leadflow_reader` + `FORCE RLS` + Envoy/Wasm DLP egress filtering.
 

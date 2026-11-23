@@ -281,6 +281,16 @@ class AgentHarness:
                 or bool(parsed_data.get("abstained", False))
             )
 
+            if self.router.redis is not None:
+                try:
+                    await self.router.redis.incr("llm:metrics:success")
+                    await self.router.redis.expire("llm:metrics:success", 1800)
+                    if needs_human:
+                        await self.router.redis.incr("llm:metrics:escalated")
+                        await self.router.redis.expire("llm:metrics:escalated", 1800)
+                except Exception:
+                    pass
+
             result = {
                 "intent": parsed_data.get("lead_intent", "INQUIRY").lower(),
                 "reply_text": final_reply.replace("[HANDOFF]", "").replace("[handoff]", "").strip(),
@@ -318,6 +328,12 @@ class AgentHarness:
             return result
 
         except Exception as e:
+            if self.router.redis is not None:
+                try:
+                    await self.router.redis.incr("llm:metrics:error")
+                    await self.router.redis.expire("llm:metrics:error", 1800)
+                except Exception:
+                    pass
             logger.error(
                 f"Agent Harness execution failed for tenant {tenant_id}: {type(e).__name__} - {e}"
             )

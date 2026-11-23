@@ -18,6 +18,7 @@ celery_app = Celery(
         "src.tasks.followup_tasks",
         "src.tasks.marketing_advisor",
         "src.tasks.retention_tasks",
+        "src.tasks.watchdog_tasks",
     ],
 )
 
@@ -43,6 +44,10 @@ celery_app.conf.update(
         "*": {"queue": "default"},
     },
     beat_schedule={
+        "run-production-watchdog": {
+            "task": "run_production_watchdog",
+            "schedule": crontab(minute="*/5"),  # Every 5 minutes
+        },
         "purge-expired-tenant-data": {
             "task": "purge_expired_tenant_data",
             "schedule": crontab(minute=0),  # Hourly cleanup
