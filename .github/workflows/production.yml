@@ -373,7 +373,6 @@ jobs:
     if: needs.build-and-push.result == 'success'
     runs-on: ubuntu-latest
     timeout-minutes: 5
-    environment: production
     permissions: {}
     steps:
       - name: Trigger Secure Webhook Deployment (HMAC-SHA256 + Timestamp)
