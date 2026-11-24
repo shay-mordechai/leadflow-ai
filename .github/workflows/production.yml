@@ -370,7 +370,7 @@ jobs:
   deploy:
     name: Trigger Hetzner Production Webhook
     needs: [detect-changes, build-and-push]
-    if: needs.detect-changes.outputs.any == 'true' && needs.build-and-push.result == 'success'
+    if: needs.build-and-push.result == 'success'
     runs-on: ubuntu-latest
     timeout-minutes: 5
     environment: production

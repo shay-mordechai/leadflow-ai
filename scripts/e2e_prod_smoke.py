@@ -360,14 +360,22 @@ class ExternalE2ERunner:
             timeout=15.0,
         )
         if sim_status == 200:
-            has_price = "350" in sim_body
-            verdict = "PASS" if has_price else "WARN"
-            self._record(
-                "Dashboard Simulator (Grounded RAG Query)",
-                verdict,
-                f"HTTP 200 | contains_price_350={has_price} | reply={sim_body[:140]}",
-                t0,
-            )
+            if "Security Exception" in sim_body or '"error"' in sim_body:
+                self._record(
+                    "Dashboard Simulator (Grounded RAG Query)",
+                    "FAIL",
+                    f"HTTP 200 | returned error/security exception: {sim_body[:140]}",
+                    t0,
+                )
+            else:
+                has_price = "350" in sim_body
+                verdict = "PASS" if has_price else "WARN"
+                self._record(
+                    "Dashboard Simulator (Grounded RAG Query)",
+                    verdict,
+                    f"HTTP 200 | contains_price_350={has_price} | reply={sim_body[:140]}",
+                    t0,
+                )
         else:
             self._record(
                 "Dashboard Simulator (Grounded RAG Query)",
@@ -385,12 +393,20 @@ class ExternalE2ERunner:
             timeout=15.0,
         )
         if abs_status == 200:
-            self._record(
-                "Dashboard Simulator (Abstention Guard)",
-                "PASS",
-                f"HTTP 200 | reply={abs_body[:140]}",
-                t0,
-            )
+            if "Security Exception" in abs_body or '"error"' in abs_body:
+                self._record(
+                    "Dashboard Simulator (Abstention Guard)",
+                    "FAIL",
+                    f"HTTP 200 | returned error/security exception: {abs_body[:140]}",
+                    t0,
+                )
+            else:
+                self._record(
+                    "Dashboard Simulator (Abstention Guard)",
+                    "PASS",
+                    f"HTTP 200 | reply={abs_body[:140]}",
+                    t0,
+                )
         else:
             self._record(
                 "Dashboard Simulator (Abstention Guard)",
