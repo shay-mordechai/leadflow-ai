@@ -75,7 +75,7 @@ def client(db_engine, tenant_user):
 
     app.dependency_overrides[get_db] = override_get_db
     app.dependency_overrides[get_current_user] = override_get_current_user
-    with TestClient(app) as c:
+    with TestClient(app, base_url="https://localhost") as c:
         yield c
     app.dependency_overrides.clear()
 
