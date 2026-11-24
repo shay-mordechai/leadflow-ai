@@ -115,3 +115,7 @@ systemctl --user restart leadflow-data-gate.service
 * `*.pem`, `*.key`, `*.crt`
 * `terraform/*.tfstate*`
 * `storage/pdfs/*` (runtime customer artifacts)
+
+### Automated Guardrails & Verification Gate
+- **Post-Edit Python Hook (`.claude/hooks/post_edit_py_guard.sh`):** Automatically runs `py_compile` and `ruff check` on every edited `.py` file. Fix any reported syntax or lint issue immediately before proceeding.
+- **Independent Verifier (`.claude/agents/verifier.md`):** Before declaring any multi-file or feature task complete, invoke the read-only `verifier` sub-agent (or run the full `./venv/bin/pytest -q` + `./venv/bin/ruff check` gate) to confirm zero regressions, zero temporary artifacts, and zero `XX%` placeholders.

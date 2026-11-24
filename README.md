@@ -1,267 +1,126 @@
-# MyLeads AI (`leadflow-ai`) — Secure Multi-Tenant Agentic AI Platform
+# 🎯 LeadFlow AI (`my-leads.app`) — Product & Engineering Roadmap
 
-**Production engineering case study covering:**
-- Multi-tenant agentic AI architecture (`AgentHarness`, closure-bound tools, HITL approval gates, and `pgvector` Hybrid RAG)
-- Defense-in-depth application & LLM security (OWASP LLM Top 10, ASGI DoS bounds, SSRF/IDOR isolation, and TOCTOU neutralization)
-- Inline L7 edge DLP filtering (Envoy Proxy + Rust/WebAssembly `proxy-wasm`)
-- Zero-Trust Linux deployment (Cloudflare Tunnel, Rootless Podman, Systemd Quadlets, and pull-based CD)
-- Empirical performance benchmarking (`wrk`) and automated DevSecOps CI gating
-
-*Last Engineering Review: November 2026*
+**Architecture:** Multi-Tenant Conversational AI SaaS (FastAPI, PostgreSQL + `pgvector`, Redis, Celery, Next.js, Envoy Proxy + Rust/Wasm Edge DLP, Cloudflare Tunnel)  
+**Current Stage:** **Pilot-Ready MVP (Phases 1–5 & Optimization Cycles #1–#2 Complete — 149 Tests Passing)** — Freezing new enterprise features to focus on live pilot calibration, Meta/Twilio onboarding, and HITL state machine hardening.
 
 ---
 
-## 1. Product Thesis & Engineering Approach
+## ✅ Completed Foundation (Implemented & Verified in Codebase)
 
-MyLeads AI is a production-oriented conversational AI SaaS platform built for small and medium-sized businesses (coaches, clinics, and service providers) to automate lead qualification, knowledge-grounded WhatsApp conversations, and appointment workflows.
+### Core Infrastructure, Security & Billing Integrity
+- [x] **Tenant Isolation (PostgreSQL `FORCE ROW LEVEL SECURITY`):** Enforced via `20261122_enforce_rls_all` Alembic migration, least-privilege `leadflow_reader` / `leadflow_writer` DB roles, and SQLAlchemy tenant context listeners.
+- [x] **Zero-Trust Edge & Network:** Cloudflare Tunnel ingress with Hetzner Terraform firewall permitting zero inbound TCP/UDP ports; non-root containers (`no-new-privileges`, `core=0`, loopback-only DB/Redis bindings).
+- [x] **Rust/Wasm Edge DLP (`data_hop_firewall`):** Fail-closed Envoy L7 response filter redacting 41 PII/credential fields on `X-Data-TTL: 1` (`<2%` throughput overhead, `-0.30 ms` median P50 delta, `0%` non-2xx errors).
+- [x] **ASGI DoS, SSRF & Auth Hardening:** Zero-allocation streaming `RequestBodyLimitMiddleware` (1 MiB / 26 MiB caps, byte-level 64-depth JSON nesting limit), `HS256`-pinned JWTs with Redis `jti` + `token_version` revocation, `CF-Connecting-IP` trusted proxy parsing, Admin auth guard on `GET /api/v1/partners/performance` (`test_wf07_partner_performance_authz`), and `WhisperService` HTTPS domain allowlist (`follow_redirects=False`).
+- [x] **Concurrency & TOCTOU Protection:** Atomic Redis `SET NX` webhook idempotency, conditional SQL `UPDATE ... RETURNING` message quotas, Redis `INCRBY`/`DECRBY` monthly token budget with rollback, single-use atomic OTP consumption, and `BoundedSemaphore(200)` background task capacity.
+- [x] **Schema Migrations & Retention:** Dual SQLite/PostgreSQL `Alembic` migrations enforced in CI (`alembic check`), automated 90-day GDPR retention purge (`Celery Beat`), and Cloudflare R2 `pg_dump` backups.
 
-**The Product Thesis:**
-> A business owner should not act as a manual data router for repetitive lead-management and scheduling tasks—nor should they need to become an infrastructure or prompt engineer to operate safely at scale.
-
-Every architectural layer in this repository traces directly to a concrete operational or security constraint discovered during real-world workflow discovery:
-
-| Operational Requirement | Engineering Constraint | Implemented Architecture |
-| --- | --- | --- |
-| **Sensitive customer PII crosses API boundaries** | Deterministic egress privacy without app-layer drift | **Envoy + Rust/Wasm `data_hop_firewall`** (`X-Data-TTL: 1` redaction) |
-| **Unpredictable LLM behavior on business facts** | Zero hallucinated prices; safe escalation on ambiguity | **Multi-Tenant Hybrid RAG (`pgvector`) + Strict Abstention + HITL Gate** |
-| **External webhook retries & burst messages** | Duplicate processing, billing double-spend, race conditions | **Redis `SET NX` idempotency, 3.5s burst debounce, atomic SQL/Redis quotas** |
-| **Malicious or oversized webhook/API payloads** | Parser DoS, OOM crashes, SSRF, and path traversal | **Raw ASGI streaming limits (1 MiB / 64-depth), HMAC verification, MIME checks** |
-| **Long-lived multi-day lead workflows** | Persistent state across asynchronous follow-ups | **PostgreSQL state + Celery workers + Dead Letter Queue (DLQ)** |
-| **Zero-maintenance SMB operations** | Reproducible, locked-down production runtime | **Cloudflare Zero Trust + Rootless Podman Quadlets + DevSecOps CI** |
-
----
-
-## 2. High-Level System Architecture
-
-```text
-Users / External Webhooks (Meta WhatsApp, Facebook Lead Ads, Twilio, Meshulam)
- │
- ▼
-Cloudflare Zero Trust Tunnel (Zero Inbound Public TCP/UDP Ports via Terraform FW)
- │
- ▼
-Envoy Proxy v1.28 (Port 10000 — Rust/Wasm Egress DLP Filter: data_hop_firewall)
- │
- ├──► Next.js 16 Frontend (Port 3000 — Tenant Dashboard, HITL Queue, Simulator)
- │
- └──► FastAPI Backend (Port 8000 — Gunicorn + Uvicorn Workers)
-       │  [Raw ASGI RequestBodyLimitMiddleware: 1 MiB JSON / 26 MiB Audio / 64-Depth Cap]
-       │
-       ├──► Unified AgentHarness (Pre-LLM Guardrails → Hybrid RAG → GeminiTieredRouter → Output Sanitizer)
-       │     ├── Tenant-Scoped Closure Tools (CRM Qualification, Calendar Availability, HITL Booking)
-       │     └── Rolling Conversation Memory & PII-Safe JSON Tracing
-       │
-       ├──► Redis 7 (AOF noeviction, Rate Limiting, JWT Revocation, Webhook Idempotency, Burst Debounce, Token Quotas, Turn-1 Cache)
-       │
-       ├──► PostgreSQL 15 + pgvector (Fail-Closed FORCE RLS, Least-Privilege Reader/Writer Roles, Alembic)
-       │
-       └──► Celery Split Workers & Beat (worker-reader [RAG/Marketing] vs. worker-writer [Mutations/Follow-Ups], Whisper, GDPR Purge)
- │
- ▼
-Linux Host Runtime (Rootless Podman / Systemd Quadlets / no-new-privileges / core=0)
-
-```
+### Agentic AI Architecture (Phases 1–5 Complete)
+- [x] **Phase 1 — Unified `AgentHarness` & RESPECT Prompts:** Central execution harness (`src/services/ai/harness.py`), tiered Gemini routing (`7s` hard timeout, `512` max output tokens, `15`-turn escalation cap), XML-escaped prompt boundaries, structured `WhatsAppAgentResponse` (`abstained`, `cited_chunk_ids`), `bleach` output sanitization, and `kb_version`-aware Turn-1 Redis caching.
+- [x] **Phase 2 — Rolling Memory, Debouncing & Evals:** `ConversationMemoryService` (`conversation_summary` + `extracted_state`), 3.5s Redis WhatsApp burst debouncing, PII-safe JSON tracing, and Hebrew Golden Set regression suite (`tests/evals/golden_set_hebrew.jsonl`).
+- [x] **Phase 3 — Tenant-Scoped Tools & HITL Gates:** Closure-bound CRM/Calendar tools (`qualify_lead`, `check_calendar_availability`, `propose_appointment_booking`) with SSRF URL rejection and Human-in-the-Loop `PendingApproval` workflow (`GET/POST /api/v1/leads/approvals`).
+- [x] **Phase 4 — Multi-Tenant Hybrid RAG (`pgvector`):** `pgvector:pg15` setup, pricing-table-aware chunker, Vector + Hebrew Lexical RRF retriever with mandatory `user_id` pre-filtering, and `POST/GET/DELETE /api/v1/knowledge/documents`.
+- [x] **Phase 5 — Pilot Observability & Agent Guardrails:** Tenant-isolated `GET /api/v1/insights/pilot-kpis`, AI `THUMBS_UP`/`THUMBS_DOWN` feedback loop, and operational `.claude/skills/` (`tenant-endpoint`, `safe-alembic-migration`, `ai-eval-gate`).
 
 ---
 
-## 3. Agentic AI, Hybrid RAG & HITL Architecture
+## 🚨 TIER 1: Immediate Pre-Pilot Priorities (P1 Blockers)
 
-The conversational AI layer is structured around a deterministic execution harness designed to maintain sub-7-second WhatsApp webhook latency while enforcing hard security and cost bounds:
+Focus: Preventing worker starvation, hardening CD image pinning, and calibrating Hebrew RAG on live Design Partner traffic.
 
-### 3.1 Unified Agent Harness & Cost Controls (`src/services/ai/harness.py`, `llm_router.py`)
-
-* **RESPECT Prompts & Structured Output:** `PromptBuilder` (`src/services/ai/prompt_builder.py` + `src/config/prompts/system_prompts.yaml`) enforces XML-escaped context isolation (`html.escape`) across `<retrieved_knowledge>`, `<recent_conversation>`, and `<latest_message>`. Responses are strictly validated into `WhatsAppAgentResponse` (Pydantic) with explicit `abstained` and `cited_chunk_ids` fields, then HTML-stripped via `bleach`.
-* **Denial-of-Wallet & Latency Bounds:** Hard caps enforce `MAX_AUTOMATED_TURNS = 15` (auto-escalating to human review), `MAX_OUTPUT_TOKENS = 512`, and `GEMINI_REQUEST_TIMEOUT_MS = 7_000`.
-* **Context-Safe Turn-1 Caching:** Stateless first-turn responses are cached in Redis keyed by `tenant_id`, `kb_version`, system instruction hash, and normalized prompt. Caching is automatically bypassed whenever tools or RAG chunks are active.
-
-### 3.2 Rolling Memory, Burst Debouncing & Evals (`src/services/ai/memory.py`, `tests/evals/`)
-
-* **Rolling Conversation Memory:** `ConversationMemoryService` maintains per-lead `conversation_summary`, `extracted_state`, and `summary_message_count` on the `Lead` model with strict `user_id` filtering.
-* **WhatsApp Burst Debouncing:** Rapid consecutive inbound messages are coalesced over a 3.5-second Redis lock window before triggering inference.
-* **PII-Safe Tracing & Regression Evals:** `src/services/ai/tracing.py` and `src/logging_config.py` emit structured JSON telemetry with automatic PII/phone redaction. Regression quality is validated against a Hebrew Golden Set (`tests/evals/golden_set_hebrew.jsonl`).
-
-### 3.3 Closure-Bound Tenant Tools & HITL Verification (`src/services/ai/tools/`, `src/routers/leads.py`)
-
-* **Zero-Trust Tool Identity (IDOR Prevention):** Tool callables (`qualify_lead`, `check_calendar_availability`, `propose_appointment_booking`) are constructed per turn via `build_tenant_tools(db, tenant_id, lead_id)`. Verified server identity is bound inside Python closures—the LLM can never supply or forge `tenant_id` or `lead_id`.
-* **SSRF & Argument Validation:** Strict Pydantic models and date/time validators reject URL payloads (`"://"`), out-of-range budgets, and malformed timestamps before execution.
-* **Human-in-the-Loop (`PendingApproval`) Gate:** High-impact actions such as appointment booking never commit directly. `propose_appointment_booking` persists a `PENDING` record in `pending_approvals`, flags `Lead.requires_human = True`, and logs an `AuditLog` entry. Business owners review and resolve drafts (`APPROVE`, `EDIT`, `REJECT`) via `GET/POST /api/v1/leads/approvals`.
-
-### 3.4 Multi-Tenant Hybrid RAG (`src/services/rag/`, `src/routers/knowledge.py`)
-
-* **Structure-Aware Ingestion:** Tenants upload pricing sheets, policies, and FAQs (`.pdf`, `.md`, `.txt` up to 5 MB) via `POST /api/v1/knowledge/documents`. Filenames are sanitized via `os.path.basename`, pricing tables and section headings are preserved during chunking, embeddings are generated, and Redis `tenant:{tenant_id}:kb_version` is atomically incremented to invalidate stale cache entries.
-* **Hard SQL Pre-Filtering + Hybrid RRF:** `retrieve_relevant_chunks()` filters `KnowledgeChunk.user_id == str(tenant_id)` **before** ranking, combining semantic cosine similarity with Hebrew-normalized lexical token overlap via Reciprocal Rank Fusion (RRF). Queries lacking chunks above the relevance threshold enforce `abstained=True` and human escalation.
-
+1. **[P1 — DevSecOps] Harden Production CD & Image Pinning:** Upgrade static `X-Deploy-Token` in `.github/workflows/production.yml` to HMAC-SHA256 + timestamp replay validation, pin base/deploy images by immutable `@sha256` digest, and run `alembic upgrade head` before switching container traffic.
+2. **[P1 — AI Calibration] Hebrew Hybrid RAG Tuning (Under 7s Budget):** Calibrate RRF weights and `min_score` thresholds on real Hebrew SMB price lists and FAQs so pricing queries do not false-negative while missing facts reliably trigger `abstained=True` without adding a heavy reranker.
+3. **[P1 — Pilot Loop] HITL Draft Mode (`EDITED` -> Golden Set):** Onboard the first Design Partner in **HITL Draft Mode** (50–100 leads), monitor edit rate (`EDITED` vs `APPROVED`) and `thumbs_up` % via `/api/v1/insights/pilot-kpis`, and convert human-edited replies into new `golden_set_hebrew.jsonl` test cases before enabling autonomous booking.
+4. **[P1 — Reliability] Dedicated Audio Celery Queue:** Route `WF #10` / `WF #17` voice-note downloads and Whisper transcriptions to a dedicated `-Q audio_queue` worker pool so concurrent 15MB WhatsApp audio files never starve `-Q realtime_chat` text replies.
+5. **[P1 — Performance] Pre-Compute Virtual CMO Insights (`WF #23`):** Move multi-month lead summary aggregation out of synchronous `GET /api/v1/insights/marketing-report` into a scheduled weekly Celery Beat job stored in PostgreSQL.
 
 ---
 
-## 4. Defense-in-Depth Security & Runtime Hardening
+## ⚠️ Production Challenges & Operational Friction Analysis (Across All 29 Workflows)
 
-### 4.1 Inline Rust/Wasm Edge DLP (`data-gate/src/lib.rs`)
+The primary risks at launch are **external regulatory bottlenecks** and **operational edge cases** rather than Python application logic.
 
-* Compiled with release hardening (`opt-level = 3`, `lto = true`, `panic = "abort"`, `strip = "symbols"`) on `proxy-wasm` and deployed inline inside Envoy Proxy v1.28.
-* Triggered by the upstream `X-Data-TTL: 1` response header (injected by `dlp_trigger_middleware` on `/api/v1/*` and `/webhooks/*`), the filter strips `x-data-ttl` and `content-length`, performs bounded recursive JSON traversal (`max_depth = 32`) backed by an `OnceLock<HashSet>` lookup table, and redacts **41 sensitive PII, credential, and message fields**.
-* Operates **fail-closed**: malformed or unparseable JSON responses on protected routes are replaced with `{"error": "Security Exception: Data Integrity Failure"}`.
+### 1. Telecom, Meta & KYC Workflows (`WF #5, #6, #7, #11, #21`) — *HIGHEST RISK*
+- **Twilio `+972` Regulatory Bundles (`WF #7, #21`):** Programmatic purchase of Israeli phone numbers requires uploading business registration (תעודת התאגדות / עוסק מורשה), Israeli ID, and proof of address per tenant (48–72h Twilio review per bundle).
+- **Meta Tech Provider & Embedded Signup (`WF #7`):** Requires passing Meta App Review (`whatsapp_business_management`, `whatsapp_business_messaging`), Meta Business Verification, and implementing **Meta Embedded Signup** in Next.js for 3-click WABA onboarding.
+- **S3 KYC Encryption (`WF #21`):** Enforce `SSE-KMS` encryption, block all public access on the `kyc/` bucket, and serve identity files strictly via short-lived Pre-Signed URLs.
+- **The 24-Hour WhatsApp Service Window (`WF #5, #6`):** Meta blocks free-form text on outbound lead follow-ups (`WF #5`) until the lead replies first. Initial outreach for landing-page leads **must** dispatch an approved **Meta Utility/Marketing Template**; once the lead replies, the 24-hour window opens for `WF #6` AI chat.
+- **Facebook Lead Ads Token Expiry (`WF #11`):** User OAuth tokens expire every 60 days (or immediately on password reset). Implement automated token-health checks and tenant disconnect alerts.
 
-### 4.2 Concurrency & TOCTOU Neutralization
+### 2. AI Engine, Voice & Unit Economics (`WF #10, #13, #14, #17, #23`)
+- **Context-Safe Caching (`WF #13`):** Keep Turn-1 cache restricted strictly to stateless first-turn messages keyed by `hash(tenant_id + kb_version + system_instruction + normalized_prompt)` to prevent cross-lead context pollution.
+- **Delivery Failure Compensation (`WF #14`):** When Gemini succeeds and consumes tokens/quota but Meta WhatsApp delivery fails, enqueue the already-generated reply into the DLQ for delivery retry rather than re-invoking the LLM, and refund quota if delivery permanently fails.
+- **Worker Isolation (`WF #10, #17`):** Separate `-Q audio_queue` from `-Q realtime_chat` to prevent 2-minute voice notes from blocking live text conversations.
 
-* **Atomic Quotas & Token Budgets:** Monthly AI message credits use conditional SQL `UPDATE users ... WHERE id = :id AND monthly_ai_messages < :max RETURNING monthly_ai_messages`; LLM token budgets use atomic Redis `INCRBY` with compensating `DECRBY` rollbacks on model failure.
-* **Transaction Hygiene:** Database transactions are committed and released *before* awaiting external Gemini API calls, preventing connection-pool exhaustion under concurrent load.
-* **Idempotency & Replay Prevention:** Campaign webhooks claim 24-hour Redis `SET NX` locks over SHA-256 phone digests (failing closed with `503` if Redis is unavailable), Meta webhooks enforce a 5-minute timestamp replay window, OTPs are consumed via single-use atomic SQL `UPDATE`, and background tasks are bounded by `BackgroundTaskCapacity(max_in_flight=200)`.
+### 3. Billing, Celery Beat & Subscription Lifecycle (`WF #8, #9, #20`)
+- **Payment Gateway Reliability & Tax Invoices (`WF #8`):** Back Meshulam/Grow `transactionId` idempotency with PostgreSQL `UNIQUE` constraints (not Redis TTL alone). Delegate Israeli tax-compliant digital invoices to Meshulam/Grow or Morning APIs rather than custom Python PDFs.
+- **Single-Instance Celery Beat (`WF #9, #20`):** Strictly enforce `replicas: 1` for `leadflow-beat` in production so scheduled follow-ups and monthly quota resets never fire twice.
+- **Graceful Trial Cut-Off (`WF #20`):** Trigger an automated WhatsApp/email alert 48 hours before the 14-day trial expires showing active open leads so tenants convert before `bot_active` switches to `False`.
 
-### 4.3 ASGI DoS, SSRF, Upload & Authentication Controls
-
-* **Zero-Allocation ASGI Streaming Middleware (`src/middleware/request_limits.py`):** Wraps ASGI `receive()` directly (avoiding Starlette `BaseHTTPMiddleware` buffering) to enforce a **1 MiB** standard body cap (`HTTP 413`), **26 MiB** cap on `/api/v1/sessions/upload/`, and a byte-level JSON state machine rejecting nesting deeper than **64 levels** (`HTTP 400`) prior to `json.loads()`.
-* **Media & Storage Isolation:** `WhisperService` enforces HTTPS port 443, an explicit provider domain allowlist (`.twilio.com`, `.fbcdn.net`, `graph.facebook.com`, `lookaside.fbsbx.com`), `follow_redirects=False`, a 7-second timeout, and a 25 MiB streaming cap. Uploads verify magic bytes via `python-magic` and assign UUID filenames; local file reads and PDF exports enforce strict path containment.
-* **Session & Identity Security:** JWTs are algorithm-pinned (`HS256`) with mandatory `jti`, `token_version`, and `exp` claims validated against a Redis SHA-256 revocation blocklist (failing closed with `503` in production). Rate limiting resolves `CF-Connecting-IP` only from CIDR-verified trusted proxies. OTPs at rest are Fernet-encrypted via `PIIProtector`.
-
-### 4.4 Container, Network & Secret Hardening
-
-* **Zero-Trust Ingress (`terraform/main.tf`):** Hetzner Cloud Firewall permits only ICMP inbound; all public HTTP/HTTPS traffic traverses Cloudflare Tunnel with zero public SSH exposure.
-* **Rootless Containers (`compose.yaml`, `Dockerfile`):** Services execute under Rootless Podman and Systemd Quadlets as unprivileged users (`leadflowuser` UID 1000, `nextjs` UID 1001) with `no-new-privileges:true`, `ulimits: core: 0`, explicit cgroup memory caps (`1.5g`), read-only config mounts, and loopback-only database/service bindings.
-* **Fail-Fast Secret Hygiene (`src/config.py`):** Production startup aborts if a `.env` file exists on disk or `SECRET_KEY` is weak (`<32` chars). AWS SSM parameters are fetched via IMDSv2 and cached Fernet-encrypted with `0o600` permissions.
-
-### 4.5 Database-Level Tenant Isolation & Two-Way Prompt Injection Defense
-
-- **Fail-Closed `PostgreSQL FORCE ROW LEVEL SECURITY` (RLS):** Enforced across all 14 tenant-scoped tables via Alembic (`20261122_enforce_rls_all_tables`). Every query requires a transaction-local `app.current_tenant_id` binding; an unset context defaults to `0` rows returned rather than failing open. System-level webhook resolution uses explicit, scoped `app.rls_bypass = 'on'` inside `try ... finally` context managers.
-- **Least-Privilege Role Separation:** Database access is split across three non-superuser roles (`rolbypassrls = false`):
-  - `leadflow_migrator`: Owns schema DDL via Alembic migrations only.
-  - `leadflow_reader`: Restricted strictly to `SELECT` operations.
-  - `leadflow_writer`: Restricted to DML (`SELECT`, `INSERT`, `UPDATE`, `DELETE`) with zero DDL privileges.
-- **Two-Way Prompt Injection Neutralization:** Even if an adversarial payload inside a WhatsApp message or Whisper transcript bypasses pre-LLM guardrails, the blast radius is contained at both ends:
-  - **Integrity (Cannot Mutate):** Read-only AI/analytics tasks run on `worker-reader` backed by `leadflow_reader`—making `UPDATE` or `DELETE` physically impossible at the database layer.
-  - **Confidentiality (Cannot Exfiltrate):** All outbound responses pass through the inline Envoy Rust/Wasm DLP filter (`data_hop_firewall`) to redact PII and credentials before leaving the perimeter.
----
-
-## 5. Active System Workflows Catalog
-
-### Identity, Multi-Tenancy & Pilot Operations
-
-| # | Workflow | Primary Module(s) | Summary |
-| --- | --- | --- | --- |
-| 1 | Tenant Registration | `src/routers/auth.py` | Threadpool password hashing, rate-limited registration (`5/min`), default `STARTER` tier. |
-| 2 | Login, MFA OTP & JWT Revocation | `src/routers/auth.py`, `src/security/token_revocation.py` | Atomic single-use OTP consumption, `HS256` JWT issuance (`jti`, `token_version`), Redis revocation blocklist. |
-| 3 | Tenant Dashboard & Settings | `src/routers/leads.py`, `src/routers/settings.py` | Tenant-isolated lead management, AI persona configuration, and live AI simulator (`POST /api/v1/settings/simulate`). |
-| 4 | Pilot KPIs & Feedback Loop | `src/routers/insights.py`, `src/routers/leads.py` | Tenant-scoped `GET /api/v1/insights/pilot-kpis` (conversion, HITL edit rate, KB coverage, `THUMBS_UP`/`THUMBS_DOWN` satisfaction). |
-
-### External Webhooks, Billing & Lead Ingestion
-
-| # | Workflow | Primary Module(s) | Summary |
-| --- | --- | --- | --- |
-| 5 | Campaign Lead Ingestion | `src/routers/webhooks/campaign.py` | `X-Tenant-Key` auth, strict `extra="forbid"` + E.164 validation, Redis `SET NX` idempotency, bounded background dispatch. |
-| 6 | Facebook Lead Ads & Partners | `src/routers/facebook.py`, `src/routers/partners.py` | Meta OAuth 2.0 flow, Lead Ads webhook ingestion, and partner conversion analytics. |
-| 7 | Payment Webhooks (Meshulam/Grow) | `src/routers/webhooks/meshulam.py` | Constant-time HMAC-SHA256 verification, unique `transaction_id` DB constraint, tier upgrade & quota expansion. |
-
-### Agentic AI, Hybrid RAG, HITL & Messaging
-
-| # | Workflow | Primary Module(s) | Summary |
-| --- | --- | --- | --- |
-| 8 | Two-Way WhatsApp Pipeline | `src/routers/webhooks/whatsapp.py`, `src/services/communication/whatsapp_pipeline.py` | `X-Hub-Signature-256` + 5-min replay check, 3.5s Redis burst debounce, atomic quota reservation, `AgentHarness` execution. |
-| 9 | Pre/Post-LLM Guardrails | `src/security/ai_guardrails.py`, `src/services/ai/output_sanitizer.py` | English/Hebrew injection heuristics, XML isolation, prompt-leakage detection, and `bleach` output sanitization. |
-| 10 | Rolling Conversation Memory | `src/services/ai/memory.py` | Automated rolling summary and structured `extracted_state` persistence per lead. |
-| 11 | Tenant-Scoped Tools & HITL Queue | `src/services/ai/tools/`, `src/routers/leads.py` | Closure-bound CRM/calendar tools, SSRF date validation, and `PendingApproval` (`APPROVE`/`EDIT`/`REJECT`) workflow. |
-| 12 | Multi-Tenant Hybrid RAG | `src/services/rag/`, `src/routers/knowledge.py` | PDF/MD/TXT ingestion, `kb_version` cache invalidation, SQL pre-filtered Vector + Lexical RRF retrieval. |
-| 13 | Quota Rollback & Turn-1 Cache | `src/services/llm_router.py`, `src/services/ai/harness.py` | Compensating Redis `DECRBY` / SQL credit release on failure; stateless Turn-1 response caching. |
-| 14 | Outbound Follow-Ups & Voice Notes | `src/tasks/followup_tasks.py`, `src/tasks/audio_tasks.py`, `src/services/ai/whisper.py` | Meta template outreach, SSRF-hardened audio download and Whisper transcription, PDF summary export. |
-| 15 | Virtual CMO Insights | `src/routers/insights.py`, `src/tasks/marketing_advisor.py` | Automated weekly Celery Beat digest aggregating 7-day lead conversions, tag performance, and Whisper call summaries under strict per-tenant RLS isolation. |
-| 20 | Fail-Closed Multi-Tenant RLS | `src/database/session.py`, `alembic/versions/20261122_enforce_rls_all_tables.py` | Automatic SQLAlchemy `after_begin` session listener binding `app.current_tenant_id` across sync/async engines with `FORCE ROW LEVEL SECURITY`. |
-| 21 | Least-Privilege Worker Split | `src/worker.py`, `compose.yaml` | Separates untrusted read/LLM analysis (`worker-reader` on `rag_read` with `leadflow_reader`) from state-mutating tasks (`worker-writer` on `mutations` with `leadflow_writer`) backed by Redis AOF (`noeviction`). |
+### 4. Security & Infrastructure Depth (`P2 Hardening Roadmap`)
+| Workflow | Production Risk | Engineering Mitigation |
+| :--- | :--- | :--- |
+| **WF #4 & #19: Lead Ingestion** | Duplicate leads due to phone format drift (`054-...` vs `+97254...`) | Normalize all inbound phone numbers to strict **E.164** (`+972...`) *before* checking Redis idempotency keys. |
+| **WF #22 & #28: Wasm DLP** | Case-mismatch bypass or false-positive redaction on 9-digit numbers | Normalize JSON keys with `to_ascii_lowercase()`, add explicit Wasm VM buffer size cap, and validate regex boundaries against Israeli phone/price formats. |
+| **WF #18: R2 DB Backups** | Silent backup corruption | Run an automated monthly `pg_dump -Fc` restore verification test against an isolated staging container. |
 
 ---
 
+## 📋 Step-by-Step Go-Live Checklist (Pilot Launch)
 
-### Telecom, Storage, Background Workers & Infrastructure
+### Stage A — Technical & Security Freeze (This Week)
+- [x] Re-enable `get_current_user` + Admin check on `src/routers/partners.py` (`P0`).
+- [ ] Split Celery workers into `-Q realtime_chat` and `-Q audio_queue`, and verify `leadflow-beat` runs as a single instance.
+- [ ] Run `podman compose up -d --build` (or Systemd Quadlets) with `pgvector:pg15` + `alembic upgrade head` on Hetzner VPS and verify `/health/db-sync-status`.
+- [ ] Run end-to-end backup restore check from Cloudflare R2 (`pg_dump -Fc`).
 
-| # | Workflow | Primary Module(s) | Summary |
-| --- | --- | --- | --- |
-| 16 | Number Provisioning & KYC | `src/routers/provisioning.py`, `src/routers/phones.py`, `src/services/storage/s3_service.py` | Twilio/Meta `+972` provisioning and encrypted S3 KYC document uploads. |
-| 17 | Secure Media & PDF Containment | `src/routers/storage.py`, `src/routers/sessions.py`, `src/services/media/pdf_maker.py` | Tenant path containment, `python-magic` MIME verification, UUID filenames. |
-| 18 | Scheduled Billing, GDPR & Backups | `src/worker.py`, `src/tasks/billing_tasks.py`, `src/tasks/retention_tasks.py`, `scripts/backup_to_r2.sh` | 14-day trial expiration, DLQ retries, hourly 90-day GDPR purge (`_safe_unlink`), and SHA-tagged `pg_dump` R2 backups. |
-| 19 | Health, Tracing & Egress DLP | `src/main.py`, `src/routers/health.py`, `src/middleware/request_limits.py` | `/health/db-sync-status` Alembic check, `X-Request-ID`, PII-safe JSON logs, HSTS/CSP headers, `X-Data-TTL: 1` DLP trigger, Sentry alerts. |
+### Stage B — External Bureaucracy (Parallel Track)
+- [ ] Submit Meta App Review (`whatsapp_business_management`, `whatsapp_business_messaging`) & Meta Business Verification.
+- [ ] Register pre-approved Hebrew Meta Utility Templates for `WF #5` initial outbound lead outreach.
+- [ ] Submit first Twilio `+972` Regulatory Bundle for the Design Partner tenant.
+- [ ] Connect Morning / Meshulam automatic invoice webhook integration.
 
----
-
-## 6. Empirical Edge Proxy Performance Benchmarking
-
-To measure the exact latency and throughput trade-offs of inline Rust/Wasm recursive JSON redaction inside Envoy under hardware contention, the repository ships an automated, randomized benchmark suite (`tests/benchmarks/run_scientific_bench.sh`) driven by `wrk`.
-
-### 6.1 Topology, Hardware Isolation & Methodology
-Before load generation, the harness executes 5 functional and adversarial verification vectors (confirming `X-Data-TTL` header stripping, JSON key-scope boundaries, `max_depth=32` recursion limits, and `>300 KB` multi-frame response reassembly). It then runs **30 randomized, interleaved iterations** (`shuf` order randomization per iteration, `20s` duration, `c=20` concurrent connections) serving `2.1 KB` JSON payloads (`20` lead records via `/bench/echo`) with strict 2-vCPU hardware pinning (`taskset`):
-1. **`Direct (Backend)` (`127.0.0.1:8000`):** `wrk` (Core 0) → FastAPI/Gunicorn (Core 1).
-2. **`Bare Envoy` (`127.0.0.1:10001`):** `wrk` (Core 0) → Baseline Envoy Proxy without Wasm filter (Core 1) → FastAPI (Core 1).
-3. **`Envoy + Wasm` (`127.0.0.1:10000`):** `wrk` (Core 0) → Production Envoy Proxy with `data_hop_firewall.wasm` redacting `X-Data-TTL: 1` responses (Core 1) → FastAPI (Core 1).
-
-### 6.2 Verified Results (`2.1 KB` JSON Payload, `n = 30` Randomized Runs, 1-vCPU Server Pinning)
-
-| Configuration | Median P50 (95% CI) | Median P90 (IQR) | Median P99 (IQR) | Median RPS (95% CI) | Non-2xx / Socket Errors |
-| --- | --- | --- | --- | --- | --- |
-| **`Direct (Backend)`** | 83.47 ms (`±3.26`) | 117.61 ms (`17.06`) | 885.14 ms (`244.21`) | 235.05 req/s (`±4.72`) | 0 / 0 |
-| **`Bare Envoy`** | 89.81 ms (`±7.10`) | 146.54 ms (`49.94`) | 956.75 ms (`178.23`) | 206.49 req/s (`±5.45`) | 0 / 0 |
-| **`Envoy + Wasm`** | 107.48 ms (`±4.84`) | 145.50 ms (`30.65`) | 1011.61 ms (`341.45`) | 178.59 req/s (`±4.17`) | 0 / 0 |
-
-### 6.3 Paired Bootstrap Analysis & Little's Law Findings (`10,000` Resamples)
-- **Paired P50 Latency Delta (`Envoy + Wasm` minus `Bare Envoy`):** Median **`+15.31 ms`** (95% Bootstrap CI: `[+1.21, +30.00] ms`), Mean **`+17.94 ms`** (95% Bootstrap CI: `[+10.70, +25.83] ms`) under single-core closed-loop saturation (`L = RPS * W ≈ 19.2` active connections out of `c=20`, with `0.00%` CPU steal across all 90 runs).
-- **Tail Latency Stability (P90 & P99):** Median P90 improved slightly (`145.50 ms` vs. `146.54 ms`) with tighter variance (`IQR 30.65 ms` vs. `49.94 ms`), and paired P99 delta was **`-0.97 ms`** (95% Bootstrap CI: `[-110.19, +189.58] ms` — crossing zero, confirming no statistically significant tail-latency degradation).
-- **Throughput Trade-Off Under 1-Core Saturation:** Paired median RPS delta was **`-10.74%`** (95% Bootstrap CI: `[-13.26%, -6.56%]`) with **`0` non-2xx or socket errors**, quantifying the exact CPU cost of full-body JSON parsing and redaction inside V8 Wasm when pinned to a single vCPU.
-- **Known Scope Trade-Offs:** Key matching currently assumes canonical lowercase `snake_case` API contracts and redacts structured JSON keys up to depth 32; case-insensitive key normalization, explicit Wasm VM buffer caps, and unstructured free-text PII regex scrubbing are tracked on the roadmap.
+### Stage C — Design Partner Pilot (HITL Draft Mode)
+- [ ] Upload Design Partner pricing sheet, policies, and FAQs via `POST /api/v1/knowledge/documents` and verify `INDEXED` status.
+- [ ] Operate first 50–100 live WhatsApp leads in **HITL Draft Mode** (`PendingApproval`).
+- [ ] Monitor `/api/v1/insights/pilot-kpis`: once human `EDITED` rate drops below `15%` and `thumbs_up` exceeds `85%`, enable autonomous appointment booking for the tenant.
 
 ---
 
-## 7. DevSecOps CI/CD & Verification Commands
+## 🤖 Agent Engineering & Optimization Roadmap
 
-Every pull request targeting `main` or `staging` is gated by `.github/workflows/ci-devsecops.yml` (`gitleaks`, `ruff`, `bandit -r src/ -ll -ii`, `pip-audit`, `alembic check`, and `pytest`), complemented by Trivy filesystem SARIF uploads and nightly security audits (`.github/workflows/nightly-audit.yml`). Production deployments use a pull-based webhook CD model (`.github/workflows/production.yml`) to avoid storing SSH keys or exposing remote execution surfaces in CI.
+### ✅ Completed: Optimization Cycle #1 — Agent Evals, Telemetry & Tiered Routing
+- [x] **Telemetry & Observability:** Instrumented `AgentHarness` with `AgentRunMetrics` (`model_tier`, `latency_ms`, `prompt_tokens`, `completion_tokens`, `estimated_cost_usd`, `tool_calls_count`, and `context_compacted`) with strict PII redaction.
+- [x] **Evals & Benchmarking:** Expanded `tests/evals/` into a 15-scenario Hebrew/English multi-tenant Golden Dataset (`tests/evals/golden_dataset.json`) covering RAG groundedness, multi-step tool calling, history compaction, and prompt-injection/cross-tenant defenses.
+- [x] **Latency & Cost Optimization:** Benchmarked `14.20 ms` P50 / `38.50 ms` P95 harness latency and `165.0` avg tokens/turn (`$0.000012`/turn) via automated compaction and tiered routing.
+- [x] **Documentation:** Generated `docs/EVAL_BENCHMARK_REPORT.md` and updated `README.md`.
 
-```bash
-# 1. Lint, Format & Static Security Analysis
-ruff check src tests
-ruff format --check src tests
-bandit -r src/ -ll -ii
-pip-audit -r requirements.txt
+### ✅ Completed: Optimization Cycle #2 — Production Monitoring & Autonomous CI Triage
+- [x] **Production Anomaly Watchdog & Alerting:** Implemented `ProductionWatchdog` (`src/services/monitoring/watchdog.py`) and 5-minute Celery Beat task (`src/tasks/watchdog_tasks.py`) monitoring rolling 15-minute LLM error rates and Celery DLQ growth, backed by `AlertDispatcher` (Redis `SET NX` 30-minute cooldown deduplication, PII redaction, and SSRF-validated `ALERT_WEBHOOK_URL`) and verified via `tests/security/test_production_watchdog.py`.
+- [x] **Autonomous CI / Security Triage Workflow:** Deployed `.github/workflows/ci-triage.yml` to automatically diagnose failed SAST (`Semgrep`/`Ruff`) and Production Deploy (`Trivy`/`Alembic`/`Pytest`) runs and post actionable remediation steps.
 
-# 2. Verify Zero Alembic Schema Drift (SQLite / PostgreSQL)
-alembic upgrade head && alembic check
-
-# 3. Run Core AI Harness, Security, HITL, Hybrid RAG, Pilot KPI & Eval Suites
-python -m pytest \
-  tests/security/test_ai_llm_security.py \
-  tests/test_ai_harness.py \
-  tests/test_tenant_tools_and_hitl.py \
-  tests/test_hybrid_rag.py \
-  tests/test_pilot_kpis.py \
-  tests/evals/test_agent_regression_evals.py -v
-
-# 4. Run Full Security Regression Suite (Concurrency, Webhooks, Auth, SSRF, Infra)
-python -m pytest tests/security/ -v
-
-# 5. Reproducible Envoy + Rust/Wasm Latency Benchmark (wrk)
-./tests/benchmarks/run_latency_bench.sh
-
-```
+### 📌 Active Backlog (Next Sprints)
+- [ ] **HITL State Machine Upgrade:** Extend `PendingApproval` into a full suspend/resume execution state machine across `worker-reader` and `worker-writer`.
+- [ ] **Live Incident Post-Mortem:** Configure live `ALERT_WEBHOOK_URL` on Hetzner VPS and document the first production anomaly detected and resolved via the Watchdog.
+- [ ] **Guardrails & Sandboxing Showcase:** Maintain architectural case-study documentation highlighting `leadflow_reader` + `FORCE RLS` + Envoy/Wasm DLP egress filtering.
 
 ---
 
-## 8. Current Status & Engineering Roadmap
+## 🔮 TIER 2 & V2: Post-Pilot Scale & Enterprise Workflows (Deferred Until Pilot KPIs Met)
 
-### Implemented & Verified
+> **Rule:** Do not implement these workflows until the first Design Partner pilot validates unit economics and HITL accuracy.
 
-- **Agentic AI Core (Phases 1–5):** `AgentHarness`, RESPECT + Abstention prompts, rolling conversation memory, 3.5s WhatsApp burst debounce, closure-bound tenant tools, HITL `PendingApproval` workflow, `pgvector` Hybrid RAG + Knowledge API, Pilot KPIs endpoint, Hebrew Golden Set evals, and `.claude/skills/` operational guardrails.
-- **Database & Worker Hardening:** Fail-closed `PostgreSQL FORCE ROW LEVEL SECURITY` across all 14 tenant-scoped tables, three-tier least-privilege DB roles (`leadflow_migrator`, `leadflow_reader`, `leadflow_writer`), split `worker-reader` / `worker-writer` Celery pools with Redis AOF (`noeviction`), and automated weekly Marketing Advisor digests.
-- **Security & Edge Runtime:** Bounded recursive Rust/Wasm Envoy DLP filter (41 fields, `max_depth=32`), raw ASGI streaming body & 64-depth JSON limits, atomic Redis/SQL quotas and idempotency, SSRF/HMAC/JWT hardening, 90-day GDPR retention purge, and Cloudflare R2 backups.
-- **DevSecOps:** Automated GitHub Actions security gates (Gitleaks, Ruff, Bandit, `pip-audit`, Trivy, Alembic check, 13 security regression modules) and rootless Podman Quadlets behind Cloudflare Zero Trust.
+### V2 AI & Agentic Enhancements
+1. **Production Workflow Graph & Reflection (`src/services/ai/workflow_graph.py`):** Enable bounded single-pass self-reflection behind a feature flag for complex multi-turn objections without breaching the `7s` latency SLA.
+2. **Interactive WhatsApp Rich Media (`WF #11`):** Upgrade plain-text replies to WhatsApp interactive buttons, list menus, and product catalogs.
+3. **Dynamic Multi-Language Switching:** Auto-detect Hebrew, English, Russian, or Arabic on Turn 1 and adapt prompt localization seamlessly.
+4. **Real-Time Sentiment & Escalation Alerts:** Push instant WhatsApp/Slack/SMS alerts to the business owner when frustration is detected (`needs_human_escalation=True`).
+5. **Drip Re-Engagement Campaigns:** Automated 3-day and 7-day follow-up sequences for cold leads (using approved Meta templates).
+6. **Prompt A/B Testing & Semantic Caching:** Split traffic across `system_instruction` variants and measure conversion impact via `/api/v1/insights/pilot-kpis`.
 
-### Next Up (Pre-Pilot & V2 Hardening)
-
-- **Pilot Calibration:** Calibrate Hebrew Hybrid RAG RRF weights and `min_score` thresholds on live Design Partner traffic under the 7-second webhook SLA, converting HITL `EDITED` responses into expanded Golden Set test cases.
-- **Audio Isolation:** Separate heavy local Whisper audio transcription into a dedicated Celery `-Q audio_queue` pool if local inference is enabled.
-- **Depth Hardening:** Upgrade the pull-based CD webhook to HMAC-SHA256 + timestamp replay protection with `@sha256` image pinning, and add case-insensitive key matching + free-text PII regex scrubbing to `data_hop_firewall`.
-- **Systems V2:** Wire bounded single-pass self-reflection (`src/services/ai/workflow_graph.py`) behind a feature flag and advance the native C++ zero-copy audio processing engine (`cpp-transcription-engine`).
-
-### Agent Optimization Cycle #1 — Telemetry, Context Compaction & Tiered Routing
-- **Baseline Challenge:** Long multi-turn WhatsApp conversations inflated prompt token usage and P95 latency, while uniform model routing increased inference cost on simple queries.
-- **Engineering Changes:**
-  1. Instrumented `AgentHarness` with structured per-turn telemetry (`AgentRunMetrics`: latency, token breakdown, tool calls, and compaction state) with strict PII redaction.
-  2. Built a deterministic Golden Evaluation Suite (`tests/evals/`) covering tool-calling accuracy, RAG groundedness, prompt-injection defense, and long-context compaction.
-  3. Tuned `GeminiTieredRouter` + conversation history compaction thresholds based on benchmark runs.
-- **Measured Impact (15-Scenario Multi-Tenant Golden Benchmark — `docs/EVAL_BENCHMARK_REPORT.md`):**
-  - **Harness Latency:** `14.20 ms` P50 / `38.50 ms` P95 execution overhead across Hebrew & English workflows.
-  - **Token & Cost Efficiency:** `165.0` average tokens/turn (`$0.000012`/turn) via automated context compaction and complexity-based tiered model routing.
-  - **Reliability & Safety:** `100.0%` pass rate on tool selection accuracy, structured output validation, RAG abstention, and prompt-injection blocking.
+### V2 Integrations, UX & Enterprise Scale
+7. **Two-Way Calendar & CRM Sync:** Push approved `PendingApproval` bookings directly to Google Calendar, HubSpot, or Salesforce.
+8. **Multi-Channel Fallback:** Automatic SMS/Email fallback when WhatsApp delivery fails.
+9. **Frontend Polish & Growth:** Optimistic chat UI, skeleton loaders, dark/light theme, PWA installability, and public SEO `sitemap.xml` / `robots.txt`.
+10. **Enterprise Governance & Self-Service:** DSAR/GDPR encrypted ZIP export endpoint, tenant API key rotation with 24h grace period, multi-user team roles per tenant, and agency white-label branding.
+11. **Voice & Multi-Agent Frontier:** Live Twilio Media Streams voice agent, autonomous cold-list outbound pacing, and specialized Sales-to-Support agent handoff.

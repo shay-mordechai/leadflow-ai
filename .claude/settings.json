@@ -20,6 +20,16 @@
             "command": "ruff check --fix src tests && ruff format src tests"
           }
         ]
+      },
+      {
+        "matcher": "Edit|MultiEdit|Write",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "./.claude/hooks/post_edit_py_guard.sh",
+            "timeout": 10
+          }
+        ]
       }
     ],
     "Stop": [

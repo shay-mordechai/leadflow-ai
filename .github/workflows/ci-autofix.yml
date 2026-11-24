@@ -1,24 +1,24 @@
-name: CI Self-Healing Auto-Fix
+name: CI Self-Healing Auto-Fix & Alert
 
 on:
   workflow_run:
     workflows:
+      - "SAST Security Gate (Semgrep & Ruff)"
       - "LeadFlow Production Deploy (GHCR & Hetzner)"
+      - "DevSecOps CI"
       - "Nightly Security & Dependency Audit"
     types:
       - completed
 
-# Prevent multiple workflows failing on the same commit from creating duplicate PRs
 concurrency:
   group: autofix-${{ github.event.workflow_run.head_sha }}
   cancel-in-progress: false
 
-# Enforce least privilege globally; grant write scopes only on the job that opens PRs
 permissions: {}
 
 jobs:
-  autofix:
-    name: Diagnose & Open Auto-Fix PR
+  autofix_and_notify:
+    name: Diagnose, Auto-Fix & Notify
     runs-on: ubuntu-latest
     timeout-minutes: 15
     permissions:
@@ -47,8 +47,7 @@ jobs:
             exit 0
           fi
 
-          EXISTING_PR=$(gh pr list --state open --search "head:autofix/ci-" --json number,headRefName \
-            --jq 'length')
+          EXISTING_PR=$(gh pr list --state open --search "head:autofix/ci-" --json number --jq 'length')
           if [[ "${EXISTING_PR:-0}" -gt 0 ]]; then
             echo "An open autofix PR already exists; skipping run #$RUN_ID for commit $HEAD_SHA."
             echo "proceed=false" >> "$GITHUB_OUTPUT"
@@ -59,17 +58,17 @@ jobs:
 
       - name: Checkout failed commit without persisting Git credentials
         if: steps.preflight.outputs.proceed == 'true'
-        uses: actions/checkout@v7
+        uses: actions/checkout@v4
         with:
           ref: ${{ github.event.workflow_run.head_sha }}
           fetch-depth: 1
           persist-credentials: false
 
-      - name: Set up Python 3.12
+      - name: Set up Python 3.13
         if: steps.preflight.outputs.proceed == 'true'
-        uses: actions/setup-python@v7
+        uses: actions/setup-python@v5
         with:
-          python-version: "3.12"
+          python-version: "3.13"
           cache: "pip"
           cache-dependency-path: requirements.txt
 
@@ -78,7 +77,6 @@ jobs:
         run: |
           python -m pip install --upgrade pip
           pip install --quiet google-genai pydantic ruff pytest pytest-asyncio pytest-mock
-          # Allow failure here so broken requirements.txt files can still be diagnosed and patched
           if [ -f requirements.txt ]; then
             pip install --quiet -r requirements.txt || echo "Warning: requirements.txt install failed; proceeding to diagnosis."
           fi
@@ -98,14 +96,17 @@ jobs:
           WORKFLOW_NAME: ${{ github.event.workflow_run.name }}
         run: python .github/scripts/autofix_ci.py
 
-      - name: Enforce security guardrails on generated diff
+      - name: Enforce security guardrails and classify risk
+        id: guardrails
         if: steps.preflight.outputs.proceed == 'true'
         run: |
           CHANGED_FILES=$(git status --porcelain | awk '{print $2}')
           if [[ -z "$CHANGED_FILES" ]]; then
+            echo "has_changes=false" >> "$GITHUB_OUTPUT"
             exit 0
           fi
 
+          echo "has_changes=true" >> "$GITHUB_OUTPUT"
           echo "Files modified by auto-fix:"
           echo "$CHANGED_FILES"
 
@@ -117,19 +118,23 @@ jobs:
             exit 1
           fi
 
-      - name: Push branch and open Pull Request
-        if: steps.preflight.outputs.proceed == 'true'
+          # Classify whether changes touch high-risk security/schema paths
+          if echo "$CHANGED_FILES" | grep -Eq '^(src/security/|alembic/|data-gate/)'; then
+            echo "auto_merge=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "auto_merge=true" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Push branch, open PR, and enable auto-merge for safe fixes
+        id: pr
+        if: steps.preflight.outputs.proceed == 'true' && steps.guardrails.outputs.has_changes == 'true'
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           RUN_ID: ${{ github.event.workflow_run.id }}
           RUN_URL: ${{ github.event.workflow_run.html_url }}
           WORKFLOW_NAME: ${{ github.event.workflow_run.name }}
+          AUTO_MERGE: ${{ steps.guardrails.outputs.auto_merge }}
         run: |
-          if [[ -z "$(git status --porcelain)" ]]; then
-            echo "No changes produced; skipping PR creation."
-            exit 0
-          fi
-
           BRANCH="autofix/ci-${RUN_ID}"
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
@@ -137,7 +142,6 @@ jobs:
           git add -A
           git commit --no-verify -m "fix(ci): auto-remediate workflow failure #${RUN_ID}"
 
-          # Authenticate push using an ephemeral header instead of persisted credentials
           AUTH_HEADER=$(printf 'x-access-token:%s' "$GH_TOKEN" | base64 -w0)
           git -c "http.https://github.com/.extraheader=AUTHORIZATION: basic ${AUTH_HEADER}" \
             push origin "$BRANCH"
@@ -147,8 +151,69 @@ jobs:
             SUMMARY=$(printf "%s\n\n%s" "$SUMMARY" "$(cat /tmp/autofix_summary.md)")
           fi
 
-          gh pr create \
+          PR_URL=$(gh pr create \
             --base main \
             --head "$BRANCH" \
             --title "fix(ci): auto-fix failure in run #${RUN_ID}" \
-            --body "$SUMMARY"
+            --body "$SUMMARY")
+
+          echo "pr_url=$PR_URL" >> "$GITHUB_OUTPUT"
+
+          if [[ "$AUTO_MERGE" == "true" ]]; then
+            gh pr merge "$PR_URL" --auto --squash || echo "Auto-merge not enabled in repo settings; PR remains ready."
+          fi
+
+      - name: Send real-time failure & auto-fix notification
+        if: always()
+        env:
+          ALERT_WEBHOOK_URL: ${{ secrets.ALERT_WEBHOOK_URL }}
+          WORKFLOW_NAME: ${{ github.event.workflow_run.name }}
+          HEAD_SHA: ${{ github.event.workflow_run.head_sha }}
+          COMMIT_MSG: ${{ github.event.workflow_run.head_commit.message }}
+          RUN_URL: ${{ github.event.workflow_run.html_url }}
+          PR_URL: ${{ steps.pr.outputs.pr_url }}
+          AUTO_MERGE: ${{ steps.guardrails.outputs.auto_merge }}
+        run: |
+          if [[ -z "$ALERT_WEBHOOK_URL" ]]; then
+            echo "ALERT_WEBHOOK_URL secret not set; skipping external webhook alert."
+            exit 0
+          fi
+
+          python3 - << 'PYEOF'
+          import json, os, urllib.request
+
+          webhook = os.environ["ALERT_WEBHOOK_URL"].strip()
+          if not webhook.startswith("https://"):
+              raise SystemExit("ALERT_WEBHOOK_URL must use HTTPS")
+
+          wf = os.environ.get("WORKFLOW_NAME", "Unknown Workflow")
+          sha = os.environ.get("HEAD_SHA", "")[:7]
+          msg = os.environ.get("COMMIT_MSG", "").splitlines()[0][:80]
+          run_url = os.environ.get("RUN_URL", "")
+          pr_url = os.environ.get("PR_URL", "")
+          auto_merge = os.environ.get("AUTO_MERGE", "false")
+
+          if pr_url:
+              mode = "Auto-merge queued (Zero-HITL)" if auto_merge == "true" else "Ready for 1-click approval (Security/DB path)"
+              status_line = f"🤖 AI Agent opened fix PR ({mode}): {pr_url}"
+          else:
+              status_line = "⚠️ No automated patch generated — manual inspection needed."
+
+          text = (
+              f"🚨 *LeadFlow AI — CI Failure on main*\n"
+              f"• *Workflow:* {wf}\n"
+              f"• *Commit:* `{sha}` ({msg})\n"
+              f"• *Run Log:* {run_url}\n"
+              f"• *Agent Action:* {status_line}"
+          )
+
+          # Compatible with Slack, Discord (content), and Telegram/generic webhooks (text)
+          payload = json.dumps({"text": text, "content": text}).encode("utf-8")
+          req = urllib.request.Request(
+              webhook,
+              data=payload,
+              headers={"Content-Type": "application/json", "User-Agent": "LeadFlow-CI-Watchdog/1.0"},
+          )
+          with urllib.request.urlopen(req, timeout=10) as resp:
+              print("Alert delivered, HTTP status:", resp.status)
+          PYEOF

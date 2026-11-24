@@ -24,12 +24,18 @@ def validate_webhook_url(url: str) -> bool:
         if not hostname:
             return False
 
-        if hostname in ("localhost", "127.0.0.1", "0.0.0.0", "::1"):
+        if hostname in ("localhost", "127.0.0.1", "::1"):
             return False
 
         try:
             ip = ipaddress.ip_address(socket.gethostbyname(hostname))
-            if ip.is_private or ip.is_loopback or ip.is_link_local or ip.is_reserved:
+            if (
+                ip.is_private
+                or ip.is_loopback
+                or ip.is_link_local
+                or ip.is_reserved
+                or ip.is_unspecified
+            ):
                 return False
         except Exception:
             pass
