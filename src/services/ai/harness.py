@@ -50,7 +50,7 @@ class AgentHarness:
     def __init__(self) -> None:
         client = genai.Client(
             api_key=settings.GOOGLE_API_KEY,
-            http_options=types.HttpOptions(timeout=7000),
+            http_options=types.HttpOptions(timeout=15000),
         )
         redis_client = None
         try:

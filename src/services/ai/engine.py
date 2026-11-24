@@ -19,7 +19,7 @@ from src.services.ai.prompt_builder import PromptBuilder
 
 logger = logging.getLogger("AI_Engine")
 MAX_OUTPUT_TOKENS = 512
-AI_REQUEST_TIMEOUT_SECONDS = 7.0
+AI_REQUEST_TIMEOUT_SECONDS = 15.0
 _TIME_FORMAT = re.compile(r"^(?:[01]\d|2[0-3]):[0-5]\d$")
 
 
