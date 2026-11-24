@@ -277,6 +277,15 @@ async def incoming_sms_message(
     db: Session = Depends(get_db),
 ) -> Response:
     """Process incoming Twilio WhatsApp/SMS webhooks for owner broadcasts and lead replies."""
+    form_params = await request.form()
+    message_sid = form_params.get("MessageSid")
+    if message_sid:
+        from src.security.idempotency import check_and_claim_idempotency
+
+        if not check_and_claim_idempotency("twilio", message_sid):
+            logger.info("Duplicate Twilio MessageSid ignored: %s", message_sid)
+            return _empty_twiml_response()
+
     logger.info(
         "[TWILIO WEBHOOK] Incoming message from %s to %s: %s",
         mask_phone(From),

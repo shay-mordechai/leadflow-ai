@@ -8,9 +8,15 @@ INJECTION_PATTERNS = [
     r"(?i)ignore\s+(all\s+)?(previous|prior|above)\s+instructions",
     r"(?i)system\s*prompt",
     r"(?i)you\s+are\s+now\s+(in\s+)?developer\s+mode",
-    r"(?i)reveal\s+your\s+instructions",
-    r"(?i)תתעלם\s+מ(כל\s+)?ההוראות",
+    r"(?i)reveal\s+your\s+(system\s+)?(instructions|prompt)",
+    r"(?i)(תתעלם|שכח)\s+(את\s+|מ)?(כל\s+)?ההוראות",
+    r"(?i)(גלה|חשוף|תראה)\s+(לי\s+)?(את\s+)?(הנחיות|הוראות)\s+המערכת",
+    r"(?i)הנחיות\s+המערכת",
     r"(?i)מה\s+הפרומפט\s+שלך",
+    # OWASP LLM06: Cross-tenant PII & sensitive record exfiltration attempts
+    r"(?i)(other|all)\s+customers.{0,30}(credit\s+card|phone|email|data|details|records)",
+    r"(?i)(show|give|leak|dump|export)\s+(me\s+)?(all\s+)?(credit\s+card|passwords|api[_\s]?keys|database|other\s+users)",
+    r"(?i)לקוחות\s+אחרים.{0,30}(כרטיס\s+אשראי|טלפון|אימייל|פרטים)",
 ]
 
 MAX_INPUT_CHARS = 1000  # Mitigates OWASP LLM10 (Unbounded Consumption)

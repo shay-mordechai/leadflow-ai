@@ -353,6 +353,14 @@ async def _handle_inbound_message(
     message: dict,
     client: genai.Client,
 ) -> str:
+    message_id = message.get("id")
+    if message_id:
+        from src.security.idempotency import check_and_claim_idempotency
+
+        if not check_and_claim_idempotency("whatsapp", message_id):
+            logger.info("Duplicate WhatsApp message ID ignored: %s", message_id)
+            return "ignored_duplicate_message"
+
     sender_id = _digits_only(message.get("from"))
     if not sender_id:
         logger.warning("Skipping Meta message without sender id: %s", message.get("id"))

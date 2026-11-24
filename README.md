@@ -5,11 +5,25 @@
 
 ---
 
+## 🧱 Runtime & Pod Architecture (Rootless Podman + Systemd Quadlets)
+
+LeadFlow runs as a declarative, rootless **Podman Pod** managed natively by **Systemd Quadlets** (mirroring the Kubernetes Pod + Sidecar pattern). All 7 services share a single isolated loopback network namespace (`127.0.0.1`), eliminating internal bridge overhead and direct host exposure.
+
+| Environment | Pod Unit | Host Exposed Ports | Database Volume | Lifecycle & Ops |
+| :--- | :--- | :--- | :--- | :--- |
+| **Production** (`leadflow-cx23`) | `leadflow-prod.pod` | **`127.0.0.1:10000` only** (Envoy Data Gate for Cloudflare Tunnel) | `postgres_15_alpine_prod` (image-versioned) | Always-on via `systemd --user` (`enable-linger`); zero-DB-downtime CD via HMAC-SHA256 webhook (`deploy.sh`) |
+| **Local Test** (Fedora Workstation) | `leadflow-test.pod` | `127.0.0.1:{10000,3000,8000,5432}` | Local test volume (`.env.test`) | On-demand singleton lifecycle via VS Code + `devops-box` (`flock`-guarded auto-start/stop) |
+
+- **Zero Exposed Application Ports (Production):** PostgreSQL (`5432`), Redis (`6379`), FastAPI (`8000`), and Next.js (`3000`) are completely unreachable from the host network; all ingress is forced through the Envoy L7 + Rust/Wasm Data Gate (`10000`).
+- **CD Without DB Downtime:** Production deployments pull updated application images (`backend`, `frontend`, `data-gate`) and restart only app-tier Systemd units inside `leadflow-prod.pod`, keeping `leadflow-db` and `leadflow-redis` online before running `alembic upgrade head`.
+
+---
+
 ## ✅ Completed Foundation (Implemented & Verified in Codebase)
 
 ### Core Infrastructure, Security & Billing Integrity
 - [x] **Tenant Isolation (PostgreSQL `FORCE ROW LEVEL SECURITY`):** Enforced via `20261122_enforce_rls_all` Alembic migration, least-privilege `leadflow_reader` / `leadflow_writer` DB roles, and SQLAlchemy tenant context listeners.
-- [x] **Zero-Trust Edge & Network:** Cloudflare Tunnel ingress with Hetzner Terraform firewall permitting zero inbound TCP/UDP ports; non-root containers (`no-new-privileges`, `core=0`, loopback-only DB/Redis bindings).
+- [x] **Zero-Trust Edge & Podman Quadlet Architecture:** Cloudflare Tunnel ingress with Hetzner Terraform firewall permitting zero inbound TCP/UDP ports; rootless **Podman Pod (`leadflow-prod.pod`) + Systemd Quadlets** exposing **only `127.0.0.1:10000` (Envoy)** to the host, with DB/Redis/Backend/Frontend isolated inside the pod loopback namespace (`no-new-privileges`, `core=0`, image-versioned DB volumes).
 - [x] **Rust/Wasm Edge DLP (`data_hop_firewall`):** Fail-closed Envoy L7 response filter redacting 41 PII/credential fields on `X-Data-TTL: 1` (`<2%` throughput overhead, `-0.30 ms` median P50 delta, `0%` non-2xx errors).
 - [x] **ASGI DoS, SSRF & Auth Hardening:** Zero-allocation streaming `RequestBodyLimitMiddleware` (1 MiB / 26 MiB caps, byte-level 64-depth JSON nesting limit), `HS256`-pinned JWTs with Redis `jti` + `token_version` revocation, `CF-Connecting-IP` trusted proxy parsing, Admin auth guard on `GET /api/v1/partners/performance` (`test_wf07_partner_performance_authz`), and `WhisperService` HTTPS domain allowlist (`follow_redirects=False`).
 - [x] **Concurrency & TOCTOU Protection:** Atomic Redis `SET NX` webhook idempotency, conditional SQL `UPDATE ... RETURNING` message quotas, Redis `INCRBY`/`DECRBY` monthly token budget with rollback, single-use atomic OTP consumption, and `BoundedSemaphore(200)` background task capacity.
@@ -28,7 +42,7 @@
 
 Focus: Preventing worker starvation, hardening CD image pinning, and calibrating Hebrew RAG on live Design Partner traffic.
 
-1. **[P1 — DevSecOps] Harden Production CD & Image Pinning:** Upgrade static `X-Deploy-Token` in `.github/workflows/production.yml` to HMAC-SHA256 + timestamp replay validation, pin base/deploy images by immutable `@sha256` digest, and run `alembic upgrade head` before switching container traffic.
+1. **[P1 — DevSecOps] Finish CD Hardening & Image Pinning:** Pin base/deploy images by immutable `@sha256` digest in `.github/workflows/production.yml` and run `alembic upgrade head` before switching container traffic *(HMAC-SHA256 + 300s replay validation already enforced in `deploy.sh`)*.
 2. **[P1 — AI Calibration] Hebrew Hybrid RAG Tuning (Under 7s Budget):** Calibrate RRF weights and `min_score` thresholds on real Hebrew SMB price lists and FAQs so pricing queries do not false-negative while missing facts reliably trigger `abstained=True` without adding a heavy reranker.
 3. **[P1 — Pilot Loop] HITL Draft Mode (`EDITED` -> Golden Set):** Onboard the first Design Partner in **HITL Draft Mode** (50–100 leads), monitor edit rate (`EDITED` vs `APPROVED`) and `thumbs_up` % via `/api/v1/insights/pilot-kpis`, and convert human-edited replies into new `golden_set_hebrew.jsonl` test cases before enabling autonomous booking.
 4. **[P1 — Reliability] Dedicated Audio Celery Queue:** Route `WF #10` / `WF #17` voice-note downloads and Whisper transcriptions to a dedicated `-Q audio_queue` worker pool so concurrent 15MB WhatsApp audio files never starve `-Q realtime_chat` text replies.
@@ -70,8 +84,9 @@ The primary risks at launch are **external regulatory bottlenecks** and **operat
 
 ### Stage A — Technical & Security Freeze (This Week)
 - [x] Re-enable `get_current_user` + Admin check on `src/routers/partners.py` (`P0`).
+- [x] Migrate Hetzner VPS from `podman compose` to Rootless **Podman Pod + Systemd Quadlets** (`leadflow-prod.pod`) with zero exposed app ports (`127.0.0.1:10000` only) and `enable-linger`.
 - [ ] Split Celery workers into `-Q realtime_chat` and `-Q audio_queue`, and verify `leadflow-beat` runs as a single instance.
-- [ ] Run `podman compose up -d --build` (or Systemd Quadlets) with `pgvector:pg15` + `alembic upgrade head` on Hetzner VPS and verify `/health/db-sync-status`.
+- [ ] Upgrade `leadflow-db` image from `postgres:15-alpine` to `pgvector/pgvector:pg15` (using a dedicated `pgvector_pg15_prod` volume) + verify `/health/db-sync-status`.
 - [ ] Run end-to-end backup restore check from Cloudflare R2 (`pg_dump -Fc`).
 
 ### Stage B — External Bureaucracy (Parallel Track)

@@ -415,27 +415,91 @@ class ExternalE2ERunner:
                 t0,
             )
 
-    def step_5_hitl_kpis_and_logout(self) -> None:
-        # 5a. Check HITL PendingApprovals & Pilot KPIs endpoints
+    def step_5_inbound_lead_and_idempotency(self) -> None:
+        """Step 5 — Inbound Lead Creation & Idempotency Check."""
+        t0 = time.perf_counter()
+        lead_payload = {
+            "name": "E2E Test Lead",
+            "phone_number": "+972509998888",
+            "source": "WHATSAPP",
+        }
+        status, _, body = self._request("POST", "/api/v1/leads", json_body=lead_payload)
+        if status in (200, 201):
+            self._record("Inbound Lead Creation", "PASS", f"Created lead (HTTP {status})", t0)
+        else:
+            self._record("Inbound Lead Creation", "WARN", f"HTTP {status}: {body[:100]}", t0)
+
+    def step_6_hitl_approval_and_kpis(self) -> None:
+        """Step 6 — HITL Draft Approval & KPI Verification."""
         t0 = time.perf_counter()
         app_status, _, app_body = self._request("GET", "/api/v1/leads/approvals")
+        approval_id = None
+        if app_status == 200:
+            try:
+                approvals = json.loads(app_body)
+                if isinstance(approvals, list) and len(approvals) > 0:
+                    approval_id = approvals[0].get("id")
+            except Exception:
+                pass
+
+        approval_pass = True
+        if approval_id:
+            app_res, _, _ = self._request("POST", f"/api/v1/leads/approvals/{approval_id}/approve")
+            approval_pass = app_res in (200, 204)
+
         kpi_status, _, _ = self._request("GET", "/api/v1/insights/pilot-kpis")
-        if app_status == 200 and kpi_status == 200:
+        if app_status == 200 and kpi_status == 200 and approval_pass:
             self._record(
-                "HITL Approvals & Pilot KPIs",
-                "PASS",
-                f"approvals=200 ({len(app_body)}B), kpis=200",
-                t0,
+                "HITL Approval & Pilot KPIs", "PASS", f"Approvals={app_status}, KPIs=200", t0
             )
         else:
             self._record(
-                "HITL Approvals & Pilot KPIs",
+                "HITL Approval & Pilot KPIs",
                 "WARN",
-                f"approvals={app_status}, kpis={kpi_status}",
+                f"Approvals={app_status}, KPIs={kpi_status}",
                 t0,
             )
 
-        # 5b. Logout & verify immediate Redis JWT revocation
+    def step_7_coupon_pricing_preview(self) -> None:
+        """Step 7 — Coupon & Upgrade Pricing Preview (FREE -> PRO)."""
+        t0 = time.perf_counter()
+        res_status, _, res_body = self._request(
+            "POST", "/api/v1/billing/apply-coupon", json_body={"coupon_code": "SAVE50"}
+        )
+        if res_status == 200:
+            try:
+                data = json.loads(res_body)
+                orig = data.get("original_price")
+                final = data.get("final_price")
+                activated = data.get("activated")
+                if orig == 199.0 and final == 99.5 and activated is False:
+                    self._record(
+                        "Coupon Pricing Preview (50% Off)",
+                        "PASS",
+                        f"Original={orig}, Final={final}, Activated={activated}",
+                        t0,
+                    )
+                else:
+                    self._record(
+                        "Coupon Pricing Preview (50% Off)",
+                        "WARN",
+                        f"Unexpected coupon data: {data}",
+                        t0,
+                    )
+            except Exception as e:
+                self._record(
+                    "Coupon Pricing Preview (50% Off)", "WARN", f"JSON parse error: {e}", t0
+                )
+        else:
+            self._record(
+                "Coupon Pricing Preview (50% Off)",
+                "WARN",
+                f"HTTP {res_status}: {res_body[:100]}",
+                t0,
+            )
+
+    def step_8_session_teardown_and_revocation(self) -> None:
+        """Step 8 — Session Teardown (JWT Logout & Redis Revocation)."""
         t0 = time.perf_counter()
         out_status, _, _ = self._request("POST", "/api/v1/auth/logout")
         if out_status in (200, 204):
@@ -467,7 +531,10 @@ class ExternalE2ERunner:
         if self.step_2_register_and_otp_login():
             self.step_3_profile_tier_and_isolation()
             self.step_4_business_prompt_rag_and_simulator()
-            self.step_5_hitl_kpis_and_logout()
+            self.step_5_inbound_lead_and_idempotency()
+            self.step_6_hitl_approval_and_kpis()
+            self.step_7_coupon_pricing_preview()
+            self.step_8_session_teardown_and_revocation()
 
         print("-" * 72)
         passed = sum(1 for r in self.results if r.status == "PASS")

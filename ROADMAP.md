@@ -124,3 +124,5 @@ The primary risks at launch are **external regulatory bottlenecks** and **operat
 9. **Frontend Polish & Growth:** Optimistic chat UI, skeleton loaders, dark/light theme, PWA installability, and public SEO `sitemap.xml` / `robots.txt`.
 10. **Enterprise Governance & Self-Service:** DSAR/GDPR encrypted ZIP export endpoint, tenant API key rotation with 24h grace period, multi-user team roles per tenant, and agency white-label branding.
 11. **Voice & Multi-Agent Frontier:** Live Twilio Media Streams voice agent, autonomous cold-list outbound pacing, and specialized Sales-to-Support agent handoff.
+
+---

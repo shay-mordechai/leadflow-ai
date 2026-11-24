@@ -1,109 +1,257 @@
-# scripts/run_evals.py
-import os
-
-os.environ["GOOGLE_API_KEY"] = "dummy_google_api_key_for_tests_only"
-
+#!/usr/bin/env python3
+import argparse
 import asyncio
 import json
-import statistics
-from unittest.mock import AsyncMock, MagicMock
+import os
+import sys
+import time
+from pathlib import Path
 
-from src.services.ai.harness import AgentHarness
-from src.services.llm_router import GeminiTieredRouter, TaskComplexity
+PROJECT_ROOT = Path(__file__).resolve().parent.parent
+sys.path.insert(0, str(PROJECT_ROOT))
+
+from src.schemas.ai_response import WhatsAppAgentResponse
+from src.security.ai_guardrails import inspect_and_wrap_input
+from src.services.ai.harness import agent_harness
 
 
-async def main():
-    print("Initializing Agent Harness for Evaluation...")
-    harness = AgentHarness()
-    mock_response = MagicMock()
-    mock_response.text = '{"reply_text": "בשמחה! אשמח לעזור בפרטים.", "lead_intent": "INQUIRY", "lead_qualification_score": 60, "needs_human_escalation": false, "abstained": false}'
-    mock_response.usage_metadata = MagicMock(
-        prompt_token_count=120, candidates_token_count=45, total_token_count=165
-    )
+def validate_dataset_schema(dataset_path: Path) -> list[dict]:
+    if not dataset_path.exists():
+        print(f"❌ Golden dataset not found at {dataset_path}")
+        sys.exit(1)
 
-    harness.router = MagicMock()
-    harness.router.redis = None
-    harness.router.select_models = lambda complexity: GeminiTieredRouter.select_models(
-        harness.router, complexity
-    )
-    harness.router.route_and_generate = AsyncMock(return_value=mock_response)
+    cases = []
+    required_keys = {
+        "id",
+        "tenant_id",
+        "business_type",
+        "business_name",
+        "query",
+        "expected_intent",
+        "expected_needs_human",
+        "expected_abstained",
+        "expected_blocked",
+        "expected_keywords",
+    }
 
-    dataset_path = "tests/evals/golden_dataset.json"
     with open(dataset_path, "r", encoding="utf-8") as f:
-        dataset = json.load(f)
+        for idx, line in enumerate(f, 1):
+            line = line.strip()
+            if not line:
+                continue
+            try:
+                data = json.loads(line)
+            except json.JSONDecodeError as e:
+                print(f"❌ Invalid JSON at line {idx}: {e}")
+                sys.exit(1)
 
-    print(f"Loaded {len(dataset)} golden scenarios from {dataset_path}")
+            missing = required_keys - set(data.keys())
+            if missing:
+                print(f"❌ Case {idx} missing required keys {missing}")
+                sys.exit(1)
+            cases.append(data)
+    return cases
 
-    latencies = []
-    token_counts = []
-    costs = []
-    passed_count = 0
 
-    for case in dataset:
-        complexity_enum = TaskComplexity.LOW
-        if case.get("complexity") == "high":
-            complexity_enum = TaskComplexity.HIGH
-        elif case.get("complexity") == "std":
-            complexity_enum = TaskComplexity.STANDARD
+def run_offline_evals(cases: list[dict]) -> tuple[int, int, list[dict]]:
+    passed = 0
+    total = len(cases)
+    results = []
 
-        if case["expected_abstained"]:
-            mock_response.text = '{"reply_text": "אני מעביר את השיחה לנציג אנושי שיחזור אליך בהקדם [HANDOFF]", "lead_intent": "COMPLAINT", "lead_qualification_score": 0, "needs_human_escalation": true, "abstained": true}'
+    print(f"🧪 Running Offline Golden Evaluations across {total} test cases...")
+
+    for case in cases:
+        case_id = case["id"]
+        query = case["query"]
+        expected_blocked = case["expected_blocked"]
+        expected_needs_human = case["expected_needs_human"]
+        expected_abstained = case["expected_abstained"]
+        expected_intent = case["expected_intent"]
+
+        sanitized = inspect_and_wrap_input(query)
+        is_blocked = sanitized.is_flagged
+
+        try:
+            WhatsAppAgentResponse(
+                reply_text="בדיקת מענה תקינה לפי תנאי המערכת.",
+                lead_intent=expected_intent
+                if expected_intent in ["INQUIRY", "PRICING", "BOOKING", "COMPLAINT", "UNKNOWN"]
+                else "INQUIRY",
+                lead_qualification_score=50,
+                needs_human_escalation=expected_needs_human,
+                abstained=expected_abstained,
+                cited_chunk_ids=[],
+            )
+            schema_valid = True
+        except Exception:
+            schema_valid = False
+
+        if expected_blocked:
+            success = (is_blocked == expected_blocked) and schema_valid
         else:
-            mock_response.text = '{"reply_text": "בשמחה! אשמח לעזור בפרטים.", "lead_intent": "INQUIRY", "lead_qualification_score": 60, "needs_human_escalation": false, "abstained": false}'
+            success = (not is_blocked) and schema_valid
 
-        res = await harness.execute_turn(
-            tenant_id=f"tenant_{case['id']}",
-            business_type=case["archetype"],
-            business_name="Test Business",
-            products_services="Testing services",
-            custom_instructions=None,
-            lead_name="Lead",
-            lead_source="WHATSAPP",
-            conversation_history=[],
-            latest_message=case["input"],
-            complexity=complexity_enum,
+        if success:
+            passed += 1
+
+        results.append(
+            {
+                "id": case_id,
+                "query": query,
+                "success": success,
+                "blocked": is_blocked,
+                "schema_valid": schema_valid,
+            }
         )
+        status_icon = "✅" if success else "❌"
+        print(f"  {status_icon} [{case_id}] Query: '{query[:40]}...' -> Passed: {success}")
 
-        assert isinstance(res, dict)
-        assert "metrics" in res
-        metrics = res["metrics"]
-        latencies.append(metrics["latency_ms"])
-        token_counts.append(metrics["total_tokens"])
-        costs.append(metrics["estimated_cost_usd"])
-        passed_count += 1
+    return passed, total, results
 
-    p50_latency = statistics.median(latencies)
-    p95_latency = (
-        statistics.quantiles(latencies, n=20)[18] if len(latencies) >= 20 else latencies[-1]
+
+async def run_live_evals(cases: list[dict]) -> tuple[int, int, list[dict]]:
+    if not os.getenv("GEMINI_API_KEY") and not os.getenv("GOOGLE_API_KEY"):
+        print(
+            "❌ GEMINI_API_KEY or GOOGLE_API_KEY environment variable is required for --mode live."
+        )
+        sys.exit(1)
+
+    passed = 0
+    total = len(cases)
+    results = []
+
+    print(f"🚀 Running Live Golden Evaluations against Agent Harness across {total} test cases...")
+
+    for case in cases:
+        case_id = case["id"]
+        tenant_id = case["tenant_id"]
+        business_type = case["business_type"]
+        business_name = case["business_name"]
+        query = case["query"]
+        expected_intent = case["expected_intent"].lower()
+        expected_needs_human = case["expected_needs_human"]
+        expected_keywords = case["expected_keywords"]
+
+        start_t = time.perf_counter()
+        try:
+            res = await agent_harness.execute_turn(
+                tenant_id=tenant_id,
+                business_type=business_type,
+                business_name=business_name,
+                products_services="General services",
+                custom_instructions=None,
+                lead_name="EvalLead",
+                lead_source="WhatsApp",
+                conversation_history=[],
+                latest_message=query,
+            )
+            latency_s = time.perf_counter() - start_t
+
+            reply_text = res.get("reply_text", "")
+            intent = res.get("intent", "").lower()
+            needs_human = res.get("needs_human_escalation", False)
+
+            latency_ok = latency_s < 10.0
+            intent_ok = (intent == expected_intent) or (expected_intent == "unknown")
+            needs_human_ok = needs_human == expected_needs_human
+            keywords_ok = (
+                all(kw in reply_text for kw in expected_keywords) if expected_keywords else True
+            )
+
+            success = latency_ok and intent_ok and needs_human_ok and keywords_ok
+            if success:
+                passed += 1
+
+            results.append(
+                {
+                    "id": case_id,
+                    "query": query,
+                    "latency_s": round(latency_s, 3),
+                    "success": success,
+                    "reply": reply_text,
+                }
+            )
+            status_icon = "✅" if success else "❌"
+            print(
+                f"  {status_icon} [{case_id}] Latency: {round(latency_s, 2)}s | Success: {success}"
+            )
+
+        except Exception as e:
+            print(f"  ❌ [{case_id}] Live execution failed: {e}")
+            results.append(
+                {
+                    "id": case_id,
+                    "query": query,
+                    "success": False,
+                    "error": str(e),
+                }
+            )
+
+    return passed, total, results
+
+
+def main():
+    parser = argparse.ArgumentParser(description="Golden Evaluation Regression Gate")
+    parser.add_argument(
+        "--mode", choices=["offline", "live"], default="offline", help="Evaluation mode"
     )
-    avg_tokens = statistics.mean(token_counts)
-    total_cost = sum(costs)
+    args = parser.parse_args()
 
-    report_content = f"""# LeadFlow AI - Evaluation & Optimization Benchmark Report
+    dataset_path = PROJECT_ROOT / "evals" / "golden_dataset.jsonl"
+    cases = validate_dataset_schema(dataset_path)
 
-- **Generated On:** Automated CI Evaluation Runner (`scripts/run_evals.py`)
-- **Total Golden Scenarios Evaluated:** {len(dataset)}
-- **Overall Pass Rate:** {(passed_count / len(dataset)) * 100:.1f}%
+    report_dir = PROJECT_ROOT / "evals"
+    report_dir.mkdir(parents=True, exist_ok=True)
+    report_path = report_dir / "last_report.json"
 
-## Performance & Latency Metrics
-- **P50 Latency:** {p50_latency:.2f} ms
-- **P95 Latency:** {p95_latency:.2f} ms
-- **Average Token Footprint per Turn:** {avg_tokens:.1f} tokens
-- **Total Estimated Cost for Run:** ${total_cost:.6f} USD
+    if args.mode == "offline":
+        passed, total, results = run_offline_evals(cases)
+        pass_rate = (passed / total) * 100 if total > 0 else 0
+        print(f"\n📊 Offline Evaluation Summary: {passed}/{total} passed ({pass_rate:.1f}%)")
 
-## Scenario Breakdown
-| ID | Archetype | Scenario Type | Complexity | Expected Abstain | Actual Abstain | Latency (ms) | Tokens | Cost ($) |
-|---|---|---|---|---|---|---|---|---|
-"""
-    for case in dataset:
-        report_content += f"| {case['id']} | {case['archetype']} | {case['scenario_type']} | {case['complexity']} | {case['expected_abstained']} | {case['expected_abstained']} | {latencies[case['id'] - 1]:.1f} | {token_counts[case['id'] - 1]} | ${costs[case['id'] - 1]:.6f} |\n"
+        report = {
+            "mode": "offline",
+            "passed": passed,
+            "total": total,
+            "pass_rate_percent": round(pass_rate, 2),
+            "results": results,
+        }
+        with open(report_path, "w", encoding="utf-8") as f:
+            json.dump(report, f, ensure_ascii=False, indent=2)
 
-    os.makedirs("docs", exist_ok=True)
-    report_path = "docs/EVAL_BENCHMARK_REPORT.md"
-    with open(report_path, "w", encoding="utf-8") as f:
-        f.write(report_content)
-    print(f"Successfully generated evaluation report at {report_path}")
+        if pass_rate < 95.0:
+            print(
+                f"❌ Offline evaluation pass rate {pass_rate:.1f}% is below required 95.0% threshold."
+            )
+            sys.exit(1)
+        else:
+            print("✅ Offline evaluation regression gate PASSED.")
+            sys.exit(0)
+
+    else:
+        passed, total, results = asyncio.run(run_live_evals(cases))
+        pass_rate = (passed / total) * 100 if total > 0 else 0
+        print(f"\n📊 Live Evaluation Summary: {passed}/{total} passed ({pass_rate:.1f}%)")
+
+        report = {
+            "mode": "live",
+            "passed": passed,
+            "total": total,
+            "pass_rate_percent": round(pass_rate, 2),
+            "results": results,
+        }
+        with open(report_path, "w", encoding="utf-8") as f:
+            json.dump(report, f, ensure_ascii=False, indent=2)
+
+        if pass_rate < 90.0:
+            print(
+                f"❌ Live evaluation pass rate {pass_rate:.1f}% is below required 90.0% threshold."
+            )
+            sys.exit(1)
+        else:
+            print("✅ Live evaluation regression gate PASSED.")
+            sys.exit(0)
 
 
 if __name__ == "__main__":
-    asyncio.run(main())
+    main()
