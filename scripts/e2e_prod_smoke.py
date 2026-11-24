@@ -416,18 +416,86 @@ class ExternalE2ERunner:
             )
 
     def step_5_inbound_lead_and_idempotency(self) -> None:
-        """Step 5 — Inbound Lead Creation & Idempotency Check."""
+        """Step 5 — Inbound Lead Creation & Idempotency Shield Verification."""
         t0 = time.perf_counter()
+        me_status, _, me_body = self._request("GET", "/api/v1/auth/me")
+        user_id = None
+        if me_status == 200:
+            try:
+                user_id = json.loads(me_body).get("id")
+            except Exception:
+                pass
+
+        if not user_id:
+            self._record(
+                "Inbound Lead Creation",
+                "FAIL",
+                f"Unable to resolve tenant user_id from /api/v1/auth/me (HTTP {me_status})",
+                t0,
+            )
+            return
+
+        idemp_key = f"e2e-lead-{uuid.uuid4().hex}"
         lead_payload = {
             "name": "E2E Test Lead",
-            "phone_number": "+972509998888",
+            "phone": "+972509998888",
+            "email": "e2e-lead@example.com",
             "source": "WHATSAPP",
+            "idempotency_key": idemp_key,
         }
-        status, _, body = self._request("POST", "/api/v1/leads/", json_body=lead_payload)
-        if status in (200, 201):
-            self._record("Inbound Lead Creation", "PASS", f"Created lead (HTTP {status})", t0)
+        webhook_path = f"/api/v1/leads/webhook/{user_id}"
+
+        status, _, body = self._request("POST", webhook_path, json_body=lead_payload)
+        first_lead_id = None
+        if status == 200:
+            try:
+                first_lead_id = json.loads(body).get("lead_id")
+            except Exception:
+                pass
+
+        if status == 200 and first_lead_id:
+            self._record(
+                "Inbound Lead Webhook Creation",
+                "PASS",
+                f"Created lead_id={first_lead_id[:8]}... (HTTP 200)",
+                t0,
+            )
         else:
-            self._record("Inbound Lead Creation", "WARN", f"HTTP {status}: {body[:100]}", t0)
+            self._record(
+                "Inbound Lead Webhook Creation",
+                "FAIL",
+                f"HTTP {status}: {body[:120]}",
+                t0,
+            )
+            return
+
+        # Replay identical idempotency_key and verify duplicate suppression
+        t1 = time.perf_counter()
+        dup_status, _, dup_body = self._request("POST", webhook_path, json_body=lead_payload)
+        leads_status, _, leads_body = self._request("GET", "/api/v1/leads/")
+        lead_count = -1
+        if leads_status == 200:
+            try:
+                parsed_leads = json.loads(leads_body)
+                if isinstance(parsed_leads, list):
+                    lead_count = len(parsed_leads)
+            except Exception:
+                pass
+
+        if dup_status == 200 and "already processed" in dup_body.lower() and lead_count == 1:
+            self._record(
+                "Inbound Lead Idempotency Shield",
+                "PASS",
+                f"Duplicate suppressed (HTTP 200, total_leads={lead_count})",
+                t1,
+            )
+        else:
+            self._record(
+                "Inbound Lead Idempotency Shield",
+                "FAIL",
+                f"dup_status={dup_status}, lead_count={lead_count}, body={dup_body[:100]}",
+                t1,
+            )
 
     def step_6_hitl_approval_and_kpis(self) -> None:
         """Step 6 — HITL Draft Approval & KPI Verification."""
@@ -444,8 +512,12 @@ class ExternalE2ERunner:
 
         approval_pass = True
         if approval_id:
-            app_res, _, _ = self._request("POST", f"/api/v1/leads/approvals/{approval_id}/approve")
-            approval_pass = app_res in (200, 204)
+            app_res, _, _ = self._request(
+                "POST",
+                f"/api/v1/leads/approvals/{approval_id}/decision",
+                json_body={"decision": "APPROVE"},
+            )
+            approval_pass = app_res == 200
 
         kpi_status, _, _ = self._request("GET", "/api/v1/insights/pilot-kpis")
         if app_status == 200 and kpi_status == 200 and approval_pass:
@@ -456,7 +528,7 @@ class ExternalE2ERunner:
             self._record(
                 "HITL Approval & Pilot KPIs",
                 "WARN",
-                f"Approvals={app_status}, KPIs={kpi_status}",
+                f"Approvals={app_status}, KPIs={kpi_status}, decision_ok={approval_pass}",
                 t0,
             )
 
