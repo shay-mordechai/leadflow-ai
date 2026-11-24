@@ -249,7 +249,12 @@ class ExternalE2ERunner:
         if status == 200:
             try:
                 profile = json.loads(body)
-                tier = profile.get("subscription_tier") or profile.get("tier") or "unknown"
+                tier = (
+                    profile.get("plan_tier")
+                    or profile.get("subscription_tier")
+                    or profile.get("tier")
+                    or "unknown"
+                )
                 self._record("Tenant Profile & Default Tier", "PASS", f"Active tier={tier}", t0)
             except json.JSONDecodeError:
                 self._record("Tenant Profile & Default Tier", "PASS", f"HTTP 200: {body[:100]}", t0)
