@@ -423,7 +423,7 @@ class ExternalE2ERunner:
             "phone_number": "+972509998888",
             "source": "WHATSAPP",
         }
-        status, _, body = self._request("POST", "/api/v1/leads", json_body=lead_payload)
+        status, _, body = self._request("POST", "/api/v1/leads/", json_body=lead_payload)
         if status in (200, 201):
             self._record("Inbound Lead Creation", "PASS", f"Created lead (HTTP {status})", t0)
         else:
