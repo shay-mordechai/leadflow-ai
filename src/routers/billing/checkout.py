@@ -1,5 +1,7 @@
 # src/routers/billing/checkout.py
 import logging
+from datetime import UTC, datetime
+from decimal import ROUND_HALF_UP, Decimal
 
 from fastapi import APIRouter, Depends, HTTPException, Request
 from pydantic import BaseModel, Field
@@ -65,8 +67,25 @@ def _calculate_discounted_price(
     if not benefit:
         raise HTTPException(status_code=400, detail="Invalid or expired coupon code")
 
-    discount_pct = int(benefit.get("discount_percent", 100))
-    final_price = round(max(0.0, base_price * (100 - discount_pct) / 100.0), 2)
+    # Expiration check
+    expires_at = benefit.get("expires_at")
+    if expires_at and datetime.now(UTC) > expires_at:
+        raise HTTPException(status_code=400, detail="Coupon has expired")
+
+    # Max uses / Exhausted check
+    max_uses = benefit.get("max_uses")
+    used_count = benefit.get("used_count", 0)
+    if max_uses is not None and used_count >= max_uses:
+        raise HTTPException(status_code=400, detail="Coupon usage limit reached")
+
+    discount_pct = benefit.get("discount_percent", 100)
+    if not isinstance(discount_pct, (int, float)) or discount_pct <= 0 or discount_pct > 100:
+        raise HTTPException(status_code=400, detail="Invalid coupon discount percentage")
+
+    base_dec = Decimal(str(base_price))
+    factor = Decimal(str(100 - discount_pct)) / Decimal(100)
+    final_price = float((base_dec * factor).quantize(Decimal("0.01"), rounding=ROUND_HALF_UP))
+    final_price = max(0.0, final_price)
     return base_price, final_price, benefit
 
 
@@ -211,10 +230,42 @@ async def redeem_coupon(
         raise HTTPException(status_code=400, detail="Invalid or expired coupon code")
 
     benefit = ACTIVE_COUPONS[code]
+
+    # Expiration check
+    expires_at = benefit.get("expires_at")
+    if expires_at and datetime.now(UTC) > expires_at:
+        raise HTTPException(status_code=400, detail="Coupon has expired")
+
+    # Max uses / Exhausted check
+    max_uses = benefit.get("max_uses")
+    used_count = benefit.get("used_count", 0)
+    if max_uses is not None and used_count >= max_uses:
+        raise HTTPException(status_code=400, detail="Coupon usage limit reached")
+
+    # Single-use replay check: check if this user already redeemed this coupon
+    if max_uses == 1:
+        existing_redemption = (
+            db.query(AuditLog)
+            .filter(
+                AuditLog.user_id == str(user.id),
+                AuditLog.action.in_(["COUPON_REDEEMED", "COUPON_ZERO_COST_ACTIVATION"]),
+            )
+            .all()
+        )
+        for log in existing_redemption:
+            if log.details and log.details.get("coupon_code") == code:
+                raise HTTPException(status_code=400, detail="Coupon already redeemed by this user")
+
     target_plan_name = benefit["plan"].upper()
-    discount_pct = int(benefit.get("discount_percent", 100))
+    discount_pct = benefit.get("discount_percent", 100)
+    if not isinstance(discount_pct, (int, float)) or discount_pct <= 0 or discount_pct > 100:
+        raise HTTPException(status_code=400, detail="Invalid coupon discount percentage")
+
     base_price = PLAN_BASE_PRICES_ILS.get(target_plan_name, 199.00)
-    final_price = round(max(0.0, base_price * (100 - discount_pct) / 100.0), 2)
+    base_dec = Decimal(str(base_price))
+    factor = Decimal(str(100 - discount_pct)) / Decimal(100)
+    final_price = float((base_dec * factor).quantize(Decimal("0.01"), rounding=ROUND_HALF_UP))
+    final_price = max(0.0, final_price)
 
     if discount_pct < 100:
         return {
