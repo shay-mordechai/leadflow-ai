@@ -1,6 +1,8 @@
 # src/services/communication/email.py
+import hashlib
 import logging
 import os
+import uuid
 from html import escape
 
 from fastapi_mail import ConnectionConfig, FastMail, MessageSchema, MessageType
@@ -9,6 +11,19 @@ from pydantic import EmailStr
 from src.config import settings
 
 logger = logging.getLogger("EmailService")
+
+
+def _otp_thread_headers(to_email: str) -> dict[str, str]:
+    """Build deterministic RFC 5322 headers so all OTP emails for a user group into one thread."""
+    normalized = str(to_email).strip().lower().encode("utf-8")
+    thread_digest = hashlib.sha256(normalized).hexdigest()[:20]
+    root_msg_id = f"<otp-thread-{thread_digest}@my-leads.app>"
+    current_msg_id = f"<otp-{uuid.uuid4().hex}@my-leads.app>"
+    return {
+        "Message-ID": current_msg_id,
+        "In-Reply-To": root_msg_id,
+        "References": root_msg_id,
+    }
 
 
 class EmailService:
@@ -30,7 +45,7 @@ class EmailService:
 
         if not username or not password:
             logger.warning(
-                "⚠️ SMTP Credentials missing in Config. Emails will NOT be sent (Log only)."
+                "⚠ SMTP Credentials missing in Config. Emails will NOT be sent (Log only)."
             )
             return None
 
@@ -38,7 +53,8 @@ class EmailService:
             return ConnectionConfig(
                 MAIL_USERNAME=username,
                 MAIL_PASSWORD=password,
-                MAIL_FROM=settings.MAIL_FROM or "noreply@leadflow.ai",
+                MAIL_FROM=settings.MAIL_FROM or "noreply@my-leads.app",
+                MAIL_FROM_NAME="MY-Leads AI",
                 MAIL_PORT=int(settings.MAIL_PORT or 587),
                 MAIL_SERVER=settings.MAIL_SERVER or "smtp-relay.brevo.com",
                 MAIL_STARTTLS=True,
@@ -58,19 +74,20 @@ class EmailService:
             return
 
         html_content = f"""
-        <h3>LeadFlow AI Password Reset</h3>
+        <h3>MY-Leads AI Password Reset</h3>
         <p>Hello,</p>
         <p>We received a request to reset your password. Use the following code to proceed:</p>
-        <h2 style='color: #4F46E5;'>{otp_code}</h2>
+        <h2 style='color: #4F46E5; letter-spacing: 2px;'>{otp_code}</h2>
         <p>This code is valid for 5 minutes. If you didn't request this, please ignore this email.</p>
         """
 
         try:
             message = MessageSchema(
-                subject="Password Reset Code",
+                subject="MY-Leads AI Password Reset Code",
                 recipients=[to_email],
                 body=html_content,
                 subtype=MessageType.html,
+                headers=_otp_thread_headers(str(to_email)),
             )
             fm = FastMail(self.conf)
             await fm.send_message(message)
@@ -121,18 +138,19 @@ class EmailService:
             return
 
         html_content = f"""
-        <h3>LeadFlow AI Login Code</h3>
+        <h3>MY-Leads AI Login Code</h3>
         <p>Your one-time login code is:</p>
         <h2 style='color: #4F46E5; letter-spacing: 2px;'>{otp_code}</h2>
-        <p>Please enter this code in your browser to complete your login. It will expire shortly.</p>
+        <p>Please enter this code in your browser to complete your login. This code will expire in 5 minutes.</p>
         """
 
         try:
             message = MessageSchema(
-                subject=f"Login Code: {otp_code}",
+                subject="MY-Leads AI Login Code",
                 recipients=[to_email],
                 body=html_content,
                 subtype=MessageType.html,
+                headers=_otp_thread_headers(str(to_email)),
             )
             fm = FastMail(self.conf)
             await fm.send_message(message)
@@ -150,13 +168,13 @@ class EmailService:
 
         html_content = """
         <h3>Thank you for your purchase!</h3>
-        <p>Your LeadFlow AI account has been successfully upgraded. Attached is your official invoice/receipt.</p>
+        <p>Your MY-Leads AI account has been successfully upgraded. Attached is your official invoice/receipt.</p>
         <p>If you have any questions, feel free to reach out to our support team.</p>
         """
 
         try:
             message = MessageSchema(
-                subject="Your LeadFlow AI Invoice & Account Upgrade",
+                subject="Your MY-Leads AI Invoice & Account Upgrade",
                 recipients=[to_email],
                 body=html_content,
                 subtype=MessageType.html,
