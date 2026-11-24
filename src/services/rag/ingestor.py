@@ -31,7 +31,7 @@ async def generate_embedding(text: str) -> list[float]:
 
         client = genai.Client(api_key=settings.GOOGLE_API_KEY)
         response = client.models.embed_content(
-            model="text-embedding-004",
+            model="gemini-embedding-001",
             contents=text,
         )
         if response and getattr(response, "embeddings", None):
