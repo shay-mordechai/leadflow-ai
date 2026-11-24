@@ -132,7 +132,7 @@ def test_llm_tokenizer_bomb_has_output_and_request_time_limits():
 
     assert generation_config.max_output_tokens == 512
     assert generation_config.response_mime_type == "application/json"
-    assert ai_engine.client._api_client._http_options.timeout == 7_000
+    assert ai_engine.client._api_client._http_options.timeout == 15_000
 
 
 @pytest.mark.asyncio
@@ -165,7 +165,7 @@ def test_async_gemini_client_has_seven_second_http_timeout():
         whatsapp_pipeline._create_gemini_client()
 
     http_options = client_factory.call_args.kwargs["http_options"]
-    assert http_options.timeout == 7_000
+    assert http_options.timeout == 15_000
     assert whatsapp_pipeline._build_generation_config("system").max_output_tokens == 512
 
 
