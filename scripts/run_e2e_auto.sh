@@ -57,3 +57,27 @@ printf '%s\n' "$OTP" >&3
 exec 3>&-
 
 wait "$TEST_PID"
+
+# Clean up ephemeral @example.com test tenant from production DB
+if [[ "$EMAIL" == *@example.com ]]; then
+  ssh -n hetzner-tunnel "podman exec leadflow-backend python3 -c '
+import sys
+from sqlalchemy import text
+from src.database.models import User
+from src.database.session import get_db
+
+db = next(get_db())
+user = db.query(User).filter(User.email == sys.argv[1].lower()).first()
+if user:
+    uid = str(user.id)
+    for tbl in (\"pending_approvals\", \"messages\", \"leads\", \"knowledge_documents\", \"ai_traces\", \"audit_logs\"):
+        try:
+            db.execute(text(f\"DELETE FROM {tbl} WHERE user_id = :uid\"), {\"uid\": uid})
+            db.commit()
+        except Exception:
+            db.rollback()
+    db.delete(user)
+    db.commit()
+    print(f\"Cleaned up ephemeral E2E user: {sys.argv[1]}\")
+' '$EMAIL'" || true
+fi

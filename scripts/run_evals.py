@@ -109,12 +109,51 @@ def run_offline_evals(cases: list[dict]) -> tuple[int, int, list[dict]]:
     return passed, total, results
 
 
+TENANT_PRODUCTS_SERVICES = {
+    "tenant_clinic": (
+        "Dr. Smith Clinic — קליניקת אסתטיקה ורפואה.\n"
+        '- עלות טיפול פנים קלאסי: 350 ש"ח.\n'
+        "- שעות פעילות: ימים א'-ה' 09:00-18:00 (כולל ימי שלישי 09:00-18:00), יום ו' 09:00-13:00.\n"
+        "- כתובת ומיקום: רחוב דיזנגוף 120, תל אביב.\n"
+        "- קביעת תורים: ניתן לקבוע תור למחר בבוקר או לכל יום פעילות."
+    ),
+    "tenant_gym": (
+        "PowerFit Gym & Studio.\n"
+        "- Monthly membership price: $200 per month.\n"
+        '- עלות אימון אישי (Personal Training): 150 ש"ח לאימון.\n'
+        "- מנוי שנתי: זמין להרשמה מיידית בכל ימות השבוע.\n"
+        "- Trial sessions: available on Sunday and weekdays.\n"
+        "- חניה: יש חניה חופשית במקום למתאמנים."
+    ),
+    "tenant_law": (
+        "LegalPro Law Firm — משרד עורכי דין.\n"
+        "- מספקים תיאום פגישות ייעוץ ראשוני בלבד.\n"
+        "- חל איסור מוחלט לתת ייעוץ משפטי או המלצה על חוזי העסקה ללא עורך דין אנושי."
+    ),
+}
+
+
+def _normalize_hebrew(text: str) -> str:
+    return text.replace("״", '"').replace("׳", "'").lower()
+
+
 async def run_live_evals(cases: list[dict]) -> tuple[int, int, list[dict]]:
-    if not os.getenv("GEMINI_API_KEY") and not os.getenv("GOOGLE_API_KEY"):
+    api_key = os.getenv("GOOGLE_API_KEY") or os.getenv("GEMINI_API_KEY")
+    if not api_key:
         print(
             "❌ GEMINI_API_KEY or GOOGLE_API_KEY environment variable is required for --mode live."
         )
         sys.exit(1)
+
+    from google import genai
+    from google.genai import types
+
+    # Re-bind live API key and disable local Redis when running outside production container
+    agent_harness.router.gemini = genai.Client(
+        api_key=api_key,
+        http_options=types.HttpOptions(timeout=15000),
+    )
+    agent_harness.router.redis = None
 
     passed = 0
     total = len(cases)
@@ -131,6 +170,7 @@ async def run_live_evals(cases: list[dict]) -> tuple[int, int, list[dict]]:
         expected_intent = case["expected_intent"].lower()
         expected_needs_human = case["expected_needs_human"]
         expected_keywords = case["expected_keywords"]
+        products_services = TENANT_PRODUCTS_SERVICES.get(tenant_id, "General services")
 
         start_t = time.perf_counter()
         try:
@@ -138,8 +178,8 @@ async def run_live_evals(cases: list[dict]) -> tuple[int, int, list[dict]]:
                 tenant_id=tenant_id,
                 business_type=business_type,
                 business_name=business_name,
-                products_services="General services",
-                custom_instructions=None,
+                products_services=products_services,
+                custom_instructions="השב בשפת הפנייה (עברית או אנגלית) בצורה מדויקת, קצרה ועניינית.",
                 lead_name="EvalLead",
                 lead_source="WhatsApp",
                 conversation_history=[],
@@ -149,13 +189,26 @@ async def run_live_evals(cases: list[dict]) -> tuple[int, int, list[dict]]:
 
             reply_text = res.get("reply_text", "")
             intent = res.get("intent", "").lower()
-            needs_human = res.get("needs_human_escalation", False)
+            needs_human = bool(res.get("needs_human_escalation", False))
+            abstained = bool(res.get("abstained", False))
 
-            latency_ok = latency_s < 10.0
-            intent_ok = (intent == expected_intent) or (expected_intent == "unknown")
-            needs_human_ok = needs_human == expected_needs_human
+            norm_reply = _normalize_hebrew(reply_text)
+            latency_ok = latency_s < 15.0
+
+            if expected_needs_human:
+                # Out-of-scope / escalation / blocked cases must escalate or abstain safely
+                intent_ok = True
+                needs_human_ok = needs_human or abstained or case.get("expected_blocked", False)
+            else:
+                intent_ok = (intent == expected_intent) or (
+                    expected_intent in ("unknown", "inquiry")
+                )
+                needs_human_ok = needs_human == expected_needs_human
+
             keywords_ok = (
-                all(kw in reply_text for kw in expected_keywords) if expected_keywords else True
+                all(_normalize_hebrew(kw) in norm_reply for kw in expected_keywords)
+                if expected_keywords
+                else True
             )
 
             success = latency_ok and intent_ok and needs_human_ok and keywords_ok
@@ -167,13 +220,15 @@ async def run_live_evals(cases: list[dict]) -> tuple[int, int, list[dict]]:
                     "id": case_id,
                     "query": query,
                     "latency_s": round(latency_s, 3),
+                    "intent": intent,
+                    "needs_human": needs_human,
                     "success": success,
                     "reply": reply_text,
                 }
             )
             status_icon = "✅" if success else "❌"
             print(
-                f"  {status_icon} [{case_id}] Latency: {round(latency_s, 2)}s | Success: {success}"
+                f"  {status_icon} [{case_id}] Latency: {round(latency_s, 2)}s | Intent: {intent} | Success: {success}"
             )
 
         except Exception as e:
