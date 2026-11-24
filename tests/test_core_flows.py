@@ -105,7 +105,7 @@ def test_full_auth_flow(client):
     me_res = client.get("/api/v1/auth/me")
     assert me_res.status_code == 200
     assert me_res.json()["email"] == email
-    assert me_res.json()["plan_tier"] == "STARTER"  # Enforced default
+    assert me_res.json()["plan_tier"] == "FREE"  # Enforced default
 
 
 def test_billing_coupon_upgrade(client, db_session):

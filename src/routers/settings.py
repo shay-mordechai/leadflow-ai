@@ -206,6 +206,7 @@ async def simulate_ai_chat(
             lead_source="SIMULATOR",
             conversation_history=formatted_history,
             latest_message=data.message,
+            db=db,
         )
 
         return {

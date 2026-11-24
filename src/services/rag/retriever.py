@@ -1,10 +1,12 @@
 # src/services/rag/retriever.py
+import inspect
 import logging
 import math
+import re
 from typing import Any
 
 from sqlalchemy import select
-from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.orm import Session
 
 from src.database.models import KnowledgeChunk
 from src.services.rag.ingestor import generate_embedding
@@ -24,11 +26,11 @@ def _cosine_similarity(v1: list[float], v2: list[float]) -> float:
 
 
 async def retrieve_relevant_chunks(
-    db: AsyncSession,
+    db: Session,
     tenant_id: str,
     query: str,
     top_k: int = 4,
-    min_score: float = 0.25,
+    min_score: float = 0.20,
 ) -> list[dict[str, Any]]:
     """
     Retrieves relevant knowledge chunks for a query using Hybrid RRF (Semantic + Lexical overlap),
@@ -37,10 +39,11 @@ async def retrieve_relevant_chunks(
     if not query.strip():
         return []
 
-    # 1. Mandatory Pre-Filtering by tenant_id
     stmt = select(KnowledgeChunk).where(KnowledgeChunk.user_id == str(tenant_id))
-    result = await db.scalars(stmt)
-    chunks = result.all()
+    res = db.scalars(stmt)
+    if inspect.isawaitable(res):
+        res = await res
+    chunks = res.all()
 
     if not chunks:
         return []
@@ -50,11 +53,9 @@ async def retrieve_relevant_chunks(
 
     scored_results = []
     for chunk in chunks:
-        # Semantic score
         emb = chunk.embedding_json or []
         sem_score = _cosine_similarity(query_embedding, emb)
 
-        # Lexical token overlap score
         chunk_tokens = set(re_tokenize(chunk.content))
         if query_tokens and chunk_tokens:
             intersection = query_tokens.intersection(chunk_tokens)
@@ -62,7 +63,6 @@ async def retrieve_relevant_chunks(
         else:
             lex_score = 0.0
 
-        # Reciprocal Rank Fusion (RRF) blend: 70% semantic + 30% lexical
         combined_score = (0.7 * sem_score) + (0.3 * lex_score)
 
         if combined_score >= min_score:
@@ -75,13 +75,9 @@ async def retrieve_relevant_chunks(
                 }
             )
 
-    # Sort descending by score and limit top_k
     scored_results.sort(key=lambda x: x["score"], reverse=True)
     return scored_results[:top_k]
 
 
 def re_tokenize(text: str) -> list[str]:
-    import re
-
-    # Simple whitespace and punctuation tokenizer supporting Hebrew characters
     return [w.lower() for w in re.findall(r"\w+", text, re.UNICODE) if len(w) > 1]

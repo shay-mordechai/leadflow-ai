@@ -11,7 +11,7 @@ from sqlalchemy.orm import Session
 from twilio.twiml.messaging_response import MessagingResponse
 
 from src.config import settings
-from src.database.models import Lead, LeadSource, Message, PhoneNumber, Tag, User
+from src.database.models import Lead, LeadSource, Message, PhoneNumber, PlanTier, Tag, User
 from src.database.session import (
     get_db,
     reset_current_tenant_context,
@@ -97,6 +97,60 @@ async def validate_twilio_signature(request: Request) -> bool:
         )
 
     return True
+
+
+SANDBOX_BINDING_TTL_SECONDS = 7 * 24 * 60 * 60
+FREE_TIER_MAX_LEADS = 1
+_SANDBOX_MEMORY_BINDINGS: dict[str, str] = {}
+
+
+def _get_shared_sandbox_number() -> str:
+    raw = (getattr(settings, "TWILIO_WHATSAPP_NUMBER", None) or "").strip()
+    return _normalize_phone(raw) if raw else ""
+
+
+def _sandbox_tenant_code(user: User) -> str:
+    return str(user.id).replace("-", "")[:8].lower()
+
+
+def _bind_sandbox_sender(sender_phone: str, tenant_id: str) -> None:
+    _SANDBOX_MEMORY_BINDINGS[sender_phone] = tenant_id
+    try:
+        import redis
+
+        r = redis.from_url(settings.REDIS_URL, decode_responses=True)
+        r.setex(f"sandbox:lead_tenant:{sender_phone}", SANDBOX_BINDING_TTL_SECONDS, tenant_id)
+        r.close()
+    except Exception as exc:
+        logger.warning("Redis sandbox binding fallback to memory: %s", exc)
+
+
+def _lookup_sandbox_tenant_id(sender_phone: str) -> str | None:
+    try:
+        import redis
+
+        r = redis.from_url(settings.REDIS_URL, decode_responses=True)
+        tid = r.get(f"sandbox:lead_tenant:{sender_phone}")
+        r.close()
+        if tid:
+            _SANDBOX_MEMORY_BINDINGS[sender_phone] = tid
+            return tid
+    except Exception as exc:
+        logger.warning("Redis sandbox lookup fallback to memory: %s", exc)
+    return _SANDBOX_MEMORY_BINDINGS.get(sender_phone)
+
+
+def _resolve_sandbox_owner_by_command(db: Session, body: str) -> User | None:
+    match = re.match(r"^\s*(?:start|join)\s+([a-zA-Z0-9@._+-]+)\s*$", body or "", re.IGNORECASE)
+    if not match:
+        return None
+    token = match.group(1).strip().lower()
+    if "@" in token:
+        return db.query(User).filter(User.email == token, User.is_active.is_(True)).first()
+    for candidate in db.query(User).filter(User.is_active.is_(True)).all():
+        if _sandbox_tenant_code(candidate) == token:
+            return candidate
+    return None
 
 
 def _resolve_business_owner(db: Session, clean_to: str) -> User | None:
@@ -232,8 +286,37 @@ async def incoming_sms_message(
 
     clean_to = _normalize_phone(To)
     clean_from = _normalize_phone(From)
+    sandbox_num = _get_shared_sandbox_number()
 
-    owner = _resolve_business_owner(db, clean_to)
+    owner: User | None = None
+    if sandbox_num and clean_to == sandbox_num:
+        cmd_owner = _resolve_sandbox_owner_by_command(db, Body)
+        if cmd_owner:
+            _bind_sandbox_sender(clean_from, str(cmd_owner.id))
+            biz_label = cmd_owner.business_name or "העסק שלך"
+            whatsapp_adapter.send_message(
+                to_phone=clean_from,
+                text=(
+                    f"מחובר כעת לסביבת הניסיון של {biz_label} ב-My-Leads AI! 🤖\n"
+                    "אפשר להתחיל להתכתב ולבחון את הבוט שיצרת (חשבון FREE מוגבל ללקוח ניסיון 1)."
+                ),
+            )
+            return _empty_twiml_response()
+
+        bound_tenant_id = _lookup_sandbox_tenant_id(clean_from)
+        if bound_tenant_id:
+            owner = (
+                db.query(User).filter(User.id == bound_tenant_id, User.is_active.is_(True)).first()
+            )
+        if not owner:
+            whatsapp_adapter.send_message(
+                to_phone=clean_from,
+                text="ברוכים הבאים ל-My-Leads AI Sandbox. שלח 'start <קוד_העסק>' מתוך הדשבורד כדי להתחיל לבדוק את הבוט שלך.",
+            )
+            return _empty_twiml_response()
+    else:
+        owner = _resolve_business_owner(db, clean_to)
+
     if not owner:
         return _empty_twiml_response()
 
@@ -258,6 +341,31 @@ async def incoming_sms_message(
             )
             if broadcast_response is not None:
                 return broadcast_response
+
+        # Enforce 1-customer limit for FREE tier trial accounts
+        if owner.plan_tier == PlanTier.FREE:
+            existing_leads = db.query(Lead).filter(Lead.user_id == owner.id).all()
+            suffix = clean_from[-9:] if len(clean_from) >= 9 else clean_from
+            is_existing_trial_lead = any(
+                (l.phone_number == clean_from)
+                or (suffix and (l.phone_number or "").endswith(suffix))
+                for l in existing_leads
+            )
+            if not is_existing_trial_lead and len(existing_leads) >= FREE_TIER_MAX_LEADS:
+                logger.info(
+                    "Blocked 2nd lead %s for FREE-tier tenant %s (limit=%d).",
+                    mask_phone(clean_from),
+                    owner.id,
+                    FREE_TIER_MAX_LEADS,
+                )
+                whatsapp_adapter.send_message(
+                    to_phone=clean_from,
+                    text=(
+                        "חשבון הניסיון (FREE) של עסק זה מוגבל ללקוח 1 לבדיקה. "
+                        "בעל העסק יכול לשדרג את המנוי או להזין קופון בדשבורד My-Leads AI כדי לפתוח מענה לכל הלקוחות."
+                    ),
+                )
+                return _empty_twiml_response()
 
         lead_record = _resolve_or_create_lead(db, owner.id, clean_from)
 

@@ -122,7 +122,7 @@ async def register(request: Request, data: UserCreate, db: Session = Depends(get
     secure_hash = await run_in_threadpool(get_hash, data.password)
 
     # 3. SECURITY: Force default tier regardless of input
-    default_tier = PlanTier.STARTER
+    default_tier = PlanTier.FREE
 
     new_user = User(
         email=data.email.lower(),

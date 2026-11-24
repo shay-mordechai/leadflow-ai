@@ -1,20 +1,26 @@
 # src/services/rag/ingestor.py
+import inspect
 import logging
 import os
 
-from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.orm import Session
 
 from src.config import settings
 from src.database.models import KnowledgeChunk, KnowledgeDocument
 from src.services.rag.chunker import chunk_document_text, extract_text_from_bytes
 
-logger = logging.getLoggerRAG = logging.getLogger("RAGIngestor")
+logger = logging.getLogger("RAGIngestor")
+
+
+async def _maybe_await(value):
+    if inspect.isawaitable(value):
+        return await value
+    return value
 
 
 async def generate_embedding(text: str) -> list[float]:
-    """Generates a text embedding vector using Google GenAI or fallback random vector for offline tests."""
+    """Generates a text embedding vector using Google GenAI or deterministic fallback for offline tests."""
     if not settings.GOOGLE_API_KEY or settings.GOOGLE_API_KEY.startswith("dummy"):
-        # Deterministic pseudo-embedding for local/offline testing
         import hashlib
 
         h = int(hashlib.sha256(text.encode("utf-8")).hexdigest(), 16)
@@ -24,22 +30,26 @@ async def generate_embedding(text: str) -> list[float]:
         from google import genai
 
         client = genai.Client(api_key=settings.GOOGLE_API_KEY)
-        # Using Google GenAI embedding model
         response = client.models.embed_content(
             model="text-embedding-004",
             contents=text,
         )
-        if response and response.embedding:
+        if response and getattr(response, "embeddings", None):
+            return list(response.embeddings[0].values)
+        if response and getattr(response, "embedding", None):
             return list(response.embedding.values)
     except Exception as e:
         logger.warning(f"GenAI embedding generation failed, using fallback vector: {e}")
 
-    # Fallback zero/pseudo vector of dim 128
-    return [0.0] * 128
+    # Deterministic lexical-hash fallback vector (dim 128) so similarity search still functions
+    import hashlib
+
+    h = int(hashlib.sha256(text.encode("utf-8")).hexdigest(), 16)
+    return [(h >> i & 1) * 0.1 for i in range(128)]
 
 
 async def ingest_tenant_document(
-    db: AsyncSession,
+    db: Session,
     tenant_id: str,
     filename: str,
     content_type: str,
@@ -62,7 +72,7 @@ async def ingest_tenant_document(
         chunk_count=len(chunks_data),
     )
     db.add(doc)
-    await db.flush()
+    await _maybe_await(db.flush())
 
     for chunk in chunks_data:
         vec = await generate_embedding(chunk["content"])
@@ -77,8 +87,8 @@ async def ingest_tenant_document(
         db.add(db_chunk)
 
     doc.status = "INDEXED"
-    await db.commit()
-    await db.refresh(doc)
+    await _maybe_await(db.commit())
+    await _maybe_await(db.refresh(doc))
 
     # Invalidate Redis KB cache version for tenant
     try:
@@ -86,7 +96,7 @@ async def ingest_tenant_document(
 
         r = aioredis.from_url(settings.REDIS_URL, decode_responses=True)
         await r.incr(f"tenant:{tenant_id}:kb_version")
-        await r.close()
+        await r.aclose()
     except Exception as redis_err:
         logger.warning(f"Failed to increment Redis kb_version: {redis_err}")
 

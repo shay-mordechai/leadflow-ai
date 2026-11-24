@@ -27,6 +27,8 @@ class SubscriptionInfo(BaseModel):
 
     plan_tier: PlanTier
     is_active: bool
+    max_leads: int | None = None
+    sandbox_join_command: str | None = None
 
 
 class InvoiceResponse(BaseModel):
@@ -124,9 +126,16 @@ def generate_invoice_pdf(
 @router.get("/my-plan", response_model=SubscriptionInfo)
 async def get_current_plan(user: User = Depends(get_current_user), db: Session = Depends(get_db)):
     """
-    Retrieves the current subscription status of the authenticated user.
+    Retrieves the current subscription status, FREE tier limits, and shared Sandbox command.
     """
-    return {"plan_tier": user.plan_tier, "is_active": user.is_active}
+    is_free = user.plan_tier == PlanTier.FREE
+    short_code = str(user.id).replace("-", "")[:8].lower()
+    return {
+        "plan_tier": user.plan_tier,
+        "is_active": user.is_active,
+        "max_leads": 1 if is_free else None,
+        "sandbox_join_command": f"start {short_code}" if is_free else None,
+    }
 
 
 @router.get("/", response_model=list[InvoiceResponse])

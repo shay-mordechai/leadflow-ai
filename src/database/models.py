@@ -34,6 +34,7 @@ class UserRole(str, enum.Enum):
 
 
 class PlanTier(str, enum.Enum):
+    FREE = "FREE"
     STARTER = "STARTER"
     PRO = "PRO"
 
@@ -117,7 +118,7 @@ class User(Base):
     # NEW: Role-based Access Control (RBAC)
     role = Column(Enum(UserRole), default=UserRole.CLIENT, nullable=False, index=True)
 
-    plan_tier = Column(Enum(PlanTier), default=PlanTier.STARTER, nullable=False)
+    plan_tier = Column(Enum(PlanTier), default=PlanTier.FREE, nullable=False)
     subscription_status = Column(
         Enum(SubscriptionStatus), default=SubscriptionStatus.TRIAL, nullable=False
     )

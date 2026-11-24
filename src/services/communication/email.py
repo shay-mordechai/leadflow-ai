@@ -54,7 +54,7 @@ class EmailService:
                 MAIL_USERNAME=username,
                 MAIL_PASSWORD=password,
                 MAIL_FROM=settings.MAIL_FROM or "noreply@my-leads.app",
-                MAIL_FROM_NAME="MY-Leads AI",
+                MAIL_FROM_NAME="My-Leads AI",
                 MAIL_PORT=int(settings.MAIL_PORT or 587),
                 MAIL_SERVER=settings.MAIL_SERVER or "smtp-relay.brevo.com",
                 MAIL_STARTTLS=True,
@@ -74,7 +74,7 @@ class EmailService:
             return
 
         html_content = f"""
-        <h3>MY-Leads AI Password Reset</h3>
+        <h3>My-Leads AI Password Reset</h3>
         <p>Hello,</p>
         <p>We received a request to reset your password. Use the following code to proceed:</p>
         <h2 style='color: #4F46E5; letter-spacing: 2px;'>{otp_code}</h2>
@@ -83,7 +83,7 @@ class EmailService:
 
         try:
             message = MessageSchema(
-                subject="MY-Leads AI Password Reset Code",
+                subject="My-Leads AI Password Reset Code",
                 recipients=[to_email],
                 body=html_content,
                 subtype=MessageType.html,
@@ -138,7 +138,7 @@ class EmailService:
             return
 
         html_content = f"""
-        <h3>MY-Leads AI Login Code</h3>
+        <h3>My-Leads AI Login Code</h3>
         <p>Your one-time login code is:</p>
         <h2 style='color: #4F46E5; letter-spacing: 2px;'>{otp_code}</h2>
         <p>Please enter this code in your browser to complete your login. This code will expire in 5 minutes.</p>
@@ -146,7 +146,7 @@ class EmailService:
 
         try:
             message = MessageSchema(
-                subject="MY-Leads AI Login Code",
+                subject="My-Leads AI Login Code",
                 recipients=[to_email],
                 body=html_content,
                 subtype=MessageType.html,
@@ -168,13 +168,13 @@ class EmailService:
 
         html_content = """
         <h3>Thank you for your purchase!</h3>
-        <p>Your MY-Leads AI account has been successfully upgraded. Attached is your official invoice/receipt.</p>
+        <p>Your My-Leads AI account has been successfully upgraded. Attached is your official invoice/receipt.</p>
         <p>If you have any questions, feel free to reach out to our support team.</p>
         """
 
         try:
             message = MessageSchema(
-                subject="Your MY-Leads AI Invoice & Account Upgrade",
+                subject="Your My-Leads AI Invoice & Account Upgrade",
                 recipients=[to_email],
                 body=html_content,
                 subtype=MessageType.html,
