@@ -1,48 +1,66 @@
-# frontend/Dockerfile
+# Optimized Dockerfile for FastAPI with AI processing capabilities (Whisper).
+# Uses a non-root user and slim base for enhanced security and reduced footprint.
 
-# 1. Install dependencies
-FROM node:22-alpine AS deps
-WORKDIR /app
-COPY package.json package-lock.json ./
-RUN npm ci --legacy-peer-deps
+FROM python:3.12-slim
 
-COPY package.json package-lock.json ./
-RUN npm install -g npm@12.2.3 && npm ci --legacy-peer-deps
+ARG CURRENT_IMAGE_SHA=unknown
+ENV CURRENT_IMAGE_SHA=${CURRENT_IMAGE_SHA}
 
-# 2. Build
-FROM node:22-alpine AS builder
-WORKDIR /app
-COPY --from=deps /app/node_modules ./node_modules
-COPY . .
+# Prevent Python from writing .pyc files and enable unbuffered logging
+ENV PYTHONDONTWRITEBYTECODE=1
+ENV PYTHONUNBUFFERED=1
+ENV PYTHONPATH=/app
+ENV HF_HOME=/app/data/huggingface_cache
 
-# CRITICAL FIX: Set to production URL so Next.js bakes the correct API path
-ENV NEXT_PUBLIC_API_URL=https://my-leads.app
+# SECURITY: Create user FIRST before adding any files
+RUN useradd -m -u 1000 leadflowuser
 
-RUN npm run build
-
-# 3. Production Image
-FROM node:22-alpine AS runner
 WORKDIR /app
 
-ENV NODE_ENV production
+# Install system dependencies
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    ffmpeg \
+    libmagic1 \
+    postgresql-client \
+    build-essential \
+    pkg-config \
+    libavformat-dev \
+    libavcodec-dev \
+    libavdevice-dev \
+    libavutil-dev \
+    libavfilter-dev \
+    libswscale-dev \
+    libswresample-dev \
+    && rm -rf /var/lib/apt/lists/*
 
-RUN addgroup --system --gid 1001 nodejs
-RUN adduser --system --uid 1001 nextjs
+# Install Python dependencies separately to cache the layer
+COPY --chown=leadflowuser:leadflowuser requirements.txt .
+RUN pip install --no-cache-dir torch torchvision torchaudio --index-url https://download.pytorch.org/whl/cpu \
+    && pip install --no-cache-dir -r requirements.txt
 
-COPY --from=builder /app/public ./public
+# Copy the rest of the application directly as the non-root user
+# This avoids the expensive 'chown -R' layer that causes disk space exhaustion
+COPY --chown=leadflowuser:leadflowuser . .
 
-# Copy built files
-COPY --from=builder --chown=nextjs:nodejs /app/.next/standalone ./
-COPY --from=builder --chown=nextjs:nodejs /app/.next/static ./.next/static
+# FIX: Pre-create required storage directories
+RUN mkdir -p storage/audio storage/kyc data/huggingface_cache models \
+    && chown -R leadflowuser:leadflowuser storage data models
 
-USER nextjs
+# Switch to the non-privileged user
+USER leadflowuser
 
-EXPOSE 3000
-ENV PORT 3000
+# Expose the port for FastAPI
+EXPOSE 8000
 
-ENV HOSTNAME "0.0.0.0"
+HEALTHCHECK --interval=30s --timeout=5s --start-period=20s --retries=3 \
+    CMD python -c "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/health/live', timeout=3)" || exit 1
 
-HEALTHCHECK --interval=30s --timeout=5s --start-period=15s --retries=3 \
-    CMD node -e "fetch('http://127.0.0.1:3000').then(r => process.exit(r.ok ? 0 : 1)).catch(() => process.exit(1))"
-
-CMD ["node", "server.js"]
+# Gunicorn configuration
+CMD ["gunicorn", "src.main:app", \
+    "--workers", "1", \
+    "--worker-class", "uvicorn.workers.UvicornWorker", \
+    "--bind", "0.0.0.0:8000", \
+    "--timeout", "120", \
+    "--access-logfile", "-", \
+    "--error-logfile", "-", \
+    "--log-level", "info"]
