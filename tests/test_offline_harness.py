@@ -22,7 +22,10 @@ async def test_offline_harness_grounded_hebrew_price_retrieval():
     harness.router = MagicMock()
     harness.router.redis = None
     harness.router.route_and_generate = AsyncMock(return_value=mock_response)
-    harness.router.select_models.return_value = ("gemini-flash-latest", "gemini-flash-lite-latest")
+    harness.router.select_models.return_value = (
+        "gemini-flash-lite-latest",
+        "gemini-flash-lite-latest",
+    )
 
     result = await harness.execute_turn(
         tenant_id="tenant_clinic_1",
@@ -60,7 +63,10 @@ async def test_offline_harness_out_of_scope_abstention():
     harness.router = MagicMock()
     harness.router.redis = None
     harness.router.route_and_generate = AsyncMock(return_value=mock_response)
-    harness.router.select_models.return_value = ("gemini-flash-latest", "gemini-flash-lite-latest")
+    harness.router.select_models.return_value = (
+        "gemini-flash-lite-latest",
+        "gemini-flash-lite-latest",
+    )
 
     result = await harness.execute_turn(
         tenant_id="tenant_clinic_1",

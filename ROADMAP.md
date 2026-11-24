@@ -126,3 +126,4 @@ The primary risks at launch are **external regulatory bottlenecks** and **operat
 11. **Voice & Multi-Agent Frontier:** Live Twilio Media Streams voice agent, autonomous cold-list outbound pacing, and specialized Sales-to-Support agent handoff.
 
 ---
+MCP ו-OpenTelemetry

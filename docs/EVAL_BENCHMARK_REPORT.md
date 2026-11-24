@@ -6,7 +6,7 @@
 
 ## Performance & Latency Metrics
 - **P50 Latency:** 0.06 ms
-- **P95 Latency:** 0.06 ms
+- **P95 Latency:** 0.05 ms
 - **Average Token Footprint per Turn:** 154.0 tokens
 - **Total Estimated Cost for Run:** $0.000315 USD
 

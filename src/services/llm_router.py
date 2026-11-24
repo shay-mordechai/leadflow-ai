@@ -34,7 +34,7 @@ class GeminiTieredRouter:
     """
 
     MODEL_LITE = "gemini-flash-lite-latest"
-    MODEL_FLASH = "gemini-flash-latest"
+    MODEL_FLASH = "gemini-flash-lite-latest"
 
     def __init__(self, gemini_client: GeminiClientProtocol, redis_client: Any = None) -> None:
         self.gemini = gemini_client
@@ -43,11 +43,8 @@ class GeminiTieredRouter:
         self._local_usage: dict[str, int] = {}
 
     def select_models(self, complexity: TaskComplexity) -> tuple[str, str]:
-        """Returns (primary_model, fallback_model) based on task complexity."""
-        if complexity == TaskComplexity.LOW:
-            return (self.MODEL_LITE, self.MODEL_FLASH)
-        # For STANDARD and HIGH complexity, use Flash as primary and Lite as fast fallback
-        return (self.MODEL_FLASH, self.MODEL_LITE)
+        """Returns (primary_model, fallback_model) strictly locked to gemini-flash-lite-latest."""
+        return (self.MODEL_LITE, self.MODEL_LITE)
 
     async def verify_and_record_budget(
         self,
@@ -92,7 +89,7 @@ class GeminiTieredRouter:
         primary_model, fallback_model = self.select_models(complexity)
 
         generation_config_args: dict[str, Any] = {
-            "max_output_tokens": kwargs.pop("max_output_tokens", 512),
+            "max_output_tokens": kwargs.pop("max_output_tokens", 1024),
             "temperature": kwargs.pop("temperature", 0.2),
         }
         if response_schema is not None:

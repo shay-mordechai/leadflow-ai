@@ -39,7 +39,10 @@ async def test_agent_harness_successful_turn():
     harness.router = MagicMock()
     harness.router.redis = None
     harness.router.route_and_generate = AsyncMock(return_value=mock_response)
-    harness.router.select_models.return_value = ("gemini-flash-latest", "gemini-flash-lite-latest")
+    harness.router.select_models.return_value = (
+        "gemini-flash-lite-latest",
+        "gemini-flash-lite-latest",
+    )
 
     result = await harness.execute_turn(
         tenant_id="tenant_1",

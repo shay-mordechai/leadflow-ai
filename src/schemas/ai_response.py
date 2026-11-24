@@ -20,7 +20,7 @@ class WhatsAppAgentResponse(BaseModel):
     )
     lead_intent: Literal["INQUIRY", "PRICING", "BOOKING", "COMPLAINT", "UNKNOWN"] = Field(
         ...,
-        description="Lead intent classification.",
+        description="Lead intent classification: PRICING (any question about cost, price, membership fee, rates), BOOKING (scheduling an appointment, booking a trial session, registering for a plan), COMPLAINT (angry messages, demanding a manager, out-of-scope medical/legal requests requiring escalation), INQUIRY (hours, location, parking, general info), UNKNOWN (gibberish).",
     )
     lead_qualification_score: int = Field(..., ge=0, le=100, description="Lead score from 0 to 100")
     needs_human_escalation: bool = Field(

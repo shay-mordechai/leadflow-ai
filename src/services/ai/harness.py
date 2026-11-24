@@ -255,18 +255,31 @@ class AgentHarness:
             )
 
             parsed_data: dict[str, Any] = {}
+            json_failed = False
             try:
                 cleaned_json = response_text.strip()
-                cleaned_json = cleaned_json.removeprefix("```json")
+                cleaned_json = cleaned_json.removeprefix("```json").removeprefix("```")
                 cleaned_json = cleaned_json.removesuffix("```")
                 parsed_data = json.loads(cleaned_json.strip())
             except Exception:
+                json_failed = True
+
+            if (
+                json_failed
+                or not isinstance(parsed_data, dict)
+                or "reply_text" not in parsed_data
+                or "{" in str(parsed_data.get("reply_text", ""))
+                or "}" in str(parsed_data.get("reply_text", ""))
+            ):
+                logger.warning(
+                    f"LLM output JSON malformed or truncated. Falling back safely: {response_text[:200]}"
+                )
                 parsed_data = {
-                    "reply_text": sanitize_ai_output(response_text[:600]),
-                    "lead_intent": "INQUIRY",
-                    "lead_qualification_score": 50,
-                    "needs_human_escalation": False,
-                    "abstained": False,
+                    "reply_text": "אין לי את הפרט המדויק הזה כרגע — העברתי את הפנייה לנציג אנושי שיחזור אליך בהקדם.",
+                    "lead_intent": "COMPLAINT",
+                    "lead_qualification_score": 10,
+                    "needs_human_escalation": True,
+                    "abstained": True,
                 }
 
             raw_reply = parsed_data.get("reply_text", "")
