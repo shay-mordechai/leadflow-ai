@@ -1,4 +1,3 @@
-# Dockerfile
 # Use the official Envoy Proxy image as the base
 FROM docker.io/envoyproxy/envoy:v1.28-latest
 
