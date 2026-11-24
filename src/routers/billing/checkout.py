@@ -89,25 +89,26 @@ async def create_checkout_session(
     )
 
     if final_price <= 0.0:
+        db_user = db.query(User).filter(User.id == user.id).first() or db.merge(user)
         tier_enum = PlanTier.PRO if target_plan == "PRO" else PlanTier.STARTER
-        user.plan_tier = tier_enum
-        user.subscription_status = SubscriptionStatus.ACTIVE
+        db_user.plan_tier = tier_enum
+        db_user.subscription_status = SubscriptionStatus.ACTIVE
         db.flush()
         db.add(
             AuditLog(
-                user_id=str(user.id),
+                user_id=str(db_user.id),
                 action="COUPON_ZERO_COST_ACTIVATION",
                 details={"coupon_code": coupon_code, "plan": tier_enum.value, "final_price": 0.0},
             )
         )
         db.commit()
-        db.refresh(user)
+        db.refresh(db_user)
         return {
             "status": "activated",
             "payment_required": False,
             "original_price": base_price,
             "final_price": 0.0,
-            "plan": user.plan_tier.value,
+            "plan": db_user.plan_tier.value,
             "message": "Coupon reduced cost to 0 ILS. Subscription activated immediately.",
         }
 
@@ -229,23 +230,27 @@ async def redeem_coupon(
         }
 
     try:
+        db_user = db.query(User).filter(User.id == user.id).first() or db.merge(user)
         target_enum = PlanTier.PRO if target_plan_name == "PRO" else PlanTier.STARTER
-        if user.plan_tier == target_enum and user.subscription_status == SubscriptionStatus.ACTIVE:
+        if (
+            db_user.plan_tier == target_enum
+            and db_user.subscription_status == SubscriptionStatus.ACTIVE
+        ):
             return {
                 "status": "success",
                 "activated": True,
                 "message": f"Plan is already {target_enum.value}",
-                "plan": user.plan_tier.value,
+                "plan": db_user.plan_tier.value,
                 "original_price": base_price,
                 "final_price": 0.0,
             }
 
-        user.plan_tier = target_enum
-        user.subscription_status = SubscriptionStatus.ACTIVE
+        db_user.plan_tier = target_enum
+        db_user.subscription_status = SubscriptionStatus.ACTIVE
         db.flush()
 
         new_log = AuditLog(
-            user_id=str(user.id),
+            user_id=str(db_user.id),
             action="COUPON_REDEEMED",
             details={
                 "coupon_code": code,
@@ -256,15 +261,17 @@ async def redeem_coupon(
         )
         db.add(new_log)
         db.commit()
-        db.refresh(user)
+        db.refresh(db_user)
 
-        logger.info(f"✅ COUPON SUCCESS: User {user.id} upgraded to {target_enum.value} (0 ILS).")
+        logger.info(
+            f"✅ COUPON SUCCESS: User {db_user.id} upgraded to {target_enum.value} (0 ILS)."
+        )
 
         return {
             "status": "success",
             "activated": True,
             "message": f"Coupon applied! Cost reduced to 0 ILS. You are now a {target_enum.value} member.",
-            "plan": user.plan_tier.value,
+            "plan": db_user.plan_tier.value,
             "discount_percent": discount_pct,
             "original_price": base_price,
             "final_price": 0.0,
