@@ -74,6 +74,7 @@ impl HttpContext for DataHopHttpContext {
         if has_ttl {
             self.should_redact = true;
             self.set_http_response_header("x-data-ttl", None);
+            self.set_http_response_header("content-length", None);
         }
         
         Action::Continue
@@ -107,7 +108,6 @@ impl HttpContext for DataHopHttpContext {
                     redact_sensitive_fields(&mut json_body);
                     
                     if let Ok(new_body) = serde_json::to_vec(&json_body) {
-                        self.set_http_response_header("content-length", Some(&new_body.len().to_string()));
                         self.set_http_response_body(0, body_bytes.len(), &new_body);
                         info!("Data Hop Firewall: Response body redacted successfully.");
                     }

@@ -21,11 +21,15 @@ def database_sync_status(db: Session = Depends(get_db)) -> JSONResponse:
     image_sha = os.getenv("CURRENT_IMAGE_SHA")
 
     try:
-        actual_revision = (
-            db.execute(text("SELECT version_num FROM alembic_version"))
-            .execution_options(timeout=2.0)
-            .scalar_one_or_none()
-        )
+        try:
+            actual_revision = db.execute(
+                text("SELECT version_num FROM alembic_version"),
+                execution_options={"timeout": 2.0},
+            ).scalar_one_or_none()
+        except Exception:
+            actual_revision = db.execute(
+                text("SELECT version_num FROM alembic_version")
+            ).scalar_one_or_none()
     except Exception as error:
         logger.error(
             "Database revision health check failed (%s)",
