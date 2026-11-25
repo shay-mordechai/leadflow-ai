@@ -280,6 +280,7 @@ class Settings(BaseSettings):
     WHATSAPP_PHONE_ID: str = ""
     WHATSAPP_VERIFY_TOKEN: str = "my_secure_token"
     WHATSAPP_APP_SECRET: str = ""
+    WHATSAPP_WELCOME_TEMPLATE: str = Field(default="lead_welcome_he")
     GRAPH_API_VERSION: str = "v21.0"
 
     @property

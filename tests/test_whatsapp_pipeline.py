@@ -105,7 +105,72 @@ class TestWebhookWorkerLogic:
         # AI generation must be skipped when is_active is False
 
     @pytest.mark.asyncio
-    async def test_outbound_whatsapp_dispatch(self):
+    async def test_process_single_message_commits_after_memory_query(self):
+        """Verify _process_single_message successfully commits and dispatches reply without InvalidRequestError after get_lead_memory query."""
+        from src.services.communication import whatsapp_pipeline
+
+        mock_db = AsyncMock()
+        mock_db.in_transaction.return_value = True
+        mock_tx = MagicMock()
+        mock_tx.__aenter__ = AsyncMock(return_value=None)
+        mock_tx.__aexit__ = AsyncMock(return_value=None)
+        mock_db.begin = MagicMock(return_value=mock_tx)
+
+        context = {
+            "tenant_id": "test-tenant",
+            "lead_id": "test-lead",
+            "user_id": "test-user",
+            "phone_number_id": "123456",
+            "sender_id": "972500000000",
+            "business_type": "Fitness",
+            "business_name": "Gym",
+            "products_services": "Training",
+            "custom_instructions": "",
+            "lead_name": "Dan",
+            "lead_source": "WhatsApp",
+            "latest_message": "Hello",
+        }
+
+        message = {"id": "wamid.123"}
+
+        with (
+            patch(
+                "src.services.communication.whatsapp_pipeline._prepare_message_context",
+                new_callable=AsyncMock,
+                return_value=("ready", context),
+            ),
+            patch(
+                "src.services.ai.memory.ConversationMemoryService.get_lead_memory",
+                new_callable=AsyncMock,
+            ) as mock_memory,
+            patch(
+                "src.services.ai.harness.AgentHarness.execute_turn", new_callable=AsyncMock
+            ) as mock_turn,
+            patch(
+                "src.services.communication.whatsapp_pipeline.send_whatsapp_message",
+                new_callable=AsyncMock,
+            ) as mock_send,
+            patch("src.database.models.Lead"),
+        ):
+            mock_memory.return_value = {"recent_history": []}
+            mock_turn.return_value = {
+                "reply_text": "Hi there!",
+                "lead_qualification_score": 80,
+                "needs_human_escalation": False,
+            }
+            mock_send.return_value = "wamid.outbound"
+
+            mock_lead = MagicMock()
+            mock_lead.bot_active = True
+            mock_db.get.return_value = mock_lead
+
+            result = await whatsapp_pipeline._process_single_message(
+                mock_db, {"phone_number_id": "123456"}, [], message, AsyncMock()
+            )
+
+            assert result == "ai_replied"
+            assert mock_db.commit.called
+            assert mock_send.called
         """Test Meta Graph API outbound dispatcher using mock HTTP transport."""
         mock_response = MagicMock()
         mock_response.status_code = 200

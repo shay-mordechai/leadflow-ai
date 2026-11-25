@@ -150,12 +150,23 @@ async def receive_facebook_lead(request: Request, db: Session = Depends(get_db))
                         if field["name"] == "full_name": lead_name = field["values"][0]
                         if field["name"] == "phone_number": lead_phone = field["values"][0]
 
-                    # 4. Save to Database & Trigger Speed-to-Lead
-                    new_lead = Lead(...)
+                    # 4. Save to Database & Trigger Speed-to-Lead via unified welcome dispatcher
+                    new_lead = Lead(
+                        user_id=user.id if user else None,
+                        name=lead_name,
+                        phone_number=lead_phone,
+                        source="FACEBOOK_AD",
+                        status=LeadStatus.NEW,
+                    )
                     db.add(new_lead)
                     db.commit()
                     
-                    whatsapp_adapter.send_message(to_phone=lead_phone, text=intro_text)
+                    biz_name = getattr(user, "business_name", "העסק שלנו") if user else "העסק שלנו"
+                    whatsapp_adapter.send_proactive_lead_welcome(
+                        to_phone=lead_phone,
+                        lead_name=lead_name,
+                        business_name=biz_name,
+                    )
                     """
 
         return Response(content="EVENT_RECEIVED", status_code=status.HTTP_200_OK)

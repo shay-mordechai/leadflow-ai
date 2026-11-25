@@ -89,6 +89,9 @@ async def _release_ai_message_credit(db: AsyncSession, user_id: Any) -> bool:
         .returning(User.monthly_ai_messages)
     )
     try:
+        # Ensure any existing read transaction on the session is rolled back before beginning a new write transaction
+        if db.in_transaction():
+            await db.rollback()
         async with db.begin():
             result = await db.execute(statement)
             return result.scalar_one_or_none() is not None
@@ -385,13 +388,13 @@ async def _process_single_message(
     if result != "ready":
         return result
 
-    # WhatsApp Burst Debounce Check (3.5s window)
+    # WhatsApp Burst Debounce Check (3.5s window using millisecond precision PX)
     try:
         import redis.asyncio as aioredis
 
         r_client = aioredis.from_url(settings.REDIS_URL, decode_responses=True)
         debounce_key = f"wa_debounce:{context['tenant_id']}:{context['lead_id']}"
-        is_burst = await r_client.set(debounce_key, "1", ex=3.5, nx=True)
+        is_burst = await r_client.set(debounce_key, "1", px=3500, nx=True)
         await r_client.close()
         if not is_burst:
             logger.info(
@@ -408,6 +411,10 @@ async def _process_single_message(
         memory = await ConversationMemoryService.get_lead_memory(
             db, context["tenant_id"], context["lead_id"]
         )
+
+        # Ensure implicit read transaction on AsyncSession is closed before opening db.begin() write blocks
+        if db.in_transaction():
+            await db.commit()
 
         ai_result = await agent_harness.execute_turn(
             tenant_id=context["tenant_id"],

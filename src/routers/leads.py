@@ -257,11 +257,14 @@ async def _send_welcome_whatsapp_background(lead_id: UUID, phone: str, name: str
         target_user = db.query(User).filter(User.id == user_id).first()
         clean_phone = "".join(filter(str.isdigit, phone))
         biz_name = getattr(target_user, "business_name", "העסק שלנו") or "העסק שלנו"
-        intro_text = f"היי {name}, תודה שהשארת פרטים! אני המזכירה הווירטואלית של {biz_name}. איך אפשר לעזור לך היום?"
-        success = whatsapp_adapter.send_message(to_phone=clean_phone, text=intro_text)
+        success = whatsapp_adapter.send_proactive_lead_welcome(
+            to_phone=clean_phone,
+            lead_name=name,
+            business_name=biz_name,
+        )
         if success:
             logger.info(
-                f"🚀 Speed-to-Lead: Proactive message sent to {clean_phone} for lead {lead_id}"
+                f"🚀 Speed-to-Lead: Proactive welcome dispatched to {clean_phone} for lead {lead_id}"
             )
     except Exception as wa_err:
         logger.error(f"WhatsApp outreach background failed for lead {lead_id}: {wa_err}")

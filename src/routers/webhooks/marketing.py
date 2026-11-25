@@ -1,13 +1,14 @@
 import logging
 from typing import Any
 
-from fastapi import APIRouter, Depends, Header, HTTPException, status
+from fastapi import APIRouter, BackgroundTasks, Depends, Header, HTTPException, status
 from pydantic import BaseModel, Field
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from src.database.models import Lead, LeadSource, LeadStatus, User
 from src.database.session import get_db
+from src.services.communication.whatsapp import whatsapp_adapter
 
 # Initialize Router
 router = APIRouter(
@@ -98,6 +99,7 @@ def clean_phone_number(phone: str) -> str:
 @router.post("/incoming-lead", status_code=status.HTTP_201_CREATED)
 async def receive_incoming_lead(
     payload: IncomingLeadPayload,
+    background_tasks: BackgroundTasks,
     tenant: User = Depends(verify_marketing_api_key),
     db: Session = Depends(get_db),
 ):
@@ -168,36 +170,24 @@ async def receive_incoming_lead(
 
     logger.info(f"Successfully created new lead {new_lead.id} for tenant {tenant.id}")
 
-    # 4. Trigger proactive outbound WhatsApp message
+    # 4. Trigger proactive outbound WhatsApp message via BackgroundTasks and unified welcome dispatcher
     try:
-        # TODO: Implement AI Prompt Logic here.
-        # We need to query the tenant's AI Agent or Business Profile to construct a dynamic, personalized message.
-        # For now, we send a standard template/greeting message.
-
-        # greeting_message = (
-        #     f"Hi {payload.name}, we received your details regarding our services. "
-        #     f"How can we help you today?"
-        # )
-
-        # Trigger the WhatsApp adapter to send the message asynchronously
-        # (Assuming whatsapp_adapter has an async send_message method)
-        # Note: In a production environment, this might be better placed in a Celery task
-        # to avoid blocking the HTTP response if the API call is slow.
-
-        # await whatsapp_adapter.send_message(
-        #     to=normalized_phone,
-        #     message=greeting_message,
-        #     tenant_id=tenant.id
-        # )
+        biz_name = getattr(tenant, "business_name", "העסק שלנו") or "העסק שלנו"
+        background_tasks.add_task(
+            whatsapp_adapter.send_proactive_lead_welcome,
+            to_phone=normalized_phone,
+            lead_name=payload.name,
+            business_name=biz_name,
+        )
 
         logger.info(
-            f"Triggered proactive WhatsApp message to {normalized_phone} for lead {new_lead.id}"
+            f"Triggered proactive WhatsApp welcome dispatch to {normalized_phone} for lead {new_lead.id}"
         )
 
     except Exception as e:
-        # We catch exceptions so that a failure to send the WhatsApp message doesn't
+        # We catch exceptions so that a failure to schedule the WhatsApp message doesn't
         # cause the webhook to return a 500 error to the marketing platform.
-        logger.error(f"Failed to send proactive WhatsApp message to {normalized_phone}: {e!s}")
+        logger.error(f"Failed to schedule proactive WhatsApp message to {normalized_phone}: {e!s}")
 
     return {
         "status": "success",

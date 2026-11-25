@@ -43,6 +43,135 @@ class WhatsAppAdapter:
         token, phone_id = self._credentials(access_token, phone_number_id)
         return bool(token and phone_id)
 
+    def send_template_message(
+        self,
+        to_phone: str,
+        template_name: str,
+        language_code: str = "he",
+        body_params: list[str] | None = None,
+        phone_number_id: str | None = None,
+        access_token: str | None = None,
+    ) -> bool:
+        """
+        Sends an approved Meta WhatsApp template message via Cloud API (Graph API v21.0).
+        """
+        token, phone_id = self._credentials(access_token, phone_number_id)
+        clean_phone = _digits_only(to_phone)
+        template_name = (template_name or "").strip()
+
+        if not clean_phone or not template_name:
+            logger.warning("Refusing template send: missing destination phone or template name.")
+            return False
+
+        if not token or not phone_id:
+            if self._is_production():
+                logger.error(
+                    "Graph API credentials missing in production; template message not sent."
+                )
+                return False
+            logger.warning(
+                "[DEV MOCK] Meta credentials missing. Would send template '%s' to %s with params %s",
+                template_name,
+                clean_phone,
+                body_params,
+            )
+            return True
+
+        url = f"{GRAPH_HOST}/{self.api_version}/{phone_id}/messages"
+        components = []
+        if body_params:
+            parameters_list = [{"type": "text", "text": str(p)} for p in body_params]
+            components.append(
+                {
+                    "type": "body",
+                    "parameters": parameters_list,
+                }
+            )
+
+        payload = {
+            "messaging_product": "whatsapp",
+            "recipient_type": "individual",
+            "to": clean_phone,
+            "type": "template",
+            "template": {
+                "name": template_name,
+                "language": {"code": language_code},
+                "components": components,
+            },
+        }
+        headers = {
+            "Authorization": f"Bearer {token}",
+            "Content-Type": "application/json",
+        }
+
+        try:
+            response = requests.post(url, json=payload, headers=headers, timeout=30)
+            if response.status_code >= 400:
+                logger.error(
+                    "Graph API template send failed (%s): %s",
+                    response.status_code,
+                    response.text[:500],
+                )
+                return False
+            data = response.json() if response.content else {}
+            message_id = (data.get("messages") or [{}])[0].get("id")
+            logger.info(
+                "Graph WhatsApp template message sent to %s (id=%s)", clean_phone, message_id
+            )
+            return True
+        except requests.exceptions.RequestException as exc:
+            logger.error("Network error sending Graph WhatsApp template message: %s", exc)
+            return False
+        except Exception as exc:
+            logger.error("Unexpected Graph template send error: %s", exc)
+            return False
+
+    def send_proactive_lead_welcome(
+        self,
+        to_phone: str,
+        lead_name: str,
+        business_name: str,
+        phone_number_id: str | None = None,
+        access_token: str | None = None,
+    ) -> bool:
+        """
+        Sends a proactive welcome greeting to a new lead.
+        Attempts to use the configured WhatsApp template first (WHATSAPP_WELCOME_TEMPLATE),
+        falling back to standard text message if template delivery fails or is unconfigured.
+        """
+        template_name = getattr(settings, "WHATSAPP_WELCOME_TEMPLATE", "lead_welcome_he")
+        lead_name = lead_name or "יקר/ה"
+        business_name = business_name or "העסק שלנו"
+
+        # Try sending template message if template name is provided
+        if template_name:
+            success = self.send_template_message(
+                to_phone=to_phone,
+                template_name=template_name,
+                language_code="he",
+                body_params=[lead_name, business_name],
+                phone_number_id=phone_number_id,
+                access_token=access_token,
+            )
+            if success:
+                logger.info(
+                    "Successfully sent proactive welcome via WhatsApp template '%s'", template_name
+                )
+                return True
+            logger.warning(
+                "WhatsApp template '%s' delivery failed; falling back to text message.",
+                template_name,
+            )
+
+        # Fallback to standard text message
+        fallback_text = f"היי {lead_name}, תודה שהשארת פרטים! אני המזכירה הווירטואלית של {business_name}. איך אפשר לעזור לך היום?"
+        return self.send_message(
+            to_phone=to_phone,
+            text=fallback_text,
+            phone_number_id=phone_number_id,
+            access_token=access_token,
+        )
+
     def send_message(
         self,
         to_phone: str,
