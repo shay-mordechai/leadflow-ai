@@ -371,6 +371,7 @@ jobs:
     name: Trigger Hetzner Production Webhook
     needs: [detect-changes, build-and-push]
     if: >-
+      !cancelled() &&
       needs.build-and-push.result == 'success' &&
       (needs.detect-changes.outputs.backend == 'true' ||
        needs.detect-changes.outputs.frontend == 'true' ||
