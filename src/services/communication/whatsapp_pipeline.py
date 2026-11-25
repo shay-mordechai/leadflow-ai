@@ -188,7 +188,13 @@ async def send_whatsapp_message(
     text: str,
 ) -> str | None:
     """Send a text message through Meta Graph API and return its message ID."""
-    token = (os.getenv("WHATSAPP_API_TOKEN") or "").strip()
+    # Prefer explicit WHATSAPP_API_TOKEN override (used in tests), falling back to META_ACCESS_TOKEN
+    token = (
+        os.getenv("WHATSAPP_API_TOKEN")
+        or settings.messaging_access_token
+        or os.getenv("META_ACCESS_TOKEN")
+        or ""
+    ).strip()
     clean_phone = _digits_only(recipient_phone)
     if not token:
         raise RuntimeError("WHATSAPP_API_TOKEN is not configured")

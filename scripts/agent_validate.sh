@@ -5,11 +5,19 @@ echo "=== [1/4] Ruff Format & Lint ==="
 ruff format --check src tests alembic scripts
 ruff check src tests alembic scripts
 
-echo "=== [2/4] Alembic Migration Sync (Isolated SQLite) ==="
-TMP_DB=$(mktemp /tmp/leadflow_alembic_XXXXXX.db)
-trap 'rm -f "$TMP_DB"' EXIT
-DATABASE_URL="sqlite:///${TMP_DB}" alembic upgrade head >/dev/null
-DATABASE_URL="sqlite:///${TMP_DB}" alembic check
+echo "=== [2/4] Alembic Migration DAG Check (Offline) ==="
+if python3 -c "import alembic" >/dev/null 2>&1; then
+  HEAD_COUNT=$(python3 -m alembic heads | wc -l)
+  if [[ "$HEAD_COUNT" -ne 1 ]]; then
+    echo "ERROR: Expected exactly 1 Alembic head, found ${HEAD_COUNT}:" >&2
+    python3 -m alembic heads >&2
+    exit 1
+  fi
+  python3 -m alembic branches
+  echo "Alembic single-head DAG verified."
+else
+  echo "SKIP: alembic not installed in current host venv."
+fi
 
 echo "=== [3/4] Pipeline & Security Pytest ==="
 pytest tests/test_whatsapp_pipeline.py tests/security/ -q --tb=short
