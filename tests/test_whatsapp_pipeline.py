@@ -110,7 +110,8 @@ class TestWebhookWorkerLogic:
         from src.services.communication import whatsapp_pipeline
 
         mock_db = AsyncMock()
-        mock_db.in_transaction.return_value = True
+        mock_db.in_transaction = MagicMock(return_value=True)
+        mock_db.add = MagicMock()
         mock_tx = MagicMock()
         mock_tx.__aenter__ = AsyncMock(return_value=None)
         mock_tx.__aexit__ = AsyncMock(return_value=None)

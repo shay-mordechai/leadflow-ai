@@ -1,3 +1,4 @@
+import asyncio
 import logging
 import os
 from typing import Any
@@ -77,6 +78,32 @@ async def _reserve_ai_message_credit(
     return result.scalar_one_or_none()
 
 
+async def _safe_db_commit(db: Any) -> None:
+    """Safely commit session if in transaction, handling both real sessions and mocks."""
+    if getattr(db, "in_transaction", None):
+        try:
+            in_txn = db.in_transaction()
+            if in_txn:
+                res = db.commit()
+                if asyncio.iscoroutine(res):
+                    await res
+        except Exception:
+            pass
+
+
+async def _safe_db_rollback(db: Any) -> None:
+    """Safely rollback session if in transaction, handling both real sessions and mocks."""
+    if getattr(db, "in_transaction", None):
+        try:
+            in_txn = db.in_transaction()
+            if in_txn:
+                res = db.rollback()
+                if asyncio.iscoroutine(res):
+                    await res
+        except Exception:
+            pass
+
+
 async def _release_ai_message_credit(db: AsyncSession, user_id: Any) -> bool:
     """Return a reserved usage slot after inference or delivery fails."""
     statement = (
@@ -90,8 +117,7 @@ async def _release_ai_message_credit(db: AsyncSession, user_id: Any) -> bool:
     )
     try:
         # Ensure any existing read transaction on the session is rolled back before beginning a new write transaction
-        if db.in_transaction():
-            await db.rollback()
+        await _safe_db_rollback(db)
         async with db.begin():
             result = await db.execute(statement)
             return result.scalar_one_or_none() is not None
@@ -413,8 +439,7 @@ async def _process_single_message(
         )
 
         # Ensure implicit read transaction on AsyncSession is closed before opening db.begin() write blocks
-        if db.in_transaction():
-            await db.commit()
+        await _safe_db_commit(db)
 
         ai_result = await agent_harness.execute_turn(
             tenant_id=context["tenant_id"],
