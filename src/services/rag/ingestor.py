@@ -11,6 +11,8 @@ from src.services.rag.chunker import chunk_document_text, extract_text_from_byte
 
 logger = logging.getLogger("RAGIngestor")
 
+ALLOWED_KNOWLEDGE_CATEGORIES = frozenset({"business_facts", "marketing_inspiration"})
+
 
 async def _maybe_await(value):
     if inspect.isawaitable(value):
@@ -54,12 +56,19 @@ async def ingest_tenant_document(
     filename: str,
     content_type: str,
     raw_bytes: bytes,
+    category: str = "business_facts",
 ) -> KnowledgeDocument:
     """
-    Ingests an uploaded tenant knowledge document: extracts text, chunks it,
-    computes embeddings, stores KnowledgeDocument + KnowledgeChunk records,
+    Ingests an uploaded or approved tenant knowledge document: extracts text, chunks it,
+    computes embeddings, stores KnowledgeDocument + KnowledgeChunk records with category isolation,
     and invalidates Redis KB cache version.
     """
+    if category not in ALLOWED_KNOWLEDGE_CATEGORIES:
+        raise ValueError(
+            f"Unsupported knowledge category '{category}'. "
+            f"Allowed: {sorted(ALLOWED_KNOWLEDGE_CATEGORIES)}"
+        )
+
     safe_filename = os.path.basename(filename)
     raw_text = extract_text_from_bytes(raw_bytes, content_type)
     chunks_data = chunk_document_text(raw_text)
@@ -69,6 +78,7 @@ async def ingest_tenant_document(
         filename=safe_filename,
         content_type=content_type or "application/octet-stream",
         status="PROCESSING",
+        category=category,
         chunk_count=len(chunks_data),
     )
     db.add(doc)
@@ -101,6 +111,6 @@ async def ingest_tenant_document(
         logger.warning(f"Failed to increment Redis kb_version: {redis_err}")
 
     logger.info(
-        f"✅ Ingested knowledge document {safe_filename} ({len(chunks_data)} chunks) for tenant {tenant_id}"
+        f"✅ Ingested knowledge document {safe_filename} [{category}] ({len(chunks_data)} chunks) for tenant {tenant_id}"
     )
     return doc

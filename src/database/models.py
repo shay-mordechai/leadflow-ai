@@ -234,6 +234,16 @@ class BusinessProfile(Base):
 
     summary_template = Column(Text, nullable=True)
 
+    # Guided Brand DNA & Keyword Content Discovery
+    brand_style = Column(Text, nullable=True)
+    anti_positioning = Column(Text, nullable=True)
+    content_pillars = Column(JSON, nullable=True)
+    search_keywords = Column(JSON, nullable=True)
+    content_discovery_enabled = Column(
+        Boolean, default=False, server_default="false", nullable=False
+    )
+    strategy_weights = Column(JSON, nullable=True)
+
     created_at = Column(DateTime(timezone=True), server_default=func.now())
     updated_at = Column(DateTime(timezone=True), onupdate=func.now())
 
@@ -478,6 +488,13 @@ class KnowledgeDocument(Base):
     filename = Column(String, nullable=False)
     content_type = Column(String, nullable=False)
     status = Column(String, default="INDEXED", index=True, nullable=False)
+    category = Column(
+        String,
+        default="business_facts",
+        server_default="business_facts",
+        index=True,
+        nullable=False,
+    )
     chunk_count = Column(Integer, default=0, nullable=False)
     created_at = Column(DateTime(timezone=True), server_default=func.now())
 
@@ -515,3 +532,42 @@ class KnowledgeChunk(Base):
 
     document = relationship("KnowledgeDocument", back_populates="chunks")
     user = relationship("User")
+
+
+class ContentSuggestion(Base):
+    """
+    Stores keyword-discovered web content ideas awaiting business-owner approval
+    before optional ingestion into the marketing_inspiration RAG category.
+    Protected by PostgreSQL FORCE ROW LEVEL SECURITY on user_id.
+    """
+
+    __tablename__ = "content_suggestions"
+    __table_args__ = (
+        UniqueConstraint(
+            "user_id",
+            "url_hash",
+            name="uq_content_suggestions_user_url_hash",
+        ),
+    )
+
+    id = Column(GUID(), primary_key=True, default=uuid.uuid4)
+    user_id = Column(GUID(), ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True)
+    title = Column(String(255), nullable=False)
+    source_url = Column(Text, nullable=False)
+    url_hash = Column(String(64), nullable=False)
+    matched_keyword = Column(String(150), nullable=True)
+    source_provider = Column(String(50), default="tavily", server_default="tavily", nullable=False)
+    summary_he = Column(Text, nullable=False)
+    draft_post_he = Column(Text, nullable=False)
+    relevance_reason = Column(Text, nullable=True)
+    status = Column(
+        String(20), default="PENDING", server_default="PENDING", index=True, nullable=False
+    )
+    ingested_document_id = Column(
+        GUID(), ForeignKey("knowledge_documents.id", ondelete="SET NULL"), nullable=True
+    )
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
+    reviewed_at = Column(DateTime(timezone=True), nullable=True)
+
+    user = relationship("User")
+    ingested_document = relationship("KnowledgeDocument")

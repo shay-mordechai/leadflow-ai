@@ -38,6 +38,9 @@ celery_app.conf.update(
         "src.tasks.marketing_advisor.dispatch_weekly_marketing_digests": {"queue": "rag_read"},
         "src.tasks.marketing_advisor.analyze_tenant_marketing": {"queue": "rag_read"},
         "src.tasks.marketing_advisor.deliver_marketing_digest": {"queue": "mutations"},
+        "src.tasks.marketing_advisor.dispatch_weekly_content_discovery": {"queue": "rag_read"},
+        "src.tasks.marketing_advisor.discover_tenant_content": {"queue": "rag_read"},
+        "src.tasks.marketing_advisor.persist_content_suggestions": {"queue": "mutations"},
         "src.tasks.rag_*": {"queue": "rag_read"},
         "rag_*": {"queue": "rag_read"},
         "*.rag_*": {"queue": "rag_read"},
@@ -63,6 +66,12 @@ celery_app.conf.update(
         "weekly-marketing-advisor-digest": {
             "task": "src.tasks.marketing_advisor.dispatch_weekly_marketing_digests",
             "schedule": crontab(minute=0, hour=8, day_of_week=1),  # Mondays at 08:00 AM UTC
+        },
+        "weekly-content-discovery": {
+            "task": "src.tasks.marketing_advisor.dispatch_weekly_content_discovery",
+            "schedule": crontab(
+                minute=0, hour=7, day_of_week=0
+            ),  # Sundays at 07:00 AM UTC (09:00 IST)
         },
     },
 )

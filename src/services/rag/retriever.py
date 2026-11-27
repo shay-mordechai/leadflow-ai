@@ -3,12 +3,13 @@ import inspect
 import logging
 import math
 import re
+from collections.abc import Sequence
 from typing import Any
 
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from src.database.models import KnowledgeChunk
+from src.database.models import KnowledgeChunk, KnowledgeDocument
 from src.services.rag.ingestor import generate_embedding
 
 logger = logging.getLogger("RAGRetriever")
@@ -31,15 +32,24 @@ async def retrieve_relevant_chunks(
     query: str,
     top_k: int = 4,
     min_score: float = 0.20,
+    categories: Sequence[str] | None = ("business_facts",),
 ) -> list[dict[str, Any]]:
     """
     Retrieves relevant knowledge chunks for a query using Hybrid RRF (Semantic + Lexical overlap),
-    strictly pre-filtering by KnowledgeChunk.user_id == tenant_id to prevent cross-tenant leakage.
+    strictly pre-filtering by KnowledgeChunk.user_id == tenant_id and KnowledgeDocument.category
+    so external marketing_inspiration entries never leak into customer-facing WhatsApp replies.
     """
     if not query.strip():
         return []
 
-    stmt = select(KnowledgeChunk).where(KnowledgeChunk.user_id == str(tenant_id))
+    stmt = (
+        select(KnowledgeChunk)
+        .join(KnowledgeDocument, KnowledgeChunk.document_id == KnowledgeDocument.id)
+        .where(KnowledgeChunk.user_id == str(tenant_id))
+    )
+    if categories:
+        stmt = stmt.where(KnowledgeDocument.category.in_(list(categories)))
+
     res = db.scalars(stmt)
     if inspect.isawaitable(res):
         res = await res

@@ -260,6 +260,8 @@ class Settings(BaseSettings):
     # --- External AI APIs ---
     OPENAI_API_KEY: str = ""
     GOOGLE_API_KEY: str = ""
+    TAVILY_API_KEY: str = ""
+    BRAVE_SEARCH_API_KEY: str = ""
 
     # --- Telephony Providers ---
     TWILIO_ACCOUNT_SID: str = ""
